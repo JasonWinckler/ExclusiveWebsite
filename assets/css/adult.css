@@ -1,22 +1,15 @@
 body.adult-site {
-  background: radial-gradient(circle at top left, rgba(255, 42, 118, 0.14), transparent 34%), radial-gradient(circle at 80% 10%, rgba(255, 125, 36, 0.14), transparent 30%), var(--bg);
+  background: radial-gradient(circle at top left, rgba(255, 42, 118, 0.12), transparent 34%), radial-gradient(circle at 80% 10%, rgba(255, 125, 36, 0.12), transparent 30%), var(--bg);
 }
 
 body.is-age-locked { overflow: hidden; }
 
 .exclusive-header {
   position: sticky;
-  top: 16px;
   z-index: 10;
-  width: min(94vw, 1180px);
-  margin: 16px auto 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 14px 18px;
   border: 1px solid var(--stroke);
-  border-radius: 999px;
   background: rgba(19, 0, 5, 0.74);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
@@ -39,13 +32,11 @@ body.is-age-locked { overflow: hidden; }
 .adult-hero {
   position: relative;
   display: grid;
-  min-height: auto;
   overflow: hidden;
 }
 
 .hero-media {
   position: relative;
-  min-height: clamp(220px, 34vw, 390px);
   overflow: hidden;
 }
 
@@ -60,19 +51,18 @@ body.is-age-locked { overflow: hidden; }
   height: 100%;
   object-fit: cover;
   object-position: center;
-  filter: saturate(1.05) contrast(1.04);
+  filter: saturate(1.04) contrast(1.03);
 }
 
 .hero-media__shade {
-  background: linear-gradient(180deg, rgba(14, 0, 5, 0.05), rgba(14, 0, 5, 0.68) 70%, rgba(14, 0, 5, 0.94)), radial-gradient(circle at 50% 70%, rgba(255, 72, 20, 0.34), transparent 42%);
+  background: linear-gradient(180deg, rgba(14, 0, 5, 0.05), rgba(14, 0, 5, 0.66) 70%, rgba(14, 0, 5, 0.94)), radial-gradient(circle at 50% 70%, rgba(255, 72, 20, 0.3), transparent 42%);
 }
 
 .adult-hero__content {
   position: relative;
   z-index: 1;
-  width: min(100%, 940px);
-  margin: clamp(-86px, -8vw, -54px) auto 0;
-  padding: 0 clamp(22px, 6vw, 70px) clamp(34px, 6vw, 58px);
+  width: min(100%, 860px);
+  margin-inline: auto;
   text-align: center;
 }
 
@@ -80,13 +70,12 @@ body.is-age-locked { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 0 16px;
-  margin-bottom: 18px;
+  min-height: 36px;
+  padding: 0 14px;
   color: var(--cream);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   border: 1px solid rgba(255, 202, 144, 0.42);
   border-radius: 999px;
@@ -95,17 +84,15 @@ body.is-age-locked { overflow: hidden; }
 }
 
 .adult-site .avatar {
-  width: clamp(118px, 13vw, 154px);
-  height: clamp(118px, 13vw, 154px);
   object-fit: cover;
   border-radius: 50%;
   border: 4px solid rgba(255, 230, 190, 0.86);
   box-shadow: 0 0 0 8px rgba(86, 8, 14, 0.72), 0 12px 36px rgba(0, 0, 0, 0.46), 0 0 38px rgba(255, 92, 30, 0.46);
 }
 
-.adult-site h1 { font-size: clamp(2.8rem, 8vw, 6.8rem); }
-.adult-site h2 { font-size: clamp(1.85rem, 5vw, 3.7rem); }
-.adult-site h3 { font-size: clamp(1.1rem, 2vw, 1.3rem); }
+.adult-site h1,
+.adult-site h2,
+.adult-site h3 { letter-spacing: -0.01em; }
 
 .tagline,
 .section-heading p:not(.eyebrow),
@@ -114,22 +101,21 @@ body.is-age-locked { overflow: hidden; }
 .join-section p,
 .rules-list {
   color: var(--muted);
-  line-height: 1.7;
+  line-height: 1.68;
 }
 
-.adult-hero .tagline { max-width: 760px; }
+.adult-hero .tagline { max-width: 680px; }
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
 
 .adult-site .section {
   display: block;
   margin-top: 28px;
-  padding: clamp(24px, 5vw, 52px);
+  padding: clamp(24px, 4.5vw, 48px);
 }
 
 .feature-grid,
 .tier-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   align-items: stretch;
 }
@@ -147,7 +133,6 @@ body.is-age-locked { overflow: hidden; }
 }
 
 .feature-card .icon { margin-bottom: 18px; }
-.membership-section { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 28px; align-items: center; }
 .tier-card strong { display: block; margin-bottom: 12px; color: var(--gold); }
 .tier-card .primary-action { margin-top: 8px; }
 .tier-card--featured { border-color: rgba(255, 202, 144, 0.58); box-shadow: 0 24px 54px rgba(0, 0, 0, 0.28), 0 0 42px rgba(255, 90, 34, 0.18); }
@@ -156,28 +141,11 @@ body.is-age-locked { overflow: hidden; }
 .rules-list li { padding: 16px 18px; border: 1px solid var(--stroke); border-radius: 18px; background: rgba(255, 255, 255, 0.06); }
 .rules-list li::before { content: "18+"; margin-right: 10px; color: var(--gold); font-weight: 900; }
 .join-section { text-align: center; }
-.join-section > p:not(.eyebrow) { max-width: 700px; margin: 18px auto 28px; }
+.join-section > p:not(.eyebrow) { max-width: 660px; margin: 18px auto 28px; }
 
 .age-gate[hidden] { display: none; }
 .age-gate { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(7, 0, 3, 0.86); backdrop-filter: blur(12px); }
 .age-gate__panel { width: min(100%, 520px); padding: clamp(28px, 7vw, 46px); text-align: center; border: 1px solid rgba(255, 202, 144, 0.42); border-radius: 32px; background: linear-gradient(180deg, rgba(62, 4, 18, 0.98), rgba(18, 0, 6, 0.98)); box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62), 0 0 54px rgba(255, 42, 118, 0.2); }
-.age-gate__panel h1 { font-size: clamp(2.3rem, 10vw, 4.5rem); }
+.age-gate__panel h1 { font-size: clamp(2.2rem, 8vw, 3.7rem); }
 .age-gate__panel p { color: var(--muted); line-height: 1.65; }
 .age-gate__actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
-
-@media (max-width: 900px) {
-  .exclusive-header { top: 8px; width: min(100% - 24px, 1180px); align-items: flex-start; border-radius: 28px; flex-direction: column; }
-  .feature-grid, .tier-list, .membership-section { grid-template-columns: 1fr; }
-  .align-left { text-align: center; margin-inline: auto; }
-  .tier-card { text-align: center; }
-}
-
-@media (max-width: 560px) {
-  .desktop-nav { display: none; }
-  .exclusive-header { gap: 12px; }
-  .adult-hero__content { margin-top: -62px; padding-bottom: 32px; }
-  .age-badge { font-size: 0.68rem; letter-spacing: 0.05em; }
-  .adult-site h1 { font-size: clamp(2.45rem, 14vw, 4.35rem); }
-  .adult-site h2 { font-size: clamp(1.65rem, 9vw, 2.6rem); }
-  .feature-card, .tier-card { padding: 20px; }
-}
