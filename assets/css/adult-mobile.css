@@ -39,3 +39,8 @@
   gap: 10px;
   text-align: center;
 }
+
+.hero-media {
+  aspect-ratio: 1536 / 652;
+  min-height: 0;
+}
