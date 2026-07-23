@@ -1,0 +1,19 @@
+{
+  "name": "exclusivewebsite",
+  "version": "1.0.0",
+  "description": "Static exclusive website with Playwright screenshot checks.",
+  "main": "script.js",
+  "scripts": {
+    "install:browsers": "playwright install chromium --with-deps",
+    "test": "playwright test",
+    "test:screenshots": "playwright test tests/screenshot.spec.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "http-server": "^14.1.1"
+  }
+}
