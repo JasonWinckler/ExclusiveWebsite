@@ -186,7 +186,7 @@ h1 {
 
 .secondary-links { margin-top: 16px; }
 
-.paypal-sdk-button {
+.external-payment-widget {
   position: fixed;
   left: -9999px;
   bottom: 0;

@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#170008" />
-    <meta name="description" content="Jason Shadow — an 18+ creator hub for premium drops, previews and subscriber perks." />
-    <title>Jason Shadow | 18+ Content</title>
+    <meta name="description" content="Jason Shadow — self-hosted 18+ membership preview with age verification in preparation." data-i18n-attr="content:metaDescription" />
+    <title data-i18n="metaTitle">Jason Shadow | Secure 18+ Membership</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -14,106 +14,93 @@
     <link rel="stylesheet" href="assets/css/adult-desktop.css" media="(min-width: 761px)" />
     <link rel="stylesheet" href="assets/css/adult-mobile.css" media="(max-width: 760px)" />
   </head>
-  <body class="adult-site is-age-locked">
+  <body class="adult-site">
     <div class="ember-field" aria-hidden="true"></div>
 
-    <div class="age-gate" data-age-gate role="dialog" aria-modal="true" aria-labelledby="age-gate-title" aria-describedby="age-gate-description">
-      <div class="age-gate__panel">
-        <p class="eyebrow">Adults only · 18+</p>
-        <h1 id="age-gate-title">Confirm your age</h1>
-        <p id="age-gate-description">Adult-oriented content. Enter only if you are at least 18 years old.</p>
-        <div class="age-gate__actions">
-          <button class="primary-action" type="button" data-age-confirm>I am 18+</button>
-          <a class="secondary-action" href="/linktree/">Leave / Linktree</a>
-        </div>
-      </div>
-    </div>
-
     <header class="exclusive-header" data-animate="rise">
-      <a class="brand" href="#top" aria-label="Jason Shadow home">Jason Shadow</a>
+      <a class="brand" href="#top" data-i18n="brand">Jason Shadow</a>
       <nav class="main-nav desktop-nav" aria-label="Site navigation">
-        <a href="#preview">Preview</a>
-        <a href="#membership">Access</a>
-        <a href="#rules">Rules</a>
-        <a href="/linktree/">Linktree</a>
+        <a href="#profile" data-i18n="navProfile">Profile</a>
+        <a href="#free" data-i18n="navFree">Free</a>
+        <a href="#exclusive" data-i18n="navExclusive">Exclusive</a>
+        <a href="#pending" data-i18n="navPending">Status</a>
+        <a href="#legal" data-i18n="navLegal">Legal</a>
       </nav>
-      <a class="header-cta" href="#join">Join</a>
+      <div class="header-actions">
+        <div class="language-switcher" aria-label="Language selector">
+          <button class="language-button" type="button" data-lang="de">DE</button>
+          <button class="language-button" type="button" data-lang="en">EN</button>
+        </div>
+        <a class="secondary-action header-link" href="#pending" data-i18n="login">Login</a>
+        <a class="header-cta" href="#pending" data-i18n="register">Register</a>
+      </div>
     </header>
 
     <main id="top">
-      <section class="hero adult-hero" data-animate="rise">
+      <section id="profile" class="hero adult-hero" data-animate="rise">
         <div class="hero-media" aria-hidden="true">
           <img src="linktree/uploads/banner.png" width="1536" height="652" alt="" fetchpriority="high" decoding="async" />
           <div class="hero-media__shade"></div>
         </div>
         <div class="hero-content adult-hero__content">
-          <img class="avatar" src="linktree/uploads/profile.png" width="1536" height="1536" alt="Portrait of Jason Shadow" decoding="async" />
-          <p class="eyebrow">Premium fan club</p>
-          <h1>Exclusive Content</h1>
-          <p class="tagline">Premium drops, behind-the-scenes updates and limited fan perks in one 18+ hub.</p>
+          <img class="avatar" src="linktree/uploads/profile.png" width="1536" height="1536" alt="Jason Shadow promotional portrait" decoding="async" />
+          <p class="eyebrow" data-i18n="adultsOnly">Adults only · 18+</p>
+          <h1 data-i18n="heroTitle">Secure Membership</h1>
+          <p class="tagline" data-i18n="heroText">A self-hosted, privacy-focused members area is being prepared. Adult content remains fully locked until verified age approval and access activation.</p>
+          <p class="ai-disclosure" data-i18n="aiNotice">This promotional image was digitally enhanced in part using AI technology.</p>
           <div class="hero-actions">
-            <a class="primary-action" href="#join">Unlock content</a>
-            <a class="secondary-action" href="/linktree/">Linktree</a>
+            <a class="primary-action" href="#pending" data-i18n="register">Register</a>
+            <a class="secondary-action" href="#membership" data-i18n="viewMembership">View Membership Options</a>
           </div>
         </div>
       </section>
 
-      <section id="preview" class="section preview-section" data-animate="rise">
-        <div class="section-heading">
-          <p class="eyebrow">Preview</p>
-          <h2>Premium drops</h2>
-          <p>Public teasers here. Full content stays behind verified 18+ platforms.</p>
-        </div>
-        <div class="feature-grid">
-          <article class="feature-card"><span class="icon">✦</span><h3>Exclusive sets</h3><p>Curated photo and video drops in the Shadow aesthetic.</p></article>
-          <article class="feature-card"><span class="icon">♥</span><h3>Fan updates</h3><p>Subscriber updates, requests and personal announcements.</p></article>
-          <article class="feature-card"><span class="icon">◆</span><h3>Private drops</h3><p>Limited previews, behind-the-scenes moments and member drops.</p></article>
-        </div>
-      </section>
-
       <section id="membership" class="section membership-section" data-animate="rise">
-        <div class="section-heading align-left">
-          <p class="eyebrow">Access</p>
-          <h2>Choose access</h2>
-          <p>Start here, then continue to the verified platform for full access.</p>
+        <div class="section-heading">
+          <p class="eyebrow" data-i18n="profileEyebrow">Profile and Membership</p>
+          <h2 data-i18n="brand">Jason Shadow</h2>
+          <p data-i18n="bio">Neutral preview, status information and future membership options in one place — without routing to external adult platforms.</p>
         </div>
         <div class="tier-list">
-          <article class="tier-card"><h3>Teaser</h3><strong>Free preview</strong><p>Announcements and public teasers.</p></article>
-          <article class="tier-card tier-card--featured"><h3>Exclusive</h3><strong>Subscription</strong><p>Full access to 18+ drops and updates.</p><a class="primary-action" href="https://onlyfans.com/shadows_temptation" target="_blank" rel="noopener noreferrer nofollow">Continue</a></article>
-          <article class="tier-card"><h3>Supporter</h3><strong>Tips</strong><p>Support future releases directly.</p></article>
+          <article class="tier-card"><h3 data-i18n="tierFreeTitle">Limited Free Access</h3><strong>FREE</strong><p data-i18n="tierFreeText">Only after registration, email confirmation, age verification and personal access credential. No payment required.</p></article>
+          <article class="tier-card tier-card--featured"><h3 data-i18n="tierExclusiveTitle">Exclusive Access</h3><strong>30 / 90 / 365</strong><p data-i18n="tierExclusiveText">Requires successful age verification, active paid access and step-up authentication.</p><a class="primary-action" href="#pending" data-i18n="viewMembership">View Membership Options</a></article>
+          <article class="tier-card"><h3 data-i18n="tierSafetyTitle">Safety Status</h3><strong>FAIL CLOSED</strong><p data-i18n="tierSafetyText">Registration, manual AVS, payments and adult media remain disabled until backend and legal review are complete.</p></article>
         </div>
       </section>
 
-      <section id="rules" class="section rules-section" data-animate="rise">
-        <div class="section-heading">
-          <p class="eyebrow">Rules</p>
-          <h2>House rules</h2>
+      <section id="free" class="section preview-section" data-animate="rise">
+        <div class="section-heading"><p class="eyebrow">FREE ≠ PUBLIC</p><h2 data-i18n="freeHeading">Limited Free Content</h2></div>
+        <div class="locked-grid">
+          <article class="locked-card"><div class="locked-preview"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
+          <article class="locked-card"><div class="locked-preview locked-preview--alt"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
+          <article class="locked-card"><div class="locked-preview"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
         </div>
-        <ul class="rules-list">
-          <li>18+ visitors only.</li>
-          <li>No redistribution, reposts or impersonation.</li>
-          <li>Respect consent, privacy and platform rules.</li>
-        </ul>
       </section>
 
-      <section id="join" class="section join-section" data-animate="rise">
-        <p class="eyebrow">Ready?</p>
-        <h2>Join now</h2>
-        <p>Continue to the premium profile or view all links.</p>
-        <div class="hero-actions">
-          <a class="primary-action" href="https://onlyfans.com/shadows_temptation" target="_blank" rel="noopener noreferrer nofollow">Open profile</a>
-          <a class="secondary-action" href="/linktree/">All links</a>
+      <section id="exclusive" class="section preview-section" data-animate="rise">
+        <div class="section-heading"><p class="eyebrow">PAID ACCESS</p><h2 data-i18n="exclusiveHeading">Exclusive Content</h2><p data-i18n="exclusiveText">Exclusive content requires successful age verification and active paid access.</p></div>
+        <div class="locked-grid locked-grid--wide">
+          <article class="locked-card"><div class="locked-preview locked-preview--exclusive"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="exclusiveText">Exclusive content requires successful age verification and active paid access.</p><div class="hero-actions"><a class="primary-action" href="#pending" data-i18n="register">Register</a><a class="secondary-action" href="#membership" data-i18n="viewMembership">View Membership Options</a></div></article>
+        </div>
+      </section>
+
+      <section id="pending" class="section pending-section" data-animate="rise">
+        <div class="section-heading"><p class="eyebrow">EMAIL_PENDING → PENDING_AGE_VERIFICATION</p><h2 data-i18n="pendingHeading">Pending Account</h2><p data-i18n="pendingMain">Your account is currently pending approval for age verification.</p><p data-i18n="pendingSub">You cannot access free or exclusive adult content until your age verification has been reviewed and approved.</p></div>
+        <div class="status-panel">
+          <dl><div><dt data-i18n="statusLabel">Account Status</dt><dd data-i18n="statusValue">Age Verification Not Started</dd></div><div><dt data-i18n="emailLabel">Email</dt><dd>pending@example.invalid</dd></div><div><dt data-i18n="avsLabel">AVS Status</dt><dd data-i18n="avsValue">Document capture disabled until professional approval</dd></div></dl>
+          <div class="hero-actions"><button class="primary-action" type="button" disabled data-i18n="avsStart">Start Age Verification</button><button class="secondary-action" type="button" disabled data-i18n="avsContinue">Continue Age Verification</button><button class="secondary-action" type="button" disabled data-i18n="cancelRequest">Cancel Registration Request</button></div>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <p>© 2026 Jason Shadow · Adults only 18+</p>
-      <a href="/linktree/">Linktree</a>
-      <a href="/impressum/">Impressum</a>
-      <a href="/datenschutz/">Datenschutzerklärung</a>
+    <footer id="legal" class="site-footer legal-footer">
+      <p data-i18n="footerNotice">Production activation of adult content, AVS and registration is blocked until professional legal review has been completed.</p>
+      <nav aria-label="Legal links">
+        <a href="/impressum/" data-i18n="imprint">Impressum</a><a href="/datenschutz/" data-i18n="privacy">Privacy Policy</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="terms">Terms</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="consumer">Consumer Information</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="withdrawal">Withdrawal Notice</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="withdrawalTool">Withdrawal Function</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="contact">Contact</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="youth">Youth Protection</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="contentPolicy">Content Guidelines</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="aiPolicy">AI Editing Notice</a>
+      </nav>
     </footer>
 
+    <script src="assets/js/translations.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
