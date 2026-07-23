@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2a0207" />
+    <meta name="description" content="Shadow's Temptation — a professional link hub website with exclusive links and a donation button." />
+    <title>Shadow's Temptation | Links</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../assets/css/base.css" />
+    <link rel="stylesheet" href="../../assets/css/exclusive.css" />
+  </head>
+  <body>
+    <div class="ember-field" aria-hidden="true"></div>
+    <main class="page-shell">
+      <section class="profile-card" data-animate="rise">
+        <div class="banner-wrap">
+          <img class="banner" src="uploads/banner.png" alt="Shadow's Temptation banner" />
+          <div class="banner-overlay"></div>
+        </div>
+
+        <div class="profile-content">
+          <img class="avatar" src="uploads/profile.png" alt="Profile photo of Shadow's Temptation" />
+          <p class="eyebrow">Official link hub</p>
+          <h1>Shadow's Temptation</h1>
+          <p class="tagline">Here you will find everything you NEED ;)</p>
+
+          <nav class="link-list" aria-label="Social links">
+            <a class="link-button instagram" href="https://www.instagram.com/shadows.temptation_official" target="_blank" rel="noopener noreferrer">
+              <span class="icon" aria-hidden="true">◎</span>
+              <span>
+                <strong>Instagram</strong>
+                <small>@shadows.temptation_official</small>
+              </span>
+            </a>
+
+            <a class="link-button exclusive" href="https://onlyfans.com/shadows_temptation" target="_blank" rel="noopener noreferrer nofollow" data-sensitive-link>
+              <span class="icon" aria-hidden="true">
+                <img class="brand-icon" src="uploads/onlyfans.svg" alt="" loading="lazy" />
+              </span>
+              <span>
+                <strong>Exclusive Content</strong>
+                <small>shadows_temptation</small>
+              </span>
+            </a>
+
+            <button class="link-button donate" type="button" data-paypal-open aria-label="Open PayPal donation popup">
+              <span class="icon" aria-hidden="true">♥</span>
+              <span>
+                <strong>Support & Donate</strong>
+                <small>PayPal donation</small>
+              </span>
+            </button>
+          </nav>
+        </div>
+      </section>
+    </main>
+
+    <div class="sensitive-modal" data-sensitive-modal hidden>
+      <div class="sensitive-modal__backdrop" data-sensitive-cancel></div>
+      <div class="sensitive-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="sensitive-modal-title" aria-describedby="sensitive-modal-description" tabindex="-1">
+        <p class="sensitive-modal__eyebrow">WARNING: Sensitive Content</p>
+        <h2 id="sensitive-modal-title">Are you 18+ years old?</h2>
+        <p id="sensitive-modal-description">This link may lead to adult-oriented exclusive content. Please confirm your age before continuing.</p>
+        <div class="sensitive-modal__actions">
+          <button class="sensitive-modal__button sensitive-modal__button--cancel" type="button" data-sensitive-cancel>Cancel</button>
+          <button class="sensitive-modal__button sensitive-modal__button--continue" type="button" data-sensitive-continue>Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="paypal-sdk-button" id="paypal-donate-button-container" aria-hidden="true"></div>
+
+    <script src="https://www.paypalobjects.com/donate/sdk/donate-sdk.js" charset="UTF-8"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
