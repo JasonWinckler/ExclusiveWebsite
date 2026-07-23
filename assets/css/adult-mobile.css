@@ -11,9 +11,8 @@
 
 .desktop-nav { display: none; }
 .header-cta { width: 100%; }
-.hero-media { min-height: 210px; }
+.hero-media { aspect-ratio: 1536 / 652; min-height: 0; }
 .adult-hero__content { margin-top: -58px; padding: 0 18px 32px; }
-.age-badge { min-height: 32px; margin-bottom: 14px; font-size: 0.66rem; letter-spacing: 0.04em; }
 .adult-site .avatar { width: 112px; height: 112px; border-width: 3px; box-shadow: 0 0 0 6px rgba(86, 8, 14, 0.72), 0 12px 30px rgba(0, 0, 0, 0.44), 0 0 30px rgba(255, 92, 30, 0.4); }
 .adult-site h1 { font-size: clamp(2.35rem, 12vw, 3.35rem); line-height: 0.98; }
 .adult-site h2 { font-size: clamp(1.65rem, 8vw, 2.35rem); line-height: 1.08; }
@@ -38,9 +37,4 @@
   justify-items: center;
   gap: 10px;
   text-align: center;
-}
-
-.hero-media {
-  aspect-ratio: 1536 / 652;
-  min-height: 0;
 }

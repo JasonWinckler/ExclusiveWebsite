@@ -11,7 +11,6 @@
 .adult-hero { min-height: auto; }
 .hero-media { min-height: clamp(220px, 30vw, 360px); }
 .adult-hero__content { margin-top: clamp(-78px, -7vw, -52px); padding: 0 clamp(28px, 6vw, 70px) clamp(38px, 5vw, 56px); }
-.age-badge { margin-bottom: 18px; }
 .adult-site .avatar { width: clamp(126px, 11vw, 148px); height: clamp(126px, 11vw, 148px); }
 .adult-site h1 { font-size: clamp(3rem, 6.2vw, 5.25rem); line-height: 0.96; }
 .adult-site h2 { font-size: clamp(2rem, 3.8vw, 3.15rem); line-height: 1.06; }
