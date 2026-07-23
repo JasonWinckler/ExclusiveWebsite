@@ -26,7 +26,7 @@ test.describe('membership safety requirements', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: /limited free content/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /exclusive content/i })).toBeVisible();
+    await expect(page.locator('#exclusive').getByRole('heading', { name: /exclusive content/i })).toBeVisible();
     await expect(page.getByText(/content locked/i).first()).toBeVisible();
     await expect(page.locator('a[href*="onlyfans" i]')).toHaveCount(0);
     await expect(page.locator('script[src*="paypal" i]')).toHaveCount(0);
@@ -39,7 +39,7 @@ test.describe('membership safety requirements', () => {
   test('/linktree remains local and routes to the one-page site', async ({ page }) => {
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('link', { name: /open membership page/i })).toHaveAttribute('href', '../#profile');
+    await expect(page.getByRole('link', { name: /exclusive content/i })).toHaveAttribute('href', '../#exclusive');
     await expect(page.locator('a[href^="http"]')).toHaveCount(0);
     await expect(page.locator('script[src^="http"]')).toHaveCount(0);
   });

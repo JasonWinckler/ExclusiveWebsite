@@ -192,3 +192,5 @@ body.modal-open {
 }
 .ai-disclosure { margin: 0 0 22px; padding: 12px 16px; border: 1px solid rgba(255, 202, 144, 0.34); border-radius: 18px; color: var(--gold); background: rgba(255, 255, 255, 0.06); line-height: 1.5; }
 .profile-content .language-switcher { width: max-content; margin: -8px auto 10px; }
+.link-list--single { margin-top: 10px; }
+.link-list--single .link-button { min-height: 92px; }

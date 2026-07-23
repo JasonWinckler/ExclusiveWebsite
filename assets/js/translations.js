@@ -26,7 +26,7 @@ window.SiteTranslations = {
     statusLabel: 'Kontostatus', statusValue: 'Altersprüfung noch nicht begonnen', emailLabel: 'E-Mail', avsLabel: 'AVS-Status', avsValue: 'Dokumenterfassung deaktiviert bis zur fachlichen Freigabe',
     footerNotice: 'Produktive Freischaltung von Adult-Inhalten, AVS und Registrierung ist blockiert, bis eine fachrechtliche Prüfung abgeschlossen wurde.',
     imprint: 'Impressum', privacy: 'Datenschutzerklärung', terms: 'AGB', consumer: 'Verbraucherinformationen', withdrawal: 'Widerrufsbelehrung', withdrawalTool: 'Widerrufsfunktion', contact: 'Kontakt', youth: 'Jugendschutz', contentPolicy: 'Inhaltsrichtlinien', aiPolicy: 'KI-Bearbeitungshinweis',
-    linktreeTitle: 'Ein Zugangspunkt', linktreeText: 'Alle Membership-Informationen befinden sich jetzt auf einer Seite. Es gibt keine Weiterleitung zu externen Adult-Plattformen oder externen Zahlungswidgets.', openSite: 'Zur Membership-Seite'
+    linktreeTitle: 'Exclusive Content', linktreeText: 'Alle Membership-Informationen befinden sich jetzt auf einer Seite. Es gibt keine Weiterleitung zu externen Adult-Plattformen oder externen Zahlungswidgets.', openSite: 'Zur Website'
   },
   en: {
     metaTitle: 'Jason Shadow | Secure 18+ Membership',
@@ -55,6 +55,6 @@ window.SiteTranslations = {
     statusLabel: 'Account Status', statusValue: 'Age Verification Not Started', emailLabel: 'Email', avsLabel: 'AVS Status', avsValue: 'Document capture disabled until professional approval',
     footerNotice: 'Production activation of adult content, AVS and registration is blocked until professional legal review has been completed.',
     imprint: 'Impressum', privacy: 'Privacy Policy', terms: 'Terms', consumer: 'Consumer Information', withdrawal: 'Withdrawal Notice', withdrawalTool: 'Withdrawal Function', contact: 'Contact', youth: 'Youth Protection', contentPolicy: 'Content Guidelines', aiPolicy: 'AI Editing Notice',
-    linktreeTitle: 'One Access Point', linktreeText: 'All membership information now lives on one page. There is no redirect to external adult platforms or external payment widgets.', openSite: 'Open Membership Page'
+    linktreeTitle: 'Exclusive Content', linktreeText: 'All membership information now lives on one page. There is no redirect to external adult platforms or external payment widgets.', openSite: 'Open Website'
   }
 };
