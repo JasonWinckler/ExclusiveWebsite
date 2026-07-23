@@ -149,3 +149,9 @@ body.is-age-locked { overflow: hidden; }
 .age-gate__panel h1 { font-size: clamp(2.2rem, 8vw, 3.7rem); }
 .age-gate__panel p { color: var(--muted); line-height: 1.65; }
 .age-gate__actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+
+.adult-site [data-animate="rise"] {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}

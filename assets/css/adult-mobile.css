@@ -26,3 +26,16 @@
 .age-gate { padding: 16px; }
 .age-gate__panel { border-radius: 26px; }
 .age-gate__actions { display: grid; grid-template-columns: 1fr; }
+
+.hero-media img {
+  object-fit: contain;
+  background: rgba(7, 0, 2, 0.78);
+}
+
+.site-footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
