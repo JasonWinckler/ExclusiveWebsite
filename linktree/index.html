@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#2a0207" />
-    <meta name="description" content="Shadow's Temptation — a professional link hub website with exclusive links and a donation button." />
-    <title>Shadow's Temptation | Links</title>
+    <meta name="description" content="Jason Shadow — local membership entry page without external adult-platform links." data-i18n-attr="content:metaDescription" />
+    <title data-i18n="metaTitle">Jason Shadow | Secure 18+ Membership</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -17,63 +17,25 @@
     <main class="page-shell">
       <section class="profile-card" data-animate="rise">
         <div class="banner-wrap">
-          <img class="banner" src="uploads/banner.png" width="1536" height="652" alt="Shadow's Temptation banner" fetchpriority="high" decoding="async" />
+          <img class="banner" src="uploads/banner.png" width="1536" height="652" alt="Jason Shadow promotional banner" fetchpriority="high" decoding="async" />
           <div class="banner-overlay"></div>
         </div>
-
         <div class="profile-content">
-          <img class="avatar" src="uploads/profile.png" width="1536" height="1536" alt="Profile photo of Shadow's Temptation" decoding="async" />
-          <p class="eyebrow">Official link hub</p>
-          <h1>Shadow's Temptation</h1>
-          <p class="tagline">Here you will find everything you NEED ;)</p>
-
-          <nav class="link-list" aria-label="Social links">
-            <a class="link-button instagram" href="https://www.instagram.com/shadows.temptation_official" target="_blank" rel="noopener noreferrer">
-              <span class="icon" aria-hidden="true">◎</span>
-              <span>
-                <strong>Instagram</strong>
-                <small>@shadows.temptation_official</small>
-              </span>
-            </a>
-
-            <a class="link-button exclusive" href="https://onlyfans.com/shadows_temptation" target="_blank" rel="noopener noreferrer nofollow" data-sensitive-link>
-              <span class="icon" aria-hidden="true">
-                <img class="brand-icon" src="uploads/onlyfans.svg" alt="" loading="lazy" />
-              </span>
-              <span>
-                <strong>Exclusive Content</strong>
-                <small>shadows_temptation</small>
-              </span>
-            </a>
-
-            <button class="link-button donate" type="button" data-paypal-open aria-label="Open PayPal donation popup">
-              <span class="icon" aria-hidden="true">♥</span>
-              <span>
-                <strong>Support & Donate</strong>
-                <small>PayPal donation</small>
-              </span>
-            </button>
+          <img class="avatar" src="uploads/profile.png" width="1536" height="1536" alt="Jason Shadow promotional portrait" decoding="async" />
+          <div class="language-switcher" aria-label="Language selector"><button class="language-button" type="button" data-lang="de">DE</button><button class="language-button" type="button" data-lang="en">EN</button></div>
+          <p class="eyebrow" data-i18n="adultsOnly">Adults only · 18+</p>
+          <h1 data-i18n="linktreeTitle">One Access Point</h1>
+          <p class="tagline" data-i18n="linktreeText">All membership information now lives on one page. There is no redirect to external adult platforms or external payment widgets.</p>
+          <p class="ai-disclosure" data-i18n="aiNotice">This promotional image was digitally enhanced in part using AI technology.</p>
+          <nav class="link-list" aria-label="Local membership links">
+            <a class="link-button exclusive" href="../#profile"><span class="icon" aria-hidden="true">🔒</span><span><strong data-i18n="openSite">Open Membership Page</strong><small>exclusive.jason-shadow.com</small></span></a>
+            <a class="link-button" href="../#free"><span class="icon" aria-hidden="true">✦</span><span><strong data-i18n="freeHeading">Limited Free Content</strong><small>FREE ≠ PUBLIC</small></span></a>
+            <a class="link-button" href="../#legal"><span class="icon" aria-hidden="true">§</span><span><strong data-i18n="navLegal">Legal</strong><small data-i18n="footerNotice">Production activation of adult content, AVS and registration is blocked until professional legal review has been completed.</small></span></a>
           </nav>
         </div>
       </section>
     </main>
-
-    <div class="sensitive-modal" data-sensitive-modal hidden>
-      <div class="sensitive-modal__backdrop" data-sensitive-cancel></div>
-      <div class="sensitive-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="sensitive-modal-title" aria-describedby="sensitive-modal-description" tabindex="-1">
-        <p class="sensitive-modal__eyebrow">WARNING: Sensitive Content</p>
-        <h2 id="sensitive-modal-title">Are you 18+ years old?</h2>
-        <p id="sensitive-modal-description">This link may lead to adult-oriented exclusive content. Please confirm your age before continuing.</p>
-        <div class="sensitive-modal__actions">
-          <button class="sensitive-modal__button sensitive-modal__button--cancel" type="button" data-sensitive-cancel>Cancel</button>
-          <button class="sensitive-modal__button sensitive-modal__button--continue" type="button" data-sensitive-continue>Continue</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="paypal-sdk-button" id="paypal-donate-button-container" aria-hidden="true"></div>
-
-    <script src="https://www.paypalobjects.com/donate/sdk/donate-sdk.js" charset="UTF-8"></script>
+    <script src="../assets/js/translations.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
