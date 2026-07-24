@@ -6,6 +6,8 @@ const pages = [
   { path: '/impressum/', name: 'impressum' },
   { path: '/datenschutz/', name: 'datenschutz' },
   { path: '/legal/', name: 'legal' },
+  { path: '/legal/us/', name: 'legal-us' },
+  { path: '/legal/eu/', name: 'legal-eu' },
 ];
 
 test.describe('visual smoke screenshots', () => {
@@ -60,16 +62,26 @@ test.describe('legal notices', () => {
     await expect(footerLinks.first()).toHaveText(/legal/i);
   });
 
-  test('legal page provides DE/EN notices and placeholders without production claims', async ({ page }) => {
+  test('legal page routes to region-specific DE/EN notices without production claims', async ({ page }) => {
     await page.goto('/legal/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /legal information/i })).toBeVisible();
-    await expect(page.locator('.legal-menu a')).toHaveCount(12);
-    await expect(page.getByText(/18 U\.S\.C\. §2257/)).toBeVisible();
-    await expect(page.locator('[data-legal=imprintText]')).toContainText('[LEGAL_BUSINESS_NAME]');
+    await expect(page.getByRole('heading', { name: /where are you located/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /US United States legal notices/i })).toHaveAttribute('href', '/legal/us/');
+    await expect(page.getByRole('link', { name: /EU European Union legal notices/i })).toHaveAttribute('href', '/legal/eu/');
+
+    await page.goto('/legal/us/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: /united states legal notices/i })).toBeVisible();
+    await expect(page.locator('.legal-menu a')).toHaveCount(7);
+    await expect(page.getByText(/18 U\.S\.C\. §§ 2257/)).toBeVisible();
+
+    await page.goto('/legal/eu/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: /european union legal notices/i })).toBeVisible();
+    await expect(page.locator('.legal-menu a')).toHaveCount(7);
+    await expect(page.locator('[data-legal=euImprintText]')).toContainText('[LEGAL_BUSINESS_NAME]');
+
     await page.getByRole('button', { name: 'DE' }).click();
     await page.goto('/legal/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /rechtliche informationen/i })).toBeVisible();
-    await expect(page.locator('[data-legal=privacyText]')).toContainText(/DSGVO/);
-    await expect(page.locator('[data-legal=deText]')).toContainText(/keine irreführenden Behördenfreigabe-Claims/i);
+    await expect(page.getByRole('heading', { name: /wo befindest du dich/i })).toBeVisible();
+    await page.goto('/legal/eu/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('[data-legal=euPrivacyText]')).toContainText(/DSGVO/);
   });
 });
