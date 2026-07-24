@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#170008" />
-    <meta name="description" content="Jason Shadow — self-hosted 18+ membership preview with age verification in preparation." data-i18n-attr="content:metaDescription" />
-    <title data-i18n="metaTitle">Jason Shadow | Secure 18+ Membership</title>
+    <meta name="description" content="Jason Shadow — exclusive self-hosted 18+ content preview with conservative age-verification and access controls in preparation." data-i18n-attr="content:metaDescription" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests" />
+    <title data-i18n="metaTitle">Jason Shadow | Exclusive Content</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -32,7 +33,7 @@
           <button class="language-button" type="button" data-lang="en">EN</button>
         </div>
         <a class="secondary-action header-link" href="#pending" data-i18n="login">Login</a>
-        <a class="header-cta" href="#pending" data-i18n="register">Register</a>
+        <a class="header-cta" href="#exclusive" data-i18n="heroCta">Unlock Preview</a>
       </div>
     </header>
 
@@ -45,8 +46,8 @@
         <div class="hero-content adult-hero__content">
           <img class="avatar" src="linktree/uploads/profile.png" width="1536" height="1536" alt="Jason Shadow promotional portrait" decoding="async" />
           <p class="eyebrow" data-i18n="adultsOnly">Adults only · 18+</p>
-          <h1 data-i18n="heroTitle">Secure Membership</h1>
-          <p class="tagline" data-i18n="heroText">A self-hosted, privacy-focused members area is being prepared. Adult content remains fully locked until verified age approval and access activation.</p>
+          <h1 data-i18n="heroTitle">Exclusive Content</h1>
+          <p class="tagline" data-i18n="heroText">Step into a private, self-hosted experience built around verified access, ember-gold design and locked previews. Adult content remains closed until age approval, step-up authentication and access activation.</p>
           <p class="ai-disclosure" data-i18n="aiNotice">This promotional image was digitally enhanced in part using AI technology.</p>
           <div class="hero-actions">
             <a class="primary-action" href="#pending" data-i18n="register">Register</a>
@@ -60,6 +61,11 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <section id="backend" class="section backend-section" data-animate="rise">
+        <div class="section-heading"><p class="eyebrow">BACKEND READY · FAIL CLOSED</p><h2 data-i18n="backendHeading">Backend Access Controls Prepared</h2><p data-i18n="backendText">The static site now exposes frontend policy stubs for registration, AVS, content access, manual SEPA and audit decisions. Every protected function returns denied until a reviewed server backend enables it.</p></div>
+        <div class="tier-list"><article class="tier-card"><h3 data-i18n="backendAuthTitle">Auth & Status Model</h3><strong>USER / ADMIN</strong><p data-i18n="backendAuthText">Account states, active-only access checks, step-up requirements and immutable-style audit events are modeled for future Laravel enforcement.</p></article><article class="tier-card tier-card--featured"><h3 data-i18n="backendAvsTitle">Manual AVS Gate</h3><strong>DISABLED</strong><p data-i18n="backendAvsText">Document capture and challenge review are blocked by feature flags until professional legal approval is documented.</p></article><article class="tier-card"><h3 data-i18n="backendPaymentsTitle">Manual SEPA</h3><strong>PREPARED</strong><p data-i18n="backendPaymentsText">Payment order creation is represented but disabled for pending accounts and until backend bank settings are configured securely.</p></article></div>
       </section>
 
       <section id="membership" class="section membership-section" data-animate="rise">
@@ -103,10 +109,11 @@
     <footer id="legal" class="site-footer legal-footer">
       <p data-i18n="footerNotice">Production activation of adult content, AVS and registration is blocked until professional legal review has been completed.</p>
       <nav aria-label="Legal links">
-        <a href="/impressum/" data-i18n="imprint">Impressum</a><a href="/datenschutz/" data-i18n="privacy">Privacy Policy</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="terms">Terms</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="consumer">Consumer Information</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="withdrawal">Withdrawal Notice</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="withdrawalTool">Withdrawal Function</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="contact">Contact</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="youth">Youth Protection</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="contentPolicy">Content Guidelines</a><a href="/docs/LEGAL_REVIEW_CHECKLIST.md" data-i18n="aiPolicy">AI Editing Notice</a>
+        <a href="/impressum/" data-i18n="imprint">Impressum</a><a href="/datenschutz/" data-i18n="privacy">Privacy Policy</a><a href="/legal/#terms" data-i18n="terms">Terms</a><a href="/legal/#consumer" data-i18n="consumer">Consumer Information</a><a href="/legal/#withdrawal" data-i18n="withdrawal">Withdrawal Notice</a><a href="/legal/#withdrawal-function" data-i18n="withdrawalTool">Withdrawal Function</a><a href="/legal/#contact" data-i18n="contact">Contact</a><a href="/legal/#youth" data-i18n="youth">Youth Protection</a><a href="/legal/#content-policy" data-i18n="contentPolicy">Content Guidelines</a><a href="/legal/#ai" data-i18n="aiPolicy">AI Editing Notice</a><a href="/legal/#us" data-i18n="usLaw">US Notices</a>
       </nav>
     </footer>
 
+    <script src="assets/js/backend-stubs.js"></script>
     <script src="assets/js/translations.js"></script>
     <script src="script.js"></script>
   </body>
