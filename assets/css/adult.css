@@ -178,3 +178,10 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .legal-menu { position: sticky; top: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 30px; padding: 14px; border: 1px solid var(--stroke); border-radius: 22px; background: rgba(19, 0, 5, 0.86); backdrop-filter: blur(14px); }
 .legal-menu a { display: inline-flex; align-items: center; min-height: 38px; padding: 0 13px; border: 1px solid rgba(255,202,144,.24); border-radius: 999px; color: var(--gold); font-weight: 800; text-decoration: none; background: rgba(255,255,255,.045); }
 .legal-menu a:hover, .legal-menu a:focus-visible { border-color: rgba(255,202,144,.72); color: var(--cream); }
+.legal-choice-page .legal-document { min-height: 54vh; display: grid; align-content: center; }
+.legal-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 30px; }
+.legal-choice-card { display: grid; gap: 10px; min-height: 180px; padding: clamp(22px, 4vw, 34px); border: 1px solid rgba(255,202,144,.32); border-radius: 28px; text-decoration: none; background: linear-gradient(145deg, rgba(255,255,255,.09), rgba(105,9,22,.22)); box-shadow: 0 24px 60px rgba(0,0,0,.24); transition: transform 180ms ease, border-color 180ms ease, background 180ms ease; }
+.legal-choice-card:hover, .legal-choice-card:focus-visible { transform: translateY(-3px); border-color: rgba(255,202,144,.78); outline: none; background: linear-gradient(145deg, rgba(255,91,32,.2), rgba(105,9,22,.34)); }
+.legal-choice-card span { color: var(--gold); font-family: Cinzel, serif; font-size: clamp(2.4rem, 8vw, 5rem); font-weight: 800; line-height: 1; }
+.legal-choice-card small { color: var(--muted); font-size: 1rem; font-weight: 800; }
+@media(max-width:700px){ .legal-choice-grid { grid-template-columns: 1fr; } }
