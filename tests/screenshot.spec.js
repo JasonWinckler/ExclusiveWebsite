@@ -52,15 +52,24 @@ test.describe('membership safety requirements', () => {
 
 
 test.describe('legal notices', () => {
+  test('main footer only exposes the legal center link', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const footerLinks = page.locator('#legal nav a');
+    await expect(footerLinks).toHaveCount(1);
+    await expect(footerLinks.first()).toHaveAttribute('href', '/legal/');
+    await expect(footerLinks.first()).toHaveText(/legal/i);
+  });
+
   test('legal page provides DE/EN notices and placeholders without production claims', async ({ page }) => {
     await page.goto('/legal/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /legal notices/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /legal information/i })).toBeVisible();
+    await expect(page.locator('.legal-menu a')).toHaveCount(12);
     await expect(page.getByText(/18 U\.S\.C\. §2257/)).toBeVisible();
-    await expect(page.getByText(/\[LEGAL_BUSINESS_NAME\]/)).toBeVisible();
+    await expect(page.locator('[data-legal=imprintText]')).toContainText('[LEGAL_BUSINESS_NAME]');
     await page.getByRole('button', { name: 'DE' }).click();
     await page.goto('/legal/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /rechtliche hinweise/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /rechtliche informationen/i })).toBeVisible();
     await expect(page.locator('[data-legal=privacyText]')).toContainText(/DSGVO/);
-    await expect(page.getByText(/keine gesetzliche Zulassung/i)).toBeVisible();
+    await expect(page.locator('[data-legal=deText]')).toContainText(/keine irreführenden Behördenfreigabe-Claims/i);
   });
 });
