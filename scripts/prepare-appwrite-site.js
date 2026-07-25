@@ -6,8 +6,6 @@ const siteEntries = [
   "impressum",
   "legal",
   "linktree",
-  "index.html",
-  "script.js",
 ];
 
 await rm("dist", { force: true, recursive: true });
