@@ -1,15 +1,16 @@
 {
   "name": "exclusivewebsite",
   "version": "1.0.0",
-  "description": "React exclusive website with conservative membership controls and Appwrite connectivity.",
+  "description": "Static exclusive website with conservative membership controls and Appwrite connectivity.",
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp -r assets linktree impressum datenschutz legal dist/ && cp CNAME dist/",
-    "preview": "vite preview",
+    "build": "npm run build:appwrite",
+    "preview": "http-server .",
     "install:browsers": "playwright install chromium --with-deps",
     "test": "playwright test",
-    "test:screenshots": "playwright test tests/screenshot.spec.js"
+    "test:screenshots": "playwright test tests/screenshot.spec.js",
+    "build:appwrite": "vite build --config vite.appwrite.config.js"
   },
   "keywords": [],
   "author": "",
