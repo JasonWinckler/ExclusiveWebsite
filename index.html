@@ -4,118 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#170008" />
-    <meta name="description" content="Jason Shadow — exclusive self-hosted 18+ content preview with conservative age-verification and access controls in preparation." data-i18n-attr="content:metaDescription" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://fra.cloud.appwrite.io; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests" />
-    <title data-i18n="metaTitle">Jason Shadow | Exclusive Content</title>
+    <meta name="description" content="Jason Shadow — private membership with verified access." />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://fra.cloud.appwrite.io wss://fra.cloud.appwrite.io; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests" />
+    <title>Jason Shadow | Exclusive Content</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="assets/css/base.css" />
-    <link rel="stylesheet" href="assets/css/adult.css" />
-    <link rel="stylesheet" href="assets/css/adult-desktop.css" media="(min-width: 761px)" />
-    <link rel="stylesheet" href="assets/css/adult-mobile.css" media="(max-width: 760px)" />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Inter:wght@400;500;700;800&amp;display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/css/base.css" />
+    <link rel="stylesheet" href="/assets/css/adult.css" />
+    <link rel="stylesheet" href="/assets/css/adult-desktop.css" media="(min-width: 761px)" />
+    <link rel="stylesheet" href="/assets/css/adult-mobile.css" media="(max-width: 760px)" />
   </head>
-  <body class="adult-site">
-    <div class="ember-field" aria-hidden="true"></div>
-
-    <header class="exclusive-header" data-animate="rise">
-      <a class="brand" href="#top" data-i18n="brand">Jason Shadow</a>
-      <nav class="main-nav desktop-nav" aria-label="Site navigation">
-        <a href="#profile" data-i18n="navProfile">Profile</a>
-        <a href="#free" data-i18n="navFree">Free</a>
-        <a href="#exclusive" data-i18n="navExclusive">Exclusive</a>
-        <a href="#pending" data-i18n="navPending">Status</a>
-        <a href="#legal" data-i18n="navLegal">Legal</a>
-      </nav>
-      <div class="header-actions">
-        <div class="language-switcher" aria-label="Language selector">
-          <button class="language-button" type="button" data-lang="de">DE</button>
-          <button class="language-button" type="button" data-lang="en">EN</button>
-        </div>
-        <a class="secondary-action header-link" href="#pending" data-i18n="login">Login</a>
-        <a class="header-cta" href="#exclusive" data-i18n="heroCta">Unlock Preview</a>
-      </div>
-    </header>
-
-    <main id="top">
-      <section id="profile" class="hero adult-hero" data-animate="rise">
-        <div class="hero-media" aria-hidden="true">
-          <img src="linktree/uploads/banner.png" width="1536" height="652" alt="" fetchpriority="high" decoding="async" />
-          <div class="hero-media__shade"></div>
-        </div>
-        <div class="hero-content adult-hero__content">
-          <img class="avatar" src="linktree/uploads/profile.png" width="1536" height="1536" alt="Jason Shadow promotional portrait" decoding="async" />
-          <p class="eyebrow" data-i18n="adultsOnly">Adults only · 18+</p>
-          <h1 data-i18n="heroTitle">Exclusive Content</h1>
-          <p class="tagline" data-i18n="heroText">Step into a private, self-hosted experience built around verified access, ember-gold design and locked previews. Adult content remains closed until age approval, step-up authentication and access activation.</p>
-          <p class="ai-disclosure" data-i18n="aiNotice">This promotional image was digitally enhanced in part using AI technology.</p>
-          <div class="hero-actions">
-            <a class="primary-action" href="#pending" data-i18n="register">Register</a>
-            <a class="secondary-action" href="#membership" data-i18n="viewMembership">View Membership Options</a>
-          </div>
-          <div class="hero-lock-showcase" aria-label="Locked exclusive content preview">
-            <div class="locked-preview locked-preview--hero locked-preview--alt"><span class="lock-icon">🔒</span></div>
-            <div>
-              <h2 data-i18n="exclusiveHeading">Exclusive Content</h2>
-              <p data-i18n="exclusiveText">Exclusive content requires successful age verification and active paid access.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="backend" class="section backend-section" data-animate="rise">
-        <div class="section-heading"><p class="eyebrow">BACKEND READY · FAIL CLOSED</p><h2 data-i18n="backendHeading">Backend Access Controls Prepared</h2><p data-i18n="backendText">The static site now exposes frontend policy stubs for registration, AVS, content access, manual SEPA and audit decisions. Every protected function returns denied until a reviewed server backend enables it.</p></div>
-        <div class="tier-list"><article class="tier-card"><h3 data-i18n="backendAuthTitle">Auth & Status Model</h3><strong>USER / ADMIN</strong><p data-i18n="backendAuthText">Account states, active-only access checks, step-up requirements and immutable-style audit events are modeled for future Laravel enforcement.</p></article><article class="tier-card tier-card--featured"><h3 data-i18n="backendAvsTitle">Manual AVS Gate</h3><strong>DISABLED</strong><p data-i18n="backendAvsText">Document capture and challenge review are blocked by feature flags until professional legal approval is documented.</p></article><article class="tier-card"><h3 data-i18n="backendPaymentsTitle">Manual SEPA</h3><strong>PREPARED</strong><p data-i18n="backendPaymentsText">Payment order creation is represented but disabled for pending accounts and until backend bank settings are configured securely.</p></article></div>
-      </section>
-
-      <section id="membership" class="section membership-section" data-animate="rise">
-        <div class="section-heading">
-          <p class="eyebrow" data-i18n="profileEyebrow">Profile and Membership</p>
-          <h2 data-i18n="brand">Jason Shadow</h2>
-          <p data-i18n="bio">Neutral preview, status information and future membership options in one place — without routing to external adult platforms.</p>
-        </div>
-        <div class="tier-list">
-          <article class="tier-card"><h3 data-i18n="tierFreeTitle">Limited Free Access</h3><strong>FREE</strong><p data-i18n="tierFreeText">Only after registration, email confirmation, age verification and personal access credential. No payment required.</p></article>
-          <article class="tier-card tier-card--featured"><h3 data-i18n="tierExclusiveTitle">Exclusive Access</h3><strong>30 / 90 / 365</strong><p data-i18n="tierExclusiveText">Requires successful age verification, active paid access and step-up authentication.</p><a class="primary-action" href="#pending" data-i18n="viewMembership">View Membership Options</a></article>
-          <article class="tier-card"><h3 data-i18n="tierSafetyTitle">Safety Status</h3><strong>FAIL CLOSED</strong><p data-i18n="tierSafetyText">Registration, manual AVS, payments and adult media remain disabled until backend and legal review are complete.</p></article>
-        </div>
-      </section>
-
-      <section id="free" class="section preview-section" data-animate="rise">
-        <div class="section-heading"><p class="eyebrow">FREE ≠ PUBLIC</p><h2 data-i18n="freeHeading">Limited Free Content</h2></div>
-        <div class="locked-grid">
-          <article class="locked-card"><div class="locked-preview"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
-          <article class="locked-card"><div class="locked-preview locked-preview--alt"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
-          <article class="locked-card"><div class="locked-preview"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="lockedText">Registration and age verification required.</p><a class="primary-action" href="#pending" data-i18n="lockedCta">Register to View Content</a></article>
-        </div>
-      </section>
-
-      <section id="exclusive" class="section preview-section" data-animate="rise">
-        <div class="section-heading"><p class="eyebrow">PAID ACCESS</p><h2 data-i18n="exclusiveHeading">Exclusive Content</h2><p data-i18n="exclusiveText">Exclusive content requires successful age verification and active paid access.</p></div>
-        <div class="locked-grid locked-grid--wide">
-          <article class="locked-card"><div class="locked-preview locked-preview--exclusive"><span class="lock-icon">🔒</span></div><h3 data-i18n="lockedTitle">Content Locked</h3><p data-i18n="exclusiveText">Exclusive content requires successful age verification and active paid access.</p><div class="hero-actions"><a class="primary-action" href="#pending" data-i18n="register">Register</a><a class="secondary-action" href="#membership" data-i18n="viewMembership">View Membership Options</a></div></article>
-        </div>
-      </section>
-
-      <section id="pending" class="section pending-section" data-animate="rise">
-        <div class="section-heading"><p class="eyebrow">EMAIL_PENDING → PENDING_AGE_VERIFICATION</p><h2 data-i18n="pendingHeading">Pending Account</h2><p data-i18n="pendingMain">Your account is currently pending approval for age verification.</p><p data-i18n="pendingSub">You cannot access free or exclusive adult content until your age verification has been reviewed and approved.</p></div>
-        <div class="status-panel">
-          <dl><div><dt data-i18n="statusLabel">Account Status</dt><dd data-i18n="statusValue">Age Verification Not Started</dd></div><div><dt data-i18n="emailLabel">Email</dt><dd>pending@example.invalid</dd></div><div><dt data-i18n="avsLabel">AVS Status</dt><dd data-i18n="avsValue">Document capture disabled until professional approval</dd></div></dl>
-          <div class="hero-actions"><button class="primary-action" type="button" disabled data-i18n="avsStart">Start Age Verification</button><button class="secondary-action" type="button" disabled data-i18n="avsContinue">Continue Age Verification</button><button class="secondary-action" type="button" disabled data-i18n="cancelRequest">Cancel Registration Request</button></div>
-        </div>
-      </section>
-    </main>
-
-    <footer id="legal" class="site-footer legal-footer">
-      <p data-i18n="footerNotice">Production activation of adult content, AVS and registration is blocked until professional legal review has been completed.</p>
-      <nav aria-label="Legal links">
-        <a href="/legal/" data-i18n="legalLink">Legal</a>
-      </nav>
-    </footer>
-
-    <script src="assets/js/backend-stubs.js"></script>
-    <script src="assets/js/translations.js"></script>
-    <script src="script.js"></script>
-    <script type="module" src="assets/js/appwrite-client.js"></script>
-  </body>
+  <body class="adult-site"><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
 </html>

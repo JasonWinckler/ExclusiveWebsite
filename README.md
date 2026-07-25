@@ -1,16 +1,16 @@
 # README
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+This repository provides a React frontend connected to Appwrite Accounts and a conservative, manual age-review intake queue.
 
 ## Appwrite Sites
 
-The frontend is built for Appwrite Sites and connects to the **Jason Shadow Enterprises** Appwrite project (`6a64cbeb0009826c9efc`) at `https://fra.cloud.appwrite.io/v1`. The Appwrite Web SDK client lives in `src/lib/appwrite.js`; the browser entry calls `client.ping()` automatically when the page opens so connectivity can be checked in the browser console.
+The frontend is built for Appwrite Sites and connects to the **Jason Shadow Enterprises** Appwrite project (`6a64cbeb0009826c9efc`) at `https://fra.cloud.appwrite.io/v1`, using database `registered_users` (`6a64f96800187b534953`). The Appwrite integration lives in `src/lib/appwrite.js`.
 
 Run `npm install` and `npm run build`. The deployable static site is written to `dist/`. In Appwrite Sites, use `npm install` as the install command, `npm run build` as the build command, and `dist` as the output directory.
 
 ## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
+- Registration, login, logout, email confirmation, password recovery, and age-review intake are implemented with Appwrite.
+- Manual approval and protected-content access require a professionally reviewed process and server-side authorization.
 - Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
 - No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
 

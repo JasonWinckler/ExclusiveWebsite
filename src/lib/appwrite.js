@@ -1,17 +1,90 @@
-import { Account, Client, Databases } from "appwrite";
+import { Account, Client, Databases, ID, Permission, Role } from "appwrite";
 
-const client = new Client()
-  .setEndpoint("https://fra.cloud.appwrite.io/v1")
-  .setProject("6a64cbeb0009826c9efc");
+export const appwriteConfig = Object.freeze({
+  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1",
+  projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || "6a64cbeb0009826c9efc",
+  databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || "6a64f96800187b534953",
+  usersCollectionId: import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
+  ageVerificationCollectionId: import.meta.env.VITE_APPWRITE_AGE_COLLECTION_ID || "age_verifications",
+});
 
+const client = new Client().setEndpoint(appwriteConfig.endpoint).setProject(appwriteConfig.projectId);
 const account = new Account(client);
 const databases = new Databases(client);
 
-function verifyAppwriteConnection() {
-  return client
-    .ping()
-    .then(() => console.info("Appwrite connection verified."))
-    .catch((error) => console.warn("Appwrite ping was not successful.", error));
+// Status fields are intentionally read-only to the browser. Only Appwrite Console or
+// a future server Function holding an API key may approve or reject a request.
+const privateReadPermission = (userId) => [Permission.read(Role.user(userId))];
+
+export async function getCurrentUser() {
+  try { return await account.get(); } catch (error) {
+    if (error?.code === 401) return null;
+    throw error;
+  }
 }
 
-export { account, client, databases, verifyAppwriteConnection };
+export async function registerAccount({ name, email, password }) {
+  const user = await account.create({ userId: ID.unique(), email, password, name });
+  await account.createEmailPasswordSession({ email, password });
+  try {
+    await databases.createDocument({
+      databaseId: appwriteConfig.databaseId,
+      collectionId: appwriteConfig.usersCollectionId,
+      documentId: user.$id,
+      data: { userId: user.$id, email, name, status: "EMAIL_PENDING", ageVerificationStatus: "NOT_STARTED" },
+      permissions: privateReadPermission(user.$id),
+    });
+  } catch (error) {
+    await account.deleteSession({ sessionId: "current" }).catch(() => undefined);
+    throw error;
+  }
+  await account.createVerification({ url: `${window.location.origin}/?action=verify-email` });
+  return user;
+}
+
+export const login = (email, password) => account.createEmailPasswordSession({ email, password });
+export const logout = () => account.deleteSession({ sessionId: "current" });
+export const resendVerification = () => account.createVerification({ url: `${window.location.origin}/?action=verify-email` });
+export const requestPasswordReset = (email) => account.createRecovery({ email, url: `${window.location.origin}/?action=recover` });
+export const completePasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
+export const completeEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
+
+export async function getMemberProfile(userId) {
+  try {
+    return await databases.getDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.usersCollectionId, documentId: userId });
+  } catch (error) {
+    if (error?.code === 404) return null;
+    throw error;
+  }
+}
+
+export async function getAgeVerification(userId) {
+  try {
+    return await databases.getDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.ageVerificationCollectionId, documentId: userId });
+  } catch (error) {
+    if (error?.code === 404) return null;
+    throw error;
+  }
+}
+
+export async function submitAgeVerification(user, { birthDate, country, legalName }) {
+  const age = Math.floor((Date.now() - new Date(`${birthDate}T00:00:00Z`).getTime()) / 31557600000);
+  if (!Number.isFinite(age) || age < 18) throw new Error("AGE_REQUIREMENT_NOT_MET");
+  const data = {
+    userId: user.$id,
+    legalName,
+    birthDate,
+    country: country.toUpperCase(),
+    status: "MANUAL_REVIEW_PENDING",
+    submittedAt: new Date().toISOString(),
+  };
+  try {
+    await databases.createDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.ageVerificationCollectionId, documentId: user.$id, data, permissions: privateReadPermission(user.$id) });
+  } catch (error) {
+    if (error?.code !== 409) throw error;
+    throw new Error("AGE_REQUEST_EXISTS");
+  }
+  return data;
+}
+
+export { account, client, databases };
