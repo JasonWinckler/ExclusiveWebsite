@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { client } from "./lib/appwrite";
+import { verifyAppwriteConnection } from "./lib/appwrite";
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => {
@@ -32,7 +32,7 @@ function App() {
   }, [language, t]);
 
   useEffect(() => {
-    client.ping().then(() => console.info("Appwrite connection verified.")).catch((error) => console.warn("Appwrite ping was not successful.", error));
+    verifyAppwriteConnection();
   }, []);
 
   useEffect(() => {
