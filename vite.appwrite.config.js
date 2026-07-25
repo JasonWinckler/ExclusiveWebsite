@@ -8,6 +8,6 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "appwrite-client.js",
     },
-    outDir: "assets/js",
+    outDir: "dist/assets/js",
   },
 });
