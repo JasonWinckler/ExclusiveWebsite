@@ -84,3 +84,27 @@ Object.assign(window.SiteTranslations.de, {
   ageFormTitle: 'Antrag zur Altersprüfung', ageFormText: 'Übermittle nur die Mindestangaben für die manuelle 18+-Prüfung. Lade hier keine Ausweisdokumente hoch.', legalName: 'Vollständiger Name', birthDate: 'Geburtsdatum', country: 'Ländercode', ageDeclaration: 'Ich bestätige, dass ich mindestens 18 Jahre alt bin und diese Angaben richtig sind.', ageRejected: 'Du musst mindestens 18 Jahre alt sein.', ageExists: 'Für dieses Konto existiert bereits ein Altersprüfungsantrag.', ageSubmitted: 'Dein Antrag wurde zur manuellen Prüfung eingereicht.', reviewPending: 'Prüfung ausstehend',
   backendLiveHeading: 'Appwrite-Kontodienste sind aktiv', backendLiveText: 'Registrierung, Sitzungen, E-Mail-Bestätigung, Passwort-Wiederherstellung und datensparsame Altersprüfungsanträge nutzen jetzt Appwrite. Geschützte Inhalte bleiben standardmäßig gesperrt.', backendAuthLive: 'Appwrite Accounts übernimmt Registrierung, E-Mail-/Passwort-Sitzungen, Bestätigung, Wiederherstellung und Abmeldung.', backendAvsLive: 'Nutzer mit bestätigter E-Mail können einen datensparsamen Antrag in einer privaten Collection zur Admin-Prüfung einreichen.', backendPaymentsLive: 'Zahlungen bleiben deaktiviert, da kein geprüftes Zahlungs-Backend oder Berechtigungsdienst bereitgestellt wurde.', tierSafetyLive: 'Geschützte Medien und Zahlungen bleiben gesperrt, bis serverseitige Status- und Berechtigungsprüfungen den Zugriff erlauben.', footerLive: 'Konten und Altersprüfungsanträge nutzen Appwrite. Adult-Inhalte und Zahlungen bleiben bis zur gesonderten Prüfung und Freigabe gesperrt.'
 });
+
+Object.assign(window.SiteTranslations.en, {
+  navAccess: 'Access', explore: 'Explore the experience', trustLine: 'Private by design · Verified access only',
+  introTitle: 'A private space, intentionally gated', previewLabel: 'Protected preview', privateLabel: 'THE EXPERIENCE',
+  privateTitle: 'Designed for discretion', privateText: 'A calm, self-hosted membership experience with clear boundaries. Every protected area remains locked unless the required account and review checks succeed.', discoverAccess: 'Discover the access path',
+  accessPath: 'YOUR ACCESS PATH', howItWorks: 'Three deliberate steps', processIntro: 'Account and verification tasks open in focused, private dialogs—not in the public landing page.',
+  stepAccount: 'Create your account', stepAccountText: 'Register in a dedicated secure dialog and confirm your email address before continuing.',
+  stepVerify: 'Request age review', stepVerifyText: 'After signing in, provide only the minimum details needed to submit a manual 18+ review request. No identity files are collected here.',
+  stepAccess: 'Await approval', stepAccessText: 'Protected areas stay closed while review is pending. Paid access and protected media are not yet enabled.',
+  curatedLabel: 'LOCKED COLLECTION', readyLabel: 'PRIVATE MEMBERSHIP', readyTitle: 'Ready to begin?', readyText: 'Create an account or return to your private dashboard. Registration and age review never appear directly on this public page.',
+  createAccount: 'Create account', openDashboard: 'Open dashboard', viewStatus: 'View status', welcomeBack: 'Welcome back', close: 'Close dialog', submitReview: 'Submit for review'
+});
+
+Object.assign(window.SiteTranslations.de, {
+  navAccess: 'Zugang', explore: 'Erlebnis entdecken', trustLine: 'Privat gestaltet · Nur geprüfter Zugang',
+  introTitle: 'Ein privater, bewusst geschützter Bereich', previewLabel: 'Geschützte Vorschau', privateLabel: 'DAS ERLEBNIS',
+  privateTitle: 'Für Diskretion gestaltet', privateText: 'Eine ruhige, selbst gehostete Mitgliedschaft mit klaren Grenzen. Jeder geschützte Bereich bleibt gesperrt, solange die erforderlichen Konto- und Prüfschritte nicht erfolgreich sind.', discoverAccess: 'Zugangsweg entdecken',
+  accessPath: 'DEIN ZUGANGSWEG', howItWorks: 'Drei bewusste Schritte', processIntro: 'Konto- und Prüfprozesse öffnen in fokussierten, privaten Dialogen – nicht auf der öffentlichen Startseite.',
+  stepAccount: 'Konto erstellen', stepAccountText: 'Registriere dich in einem eigenen sicheren Dialog und bestätige deine E-Mail-Adresse, bevor du fortfährst.',
+  stepVerify: 'Altersprüfung anfragen', stepVerifyText: 'Übermittle nach der Anmeldung nur die Mindestangaben für eine manuelle 18+-Prüfung. Hier werden keine Ausweisdateien erfasst.',
+  stepAccess: 'Freigabe abwarten', stepAccessText: 'Geschützte Bereiche bleiben während der Prüfung gesperrt. Bezahlter Zugang und geschützte Medien sind noch nicht aktiviert.',
+  curatedLabel: 'GESPERRTE KOLLEKTION', readyLabel: 'PRIVATE MITGLIEDSCHAFT', readyTitle: 'Bereit anzufangen?', readyText: 'Erstelle ein Konto oder kehre zu deinem privaten Dashboard zurück. Registrierung und Altersprüfung erscheinen nie direkt auf dieser öffentlichen Seite.',
+  createAccount: 'Konto erstellen', openDashboard: 'Dashboard öffnen', viewStatus: 'Status ansehen', welcomeBack: 'Willkommen zurück', close: 'Dialog schließen', submitReview: 'Zur Prüfung einreichen'
+});

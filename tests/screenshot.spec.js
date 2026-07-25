@@ -29,26 +29,30 @@ test.describe('membership safety requirements', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: /exclusive content/i }).first()).toBeVisible();
-    await expect(page.getByRole('heading', { name: /limited free content/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /three deliberate steps/i })).toBeVisible();
     await expect(page.locator('#exclusive').getByRole('heading', { name: /exclusive content/i })).toBeVisible();
     await expect(page.getByText(/content locked/i).first()).toBeVisible();
+    await expect(page.locator('main form')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Register' }).first().click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByLabel(/display name/i)).toBeVisible();
+    await page.getByRole('button', { name: /close dialog/i }).click();
     await expect(page.locator('a[href*="onlyfans" i]')).toHaveCount(0);
     await expect(page.locator('script[src*="paypal" i]')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('Secure Membership');
     await expect(page.evaluate(() => window.ExclusiveBackend.canViewExclusiveContent({ status: 'ACTIVE', emailVerified: true, ageVerificationApproved: true, secondFactorConfigured: true, stepUpAuthenticated: true, jurisdictionAllowed: true }, { status: 'ACTIVE' }))).resolves.toMatchObject({ allowed: false, reason: 'EXCLUSIVE_CONTENT_DISABLED' });
 
     await page.getByRole('button', { name: 'DE' }).click();
-    await expect(page.getByRole('heading', { name: /begrenzte kostenlose inhalte/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /drei bewusste schritte/i })).toBeVisible();
     await expect(page.getByText(/inhalt gesperrt/i).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: /exklusive inhalte/i }).first()).toBeVisible();
   });
 
-  test('/linktree includes Instagram and routes membership locally', async ({ page }) => {
+  test('/linktree routes membership locally without external links', async ({ page }) => {
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('link', { name: /exclusive content/i })).toHaveAttribute('href', '../#exclusive');
-    await expect(page.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/shadows.temptation_official');
-    await expect(page.locator('a[href^="http"]')).toHaveCount(1);
+    await expect(page.locator('a[href^="http"]')).toHaveCount(0);
     await expect(page.locator('script[src^="http"]')).toHaveCount(0);
   });
 });
