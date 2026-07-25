@@ -1,6 +1,6 @@
-const { defineConfig, devices } = require('@playwright/test');
+import { defineConfig, devices } from '@playwright/test';
 
-module.exports = defineConfig({
+export default defineConfig({
   testDir: './tests',
   timeout: 60_000,
   expect: {
@@ -24,7 +24,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'npx http-server . -a 127.0.0.1 -p 8080 -c-1 --silent',
+    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 8080',
     url: 'http://127.0.0.1:8080',
     reuseExistingServer: !process.env.CI,
   },
