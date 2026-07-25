@@ -43,11 +43,12 @@ test.describe('membership safety requirements', () => {
     await expect(page.getByRole('heading', { name: /exklusive inhalte/i }).first()).toBeVisible();
   });
 
-  test('/linktree remains local and routes to the one-page site', async ({ page }) => {
+  test('/linktree includes Instagram and routes membership locally', async ({ page }) => {
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('link', { name: /exclusive content/i })).toHaveAttribute('href', '../#exclusive');
-    await expect(page.locator('a[href^="http"]')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/shadows.temptation_official');
+    await expect(page.locator('a[href^="http"]')).toHaveCount(1);
     await expect(page.locator('script[src^="http"]')).toHaveCount(0);
   });
 });
