@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:appwrite",
-    "preview": "http-server .",
+    "build": "node scripts/prepare-appwrite-site.js && npm run build:appwrite",
+    "preview": "http-server dist",
     "install:browsers": "playwright install chromium --with-deps",
     "test": "playwright test",
     "test:screenshots": "playwright test tests/screenshot.spec.js",

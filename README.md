@@ -2,6 +2,12 @@
 
 This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
 
+## Appwrite Sites
+
+The frontend is built for Appwrite Sites and connects to the **Jason Shadow Enterprises** Appwrite project (`6a64cbeb0009826c9efc`) at `https://fra.cloud.appwrite.io/v1`. The Appwrite Web SDK client lives in `src/lib/appwrite.js`; the browser entry calls `client.ping()` automatically when the page opens so connectivity can be checked in the browser console.
+
+Run `npm install` and `npm run build`. The deployable static site is written to `dist/`. In Appwrite Sites, use `npm install` as the install command, `npm run build` as the build command, and `dist` as the output directory.
+
 ## Required production blockers
 - Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
 - Manual age verification remains disabled until professional legal review approves the documented process.
