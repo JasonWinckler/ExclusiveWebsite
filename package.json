@@ -1,9 +1,12 @@
 {
   "name": "exclusivewebsite",
   "version": "1.0.0",
-  "description": "Static exclusive website with Playwright screenshot checks.",
-  "main": "script.js",
+  "description": "React exclusive website with conservative membership controls and Appwrite connectivity.",
+  "private": true,
   "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp -r assets linktree impressum datenschutz legal dist/ && cp CNAME dist/",
+    "preview": "vite preview",
     "install:browsers": "playwright install chromium --with-deps",
     "test": "playwright test",
     "test:screenshots": "playwright test tests/screenshot.spec.js"
@@ -11,9 +14,15 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
+  "dependencies": {
+    "appwrite": "^21.2.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "vite": "^7.0.6"
   }
 }
