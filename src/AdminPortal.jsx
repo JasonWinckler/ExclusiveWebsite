@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  adminActivatePaymentOrder,
   adminCreateContent,
   adminDecideAgeCase,
   adminFetchAgeEvidence,
@@ -7,6 +8,7 @@ import {
   adminImportN26Csv,
   adminListAgeCases,
   adminListContent,
+  adminListPaymentOrders,
   adminUploadContent,
 } from "./lib/appwrite";
 
@@ -43,6 +45,13 @@ const copy = {
     csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Exclusive Content - ID #…“ für den Abgleich verarbeitet; die vollständige CSV wird nicht gespeichert.",
     import: "CSV prüfen und zuordnen",
     importDone: "N26-CSV wurde verarbeitet.",
+    ordersTitle: "Zahlungsaufträge",
+    ordersText: "Die Aufträge stammen direkt aus der produktiven D1-Tabelle subscriptions. Eine manuelle Freischaltung erzeugt zusätzlich eine ADMIN-Banktransaktion, eine Berechtigung und einen Audit-Eintrag.",
+    noOrders: "Noch keine Zahlungsaufträge vorhanden.",
+    manualReason: "Support-Begründung",
+    manualConfirmation: "Ich habe den tatsächlichen Zahlungseingang und die Zuordnung zu diesem Auftrag geprüft.",
+    manualActivate: "Manuell freischalten",
+    manualActivated: "Der Zahlungsauftrag wurde manuell freigeschaltet.",
     loading: "Wird verarbeitet…",
     genericError: "Die Admin-Aktion konnte nicht abgeschlossen werden.",
     directPublish: "Erfolgreiche Uploads sind sofort sichtbar. Medien bleiben privat in R2 und werden nur nach serverseitiger Zugriffsprüfung ausgeliefert.",
@@ -79,6 +88,13 @@ const copy = {
     csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Exclusive Content - ID #…” remittance value are processed for matching; the complete CSV is not stored.",
     import: "Check and match CSV",
     importDone: "The N26 CSV was processed.",
+    ordersTitle: "Payment orders",
+    ordersText: "Orders are loaded directly from the production D1 subscriptions table. Manual activation also creates an ADMIN bank transaction, an entitlement and an audit event.",
+    noOrders: "No payment orders yet.",
+    manualReason: "Support reason",
+    manualConfirmation: "I verified the actual incoming payment and its assignment to this order.",
+    manualActivate: "Activate manually",
+    manualActivated: "The payment order was activated manually.",
     loading: "Processing…",
     genericError: "The admin action could not be completed.",
     directPublish: "Successful uploads are immediately visible. Media remains private in R2 and is served only after server-side authorization.",
@@ -156,6 +172,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [cases, setCases] = useState([]);
   const [selectedCase, setSelectedCase] = useState(null);
   const [items, setItems] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [paymentReasons, setPaymentReasons] = useState({});
+  const [paymentConfirmations, setPaymentConfirmations] = useState({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -171,11 +190,15 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListContent();
     setItems(result.items || []);
   };
+  const loadPayments = async () => {
+    const result = await adminListPaymentOrders();
+    setOrders(result.orders || []);
+  };
   const loadAll = async () => {
     setBusy(true);
     setError("");
     try {
-      await Promise.all([loadCases(), loadContent()]);
+      await Promise.all([loadCases(), loadContent(), loadPayments()]);
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -283,6 +306,26 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setImportSummary(summary);
       setNotice(t.importDone);
       form.reset();
+      await loadPayments();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const activatePayment = async (orderId) => {
+    const reason = String(paymentReasons[orderId] || "").trim();
+    if (reason.length < 3 || !paymentConfirmations[orderId]) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminActivatePaymentOrder(orderId, reason);
+      setNotice(t.manualActivated);
+      setPaymentReasons((current) => ({ ...current, [orderId]: "" }));
+      setPaymentConfirmations((current) => ({ ...current, [orderId]: false }));
+      await loadPayments();
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -344,7 +387,41 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-panel"><h2>{t.currentContent}</h2>{items.length ? <div className="content-admin-list">{items.map((item) => <div key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span></div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span></div>)}</div> : <p>{t.noContent}</p>}</article>
       </section>}
 
-      {tab === "payments" && <section className="admin-grid admin-grid--single"><article className="admin-panel"><h2>{t.csvTitle}</h2><p>{t.csvText}</p><form className="admin-form admin-form--inline" onSubmit={importCsv}><label className="form-field"><span>N26 CSV</span><input name="csv" type="file" accept=".csv,text/csv" required /></label><button className="primary-action" disabled={busy}>{t.import}</button></form>{summaryEntries.length > 0 && <dl className="import-summary">{summaryEntries.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>}</article></section>}
+      {tab === "payments" && <section className="admin-grid">
+        <article className="admin-panel">
+          <h2>{t.csvTitle}</h2>
+          <p>{t.csvText}</p>
+          <form className="admin-form" onSubmit={importCsv}><label className="form-field"><span>N26 CSV</span><input name="csv" type="file" accept=".csv,text/csv" required /></label><button className="primary-action" disabled={busy}>{t.import}</button></form>
+          {summaryEntries.length > 0 && <dl className="import-summary">{summaryEntries.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl>}
+        </article>
+        <article className="admin-panel">
+          <h2>{t.ordersTitle}</h2>
+          <p className="admin-note">{t.ordersText}</p>
+          {orders.length ? <div className="payment-order-list">{orders.map((order) => {
+            const canActivate = ["PENDING", "PROCESSING", "PAID"].includes(order.status);
+            const reason = paymentReasons[order.id] || "";
+            return <section className="payment-order-card" key={order.id}>
+              <div className="payment-order-card__head">
+                <div><strong>{order.product_name}</strong><span>{order.display_name || order.email || order.appwrite_user_id}</span></div>
+                <span className={`order-status order-status--${String(order.status).toLowerCase()}`}>{order.status}</span>
+              </div>
+              <dl className="payment-order-facts">
+                <div><dt>{t.amount || "Amount"}</dt><dd>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: order.currency }).format(order.amount_minor / 100)}</dd></div>
+                <div><dt>{t.durationCheckout || "Term"}</dt><dd>{order.duration_value} {order.duration_unit === "MONTHS" ? (language === "de" ? "Monate" : "months") : (language === "de" ? "Tage" : "days")}</dd></div>
+                <div><dt>{language === "de" ? "Verwendungszweck" : "Remittance information"}</dt><dd className="payment-reference">{order.transfer_reference}</dd></div>
+                <div><dt>{language === "de" ? "Erstellt" : "Created"}</dt><dd>{formatDate(order.created_at, language)}</dd></div>
+                <div><dt>{language === "de" ? "Zahlbar bis" : "Due by"}</dt><dd>{formatDate(order.payment_due_at, language)}</dd></div>
+                {order.settled_at && <div><dt>{language === "de" ? "Freigeschaltet" : "Activated"}</dt><dd>{formatDate(order.settled_at, language)}</dd></div>}
+              </dl>
+              {canActivate && <div className="manual-payment-review">
+                <label className="form-field"><span>{t.manualReason}</span><textarea minLength="3" maxLength="500" value={reason} onChange={(event) => setPaymentReasons((current) => ({ ...current, [order.id]: event.target.value }))} /></label>
+                <label className="checkout-confirmation"><input type="checkbox" checked={Boolean(paymentConfirmations[order.id])} onChange={(event) => setPaymentConfirmations((current) => ({ ...current, [order.id]: event.target.checked }))} /><span>{t.manualConfirmation}</span></label>
+                <button className="danger-action" type="button" disabled={busy || reason.trim().length < 3 || !paymentConfirmations[order.id]} onClick={() => activatePayment(order.id)}>{t.manualActivate}</button>
+              </div>}
+            </section>;
+          })}</div> : <p>{t.noOrders}</p>}
+        </article>
+      </section>}
     </main>
   </div>;
 }
