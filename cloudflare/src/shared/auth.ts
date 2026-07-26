@@ -63,7 +63,7 @@ export async function authenticateUser(
         "X-Appwrite-JWT": token,
         "X-Appwrite-Response-Format": "1.9.5",
       },
-      redirect: "error",
+      redirect: "manual",
     });
   } catch (error) {
     console.error(JSON.stringify({
