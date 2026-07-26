@@ -1092,15 +1092,83 @@ async function importN26Csv(
 
 async function listContentItems(env: AdminEnv): Promise<Record<string, unknown>> {
   const items = await env.DB.prepare(`
-    SELECT c.id, c.slug, c.title, c.content_status, c.required_tier,
-      c.published_at, c.created_at, c.updated_at,
-      u.id AS upload_id, u.content_type, u.size_bytes, u.created_at AS uploaded_at
+    SELECT c.id, c.slug, c.title, c.body_text, c.allow_comments,
+      c.content_status, c.required_tier, c.published_at, c.created_at, c.updated_at,
+      u.id AS upload_id, u.content_type, u.size_bytes, u.created_at AS uploaded_at,
+      (SELECT COUNT(*) FROM content_comments comments
+        WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
     FROM content_items c
     LEFT JOIN content_uploads u
       ON u.content_item_id = c.id AND u.status = 'ACTIVE'
     ORDER BY c.created_at DESC LIMIT 200
   `).all();
   return { items: items.results };
+}
+
+async function listContentComments(env: AdminEnv): Promise<Record<string, unknown>> {
+  const comments = await env.DB.prepare(`
+    SELECT comments.id, comments.body, comments.status, comments.created_at,
+      comments.updated_at, comments.moderation_reason, comments.moderated_at,
+      profiles.display_name, profiles.email, content.title AS content_title,
+      content.slug AS content_slug
+    FROM content_comments comments
+    JOIN content_items content ON content.id = comments.content_item_id
+    LEFT JOIN user_profiles profiles
+      ON profiles.appwrite_user_id = comments.appwrite_user_id
+    ORDER BY comments.created_at DESC
+    LIMIT 500
+  `).all();
+  return { comments: comments.results };
+}
+
+async function moderateContentComment(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  commentId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(commentId)) throw new ApiError(400, "INVALID_COMMENT_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["action", "reason"]);
+  if (body.action !== "HIDE" && body.action !== "RESTORE" && body.action !== "DELETE") {
+    throw new ApiError(400, "INVALID_COMMENT_ACTION");
+  }
+  if (typeof body.reason !== "string" || body.reason.trim().length < 3 || body.reason.length > 500) {
+    throw new ApiError(400, "COMMENT_MODERATION_REASON_REQUIRED");
+  }
+  requireIdempotencyKey(request);
+  const existing = await env.DB.prepare(`
+    SELECT id, status, body FROM content_comments WHERE id = ?
+  `).bind(commentId).first<{ id: string; status: string; body: string }>();
+  if (!existing) throw new ApiError(404, "COMMENT_NOT_FOUND");
+  const now = isoNow();
+  const nextStatus = body.action === "RESTORE" ? "ACTIVE" : body.action === "HIDE" ? "HIDDEN" : "DELETED";
+  const nextBody = body.action === "DELETE" ? "[deleted by moderator]" : existing.body;
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE content_comments SET body = ?, status = ?,
+        moderated_by_appwrite_user_id = ?, moderation_reason = ?,
+        moderated_at = ?, deleted_at = CASE WHEN ? = 'DELETED' THEN ? ELSE deleted_at END,
+        updated_at = ?
+      WHERE id = ?
+    `).bind(nextBody, nextStatus, administratorUserId, body.reason.trim(), now, nextStatus, now, now, commentId),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: `COMMENT_${body.action}`,
+      targetType: "CONTENT_COMMENT",
+      targetId: commentId,
+      previousState: { status: existing.status },
+      newState: { status: nextStatus },
+      reason: body.reason.trim(),
+      correlationId,
+      now,
+    }),
+  ]);
+  return { commentId, status: nextStatus };
 }
 
 async function createContentItem(
@@ -1113,7 +1181,7 @@ async function createContentItem(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactKeys(body, ["slug", "title", "tier"]);
+  exactKeys(body, ["slug", "title", "tier", "bodyText", "allowComments"]);
   if (typeof body.slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug) || body.slug.length > 128) {
     throw new ApiError(400, "INVALID_CONTENT_SLUG");
   }
@@ -1127,9 +1195,17 @@ async function createContentItem(
   ) {
     throw new ApiError(400, "INVALID_CONTENT_TIER");
   }
+  if (
+    typeof body.bodyText !== "string" || body.bodyText.length > 10_000 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(body.bodyText)
+  ) throw new ApiError(400, "INVALID_CONTENT_BODY");
+  if (typeof body.allowComments !== "boolean") {
+    throw new ApiError(400, "INVALID_COMMENT_SETTING");
+  }
+  const postBody = body.bodyText.trim();
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
-    SELECT id, slug, title, content_status, required_tier
+    SELECT id, slug, title, body_text, allow_comments, content_status, required_tier
     FROM content_items WHERE creation_idempotency_key = ?
   `).bind(idempotencyKey).first();
   if (replay) return replay as Record<string, unknown>;
@@ -1138,17 +1214,27 @@ async function createContentItem(
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO content_items (
-        id, slug, title, content_status, required_tier,
+        id, slug, title, body_text, allow_comments, content_status, required_tier,
         creation_idempotency_key, created_at, updated_at
-      ) VALUES (?, ?, ?, 'DISABLED', ?, ?, ?, ?)
-    `).bind(contentId, body.slug, body.title.trim(), body.tier, idempotencyKey, now, now),
+      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', ?, ?, ?, ?)
+    `).bind(
+      contentId,
+      body.slug,
+      body.title.trim(),
+      postBody,
+      body.allowComments ? 1 : 0,
+      body.tier,
+      idempotencyKey,
+      now,
+      now,
+    ),
     auditStatement(env.DB, {
       administratorUserId,
       action: "CONTENT_ITEM_CREATED",
       targetType: "CONTENT_ITEM",
       targetId: contentId,
       previousState: null,
-      newState: { slug: body.slug, title: body.title.trim(), tier: body.tier, status: "DISABLED" },
+      newState: { slug: body.slug, title: body.title.trim(), bodyText: postBody, allowComments: body.allowComments, tier: body.tier, status: "DISABLED" },
       reason: "Admin content upload preparation",
       correlationId,
       now,
@@ -1158,6 +1244,8 @@ async function createContentItem(
     id: contentId,
     slug: body.slug,
     title: body.title.trim(),
+    bodyText: postBody,
+    allowComments: body.allowComments,
     contentStatus: "DISABLED",
     requiredTier: body.tier,
   };
@@ -1725,6 +1813,8 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const paymentCancellationPath = /^\/v1\/payments\/orders\/([^/]+)\/cancel$/.exec(url.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([^/]+)$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
+  const contentCommentModerationPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})\/moderate$/i
+    .exec(url.pathname);
   if (userPath) {
     const userId = validateUserId(decodeURIComponent(userPath[1]!));
     if (request.method === "GET" && userPath[2] === "status") {
@@ -1802,6 +1892,16 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     result = await importN26Csv(request, env, administrator.userId, correlationId);
   } else if (request.method === "GET" && url.pathname === "/v1/content/items") {
     result = await listContentItems(env);
+  } else if (request.method === "GET" && url.pathname === "/v1/content/comments") {
+    result = await listContentComments(env);
+  } else if (request.method === "POST" && contentCommentModerationPath) {
+    result = await moderateContentComment(
+      request,
+      env,
+      administrator.userId,
+      contentCommentModerationPath[1]!,
+      correlationId,
+    );
   } else if (request.method === "POST" && url.pathname === "/v1/content/items") {
     result = await createContentItem(request, env, administrator.userId, correlationId);
   } else if (request.method === "PUT" && contentMediaPath) {
