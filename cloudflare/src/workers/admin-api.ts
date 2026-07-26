@@ -554,10 +554,13 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
       s.cancellation_reason, s.archived_at, s.archive_reason,
       p.sku AS product_sku,
       p.display_name AS product_name, p.tier, p.duration_unit,
-      p.duration_value, u.email, u.display_name
+      p.duration_value, u.email, u.display_name,
+      i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status,
+      i.email_last_error_code
     FROM subscriptions s
     JOIN products p ON p.id = s.product_id
     JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
+    LEFT JOIN invoices i ON i.subscription_id = s.id
     ORDER BY
       CASE s.status
         WHEN 'PENDING' THEN 1 WHEN 'PROCESSING' THEN 2 WHEN 'PAID' THEN 3
