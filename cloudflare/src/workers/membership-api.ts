@@ -1005,6 +1005,38 @@ async function premiumTelegramPerk(
   };
 }
 
+async function vipWhatsappPerk(
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const now = isoNow();
+  const [profile, vipThirtyDayEntitlement] = await Promise.all([
+    getUserProfile(env.DB, userId),
+    env.DB.prepare(`
+      SELECT e.id, e.expires_at
+      FROM entitlements e
+      INNER JOIN products p ON p.id = e.product_id
+      WHERE e.appwrite_user_id = ? AND e.tier = 'EXCLUSIVE_VIP'
+        AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
+        AND p.sku = 'exclusive-vip-30d'
+      ORDER BY e.expires_at DESC LIMIT 1
+    `).bind(userId, now, now).first<{ id: string; expires_at: string }>(),
+  ]);
+  if (!profile || profile.account_status !== "ACTIVE" || profile.age_status !== "APPROVED") {
+    throw new ApiError(403, "VIP_WHATSAPP_PERK_NOT_AVAILABLE");
+  }
+  if (!vipThirtyDayEntitlement) throw new ApiError(403, "ACTIVE_VIP_30_DAY_REQUIRED");
+  if (!env.VIP_WHATSAPP_NUMBER) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
+  const digits = env.VIP_WHATSAPP_NUMBER.replace(/\D/g, "");
+  if (!/^[1-9]\d{7,14}$/.test(digits)) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
+  return {
+    available: true,
+    phoneNumber: env.VIP_WHATSAPP_NUMBER,
+    whatsappUrl: `https://wa.me/${digits}`,
+    entitlementExpiresAt: vipThirtyDayEntitlement.expires_at,
+  };
+}
+
 async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>> {
   const rows = await env.DB.prepare(`
     SELECT p.id, p.sku, p.display_name, p.tier, p.currency, p.amount_minor,
@@ -1453,6 +1485,8 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     result = await listUserPaymentOrders(env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/premium-telegram") {
     result = await premiumTelegramPerk(env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/vip-whatsapp") {
+    result = await vipWhatsappPerk(env, identity.userId);
   } else if (request.method === "DELETE" && paymentOrderPath) {
     result = await cancelUserPaymentOrder(request, env, identity.userId, paymentOrderPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") {
