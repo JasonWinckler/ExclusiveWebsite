@@ -92,7 +92,10 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
   if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED");
   const body = await readJsonBody<Record<string, unknown>>(request, 4096);
   const path = new URL(request.url).pathname;
-  const expectedSecret = path === "/sync-labels"
+  const labelServicePath = path === "/sync-labels" ||
+    path === "/update-user-status" ||
+    path === "/send-transactional-email";
+  const expectedSecret = labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
     : env.ACCOUNT_LIFECYCLE_SERVICE_SECRET;
   if (!await secretsEqual(
@@ -111,6 +114,43 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     throw new ApiError(400, "INVALID_USER_ID");
   }
   const encodedUserId = encodeURIComponent(body.userId);
+  if (path === "/update-user-status") {
+    if (typeof body.status !== "boolean") throw new ApiError(400, "INVALID_USER_STATUS");
+    await appwriteRequest(env, `/users/${encodedUserId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: body.status }),
+    });
+    return jsonResponse({ ok: true });
+  }
+  if (path === "/send-transactional-email") {
+    if (
+      typeof body.messageId !== "string" ||
+      !/^[A-Za-z0-9._-]{1,36}$/.test(body.messageId) ||
+      typeof body.subject !== "string" ||
+      body.subject.length < 1 ||
+      body.subject.length > 255 ||
+      typeof body.html !== "string" ||
+      body.html.length < 1 ||
+      body.html.length > 131_072
+    ) throw new ApiError(400, "INVALID_TRANSACTIONAL_EMAIL");
+    await appwriteRequest(env, "/messaging/messages/email", {
+      method: "POST",
+      body: JSON.stringify({
+        messageId: body.messageId,
+        subject: body.subject,
+        content: body.html,
+        users: [body.userId],
+        topics: [],
+        targets: [],
+        cc: [],
+        bcc: [],
+        attachments: [],
+        draft: false,
+        html: true,
+      }),
+    });
+    return jsonResponse({ ok: true });
+  }
   if (path === "/revoke-sessions") {
     await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
     return jsonResponse({ ok: true });
