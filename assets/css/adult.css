@@ -1214,3 +1214,7 @@ button:disabled { opacity: .58; cursor: not-allowed; }
   .legal-choice-card { grid-template-columns: auto 1fr; }
   .legal-choice-card > span:last-child { display: none; }
 }
+
+/* Featured perk detail */
+.membership-perks li > div { display: grid; gap: 3px; }
+.membership-perks li small { display: block; color: var(--muted); font-size: .76rem; font-weight: 500; line-height: 1.35; }
