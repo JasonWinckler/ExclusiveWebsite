@@ -171,6 +171,17 @@ export const getContentItems = () => apiRequest("/v1/content", { device: true })
 export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURIComponent(slug)}`, {
   device: true, responseType: "response",
 });
+export const getContentComments = (slug) => apiRequest(
+  `/v1/content/${encodeURIComponent(slug)}/comments`,
+);
+export const createContentComment = (slug, body) => apiRequest(
+  `/v1/content/${encodeURIComponent(slug)}/comments`,
+  { method: "POST", json: { body }, idempotent: true },
+);
+export const deleteContentComment = (commentId) => apiRequest(
+  `/v1/content/comments/${encodeURIComponent(commentId)}`,
+  { method: "DELETE", json: {}, idempotent: true },
+);
 export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deletion", {
   method: "POST", json: { reason }, idempotent: true,
 });
@@ -229,8 +240,13 @@ export const adminImportN26Csv = (file) => apiRequest("/v1/payments/n26-csv-impo
   admin: true, method: "POST", raw: file, contentType: "text/csv", idempotent: true,
 });
 export const adminListContent = () => apiRequest("/v1/content/items", { admin: true });
-export const adminCreateContent = ({ slug, title, tier }) => apiRequest("/v1/content/items", {
-  admin: true, method: "POST", json: { slug, title, tier }, idempotent: true,
+export const adminListContentComments = () => apiRequest("/v1/content/comments", { admin: true });
+export const adminModerateContentComment = (commentId, action, reason) => apiRequest(
+  `/v1/content/comments/${encodeURIComponent(commentId)}/moderate`,
+  { admin: true, method: "POST", json: { action, reason }, idempotent: true },
+);
+export const adminCreateContent = ({ slug, title, tier, bodyText, allowComments }) => apiRequest("/v1/content/items", {
+  admin: true, method: "POST", json: { slug, title, tier, bodyText, allowComments }, idempotent: true,
 });
 export const adminUploadContent = (contentId, file) => apiRequest(
   `/v1/content/items/${encodeURIComponent(contentId)}/media`,
