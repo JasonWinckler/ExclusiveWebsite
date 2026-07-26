@@ -530,6 +530,7 @@ function invoiceEmailHtml(input: {
           <p style="margin:0"><strong>${labels.reference}:</strong><br><span style="color:#e7c47d;font-weight:bold">${escapeHtml(input.reference)}</span></p>
         </div>
         <p style="padding:14px 16px;background:#3a111b;border-left:3px solid #d7ad62;border-radius:8px;line-height:1.55"><strong>${labels.note}:</strong> ${isGerman ? "Bitte übernimm den Verwendungszweck exakt. Die Freischaltung erfolgt erst nach bestätigtem Zahlungseingang." : "Please use the remittance information exactly as shown. Access is activated only after payment has been confirmed."}</p>
+        <p style="font-size:12px;color:#aa9993;line-height:1.6">${isGerman ? "Du hast den sofortigen Beginn der digitalen Bereitstellung nach Zahlungseingang verlangt und bestätigt, dass dein Widerrufsrecht mit Beginn der Bereitstellung erlischt." : "You requested digital supply to begin after payment and acknowledged that your withdrawal right expires when supply begins."}<br><a href="https://exclusive.jason-shadow.com/legal/eu/#terms" style="color:#d7ad62">${isGerman ? "AGB" : "Terms"}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#withdrawal" style="color:#d7ad62">${isGerman ? "Widerruf" : "Withdrawal"}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#d7ad62">${isGerman ? "Datenschutz" : "Privacy"}</a></p>
         ${input.taxNote ? `<p style="font-size:12px;color:#aa9993">${escapeHtml(input.taxNote)}</p>` : ""}
       </div>
       <div style="padding:20px 32px;background:#0d0204;color:#998984;font-size:12px;line-height:1.6">
@@ -652,11 +653,26 @@ async function createSepaOrder(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactObjectKeys(body, ["productSku", "billing", "locale"]);
+  exactObjectKeys(body, [
+    "productSku",
+    "billing",
+    "locale",
+    "termsVersion",
+    "digitalContentConsent",
+    "withdrawalAcknowledgement",
+  ]);
   if (typeof body.productSku !== "string" || !/^[a-z0-9-]{1,64}$/.test(body.productSku)) {
     throw new ApiError(400, "INVALID_PRODUCT");
   }
   const locale: "de" | "en" = body.locale === "en" ? "en" : "de";
+  if (
+    typeof body.termsVersion !== "string" ||
+    !/^[A-Z0-9-]{8,48}$/.test(body.termsVersion) ||
+    body.digitalContentConsent !== true ||
+    body.withdrawalAcknowledgement !== true
+  ) {
+    throw new ApiError(400, "CHECKOUT_LEGAL_ACCEPTANCE_REQUIRED");
+  }
   const billing = billingDetails(body.billing);
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
@@ -755,8 +771,9 @@ async function createSepaOrder(
         id, appwrite_user_id, product_id, payment_method, transfer_reference,
         amount_minor, currency, status, payment_due_at, idempotency_key,
         billing_name, billing_street, billing_postal_code, billing_city,
-        billing_country_code, customer_locale, created_at, updated_at
-      ) VALUES (?, ?, ?, 'SEPA_CREDIT_TRANSFER', ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        billing_country_code, customer_locale, terms_version, terms_accepted_at,
+        digital_content_consent_at, withdrawal_acknowledged_at, created_at, updated_at
+      ) VALUES (?, ?, ?, 'SEPA_CREDIT_TRANSFER', ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderId,
       userId,
@@ -772,6 +789,10 @@ async function createSepaOrder(
       billing?.city ?? null,
       billing?.countryCode ?? null,
       locale,
+      body.termsVersion,
+      now,
+      now,
+      now,
       now,
       now,
     ),
