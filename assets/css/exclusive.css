@@ -194,3 +194,33 @@ body.modal-open {
 .profile-content .language-switcher { width: max-content; margin: -8px auto 10px; }
 .link-list--single { margin-top: 10px; }
 .link-list--single .link-button { min-height: 92px; }
+
+
+/* Neutral official link hub */
+.linktree-banner-neutral {
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 75%,rgba(255,111,43,.26),transparent 34%),
+    radial-gradient(circle at 15% 20%,rgba(124,12,30,.72),transparent 38%),
+    linear-gradient(145deg,#0b0003,#3a040d 58%,#0a0003);
+}
+.linktree-banner-neutral::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-image: linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center,black,transparent 72%);
+}
+.linktree-monogram {
+  position: relative;
+  z-index: 1;
+  color: rgba(248,215,164,.78);
+  font-family: Cinzel,Georgia,serif;
+  font-size: clamp(3rem,10vw,7rem);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-shadow: 0 0 42px rgba(255,90,34,.22);
+}
+.linktree-banner-neutral .banner-overlay { opacity: .7; }
