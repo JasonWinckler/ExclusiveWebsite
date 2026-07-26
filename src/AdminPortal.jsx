@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   adminActivatePaymentOrder,
+  adminArchivePaymentOrder,
+  adminCancelPaymentOrder,
   adminCreateContent,
   adminDecideAgeCase,
   adminFetchAgeEvidence,
@@ -10,8 +12,13 @@ import {
   adminListContent,
   adminListContentComments,
   adminListPaymentOrders,
+  adminListUsers,
   adminModerateContentComment,
+  adminRestrictUser,
+  adminScheduleAccountDeletion,
+  adminUnrestrictUser,
   adminUploadContent,
+  requestPasswordReset,
 } from "./lib/appwrite";
 
 const copy = {
@@ -177,6 +184,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [comments, setComments] = useState([]);
   const [commentReasons, setCommentReasons] = useState({});
   const [orders, setOrders] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [userReasons, setUserReasons] = useState({});
+  const [userSearch, setUserSearch] = useState("");
   const [paymentReasons, setPaymentReasons] = useState({});
   const [paymentConfirmations, setPaymentConfirmations] = useState({});
   const [busy, setBusy] = useState(false);
@@ -202,11 +212,15 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListPaymentOrders();
     setOrders(result.orders || []);
   };
+  const loadUsers = async () => {
+    const result = await adminListUsers();
+    setUsers(result.users || []);
+  };
   const loadAll = async () => {
     setBusy(true);
     setError("");
     try {
-      await Promise.all([loadCases(), loadContent(), loadComments(), loadPayments()]);
+      await Promise.all([loadCases(), loadContent(), loadComments(), loadPayments(), loadUsers()]);
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -361,6 +375,52 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const manageUser = async (profile, action) => {
+    const reason = String(userReasons[profile.appwrite_user_id] || "").trim();
+    if (action !== "RESET" && reason.length < 3) return;
+    const destructive = action === "DELETE";
+    if (destructive && !window.confirm(language === "de" ? "Kontolöschung verbindlich vormerken?" : "Schedule this account for deletion?")) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      if (action === "RESTRICT") await adminRestrictUser(profile.appwrite_user_id, reason);
+      else if (action === "UNRESTRICT") await adminUnrestrictUser(profile.appwrite_user_id, reason);
+      else if (action === "DELETE") await adminScheduleAccountDeletion(profile.appwrite_user_id, reason);
+      else await requestPasswordReset(profile.email);
+      setNotice(action === "RESET"
+        ? (language === "de" ? "E-Mail zum Zurücksetzen des Passworts wurde angefordert." : "Password reset email was requested.")
+        : (language === "de" ? "Nutzerstatus wurde aktualisiert." : "User status was updated."));
+      setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: "" }));
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const managePaymentOrder = async (order, action) => {
+    const reason = String(paymentReasons[order.id] || "").trim();
+    if (reason.length < 3) return;
+    const question = action === "ARCHIVE"
+      ? (language === "de" ? "Diesen Auftrag aus den aktiven Ansichten archivieren?" : "Archive this order from active views?")
+      : (language === "de" ? "Diesen Zahlungsauftrag stornieren?" : "Cancel this payment order?");
+    if (!window.confirm(question)) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (action === "ARCHIVE") await adminArchivePaymentOrder(order.id, reason);
+      else await adminCancelPaymentOrder(order.id, reason);
+      setNotice(language === "de" ? "Zahlungsauftrag wurde aktualisiert." : "Payment order was updated.");
+      await loadPayments();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedEvidence = selectedCase?.evidence || [];
   const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de);
   const selectedChallenge = useMemo(() => {
@@ -388,11 +448,35 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     <main className="admin-main">
       <div className="admin-title"><div><p className="eyebrow">SINGLE CREATOR CONTROL</p><h1>{t.title}</h1></div><button className="secondary-action" type="button" onClick={loadAll} disabled={busy}>{t.refresh}</button></div>
       <nav className="admin-tabs" aria-label={t.title}>{[
+        ["overview", language === "de" ? "Übersicht" : "Overview"],
+        ["users", language === "de" ? "Nutzer" : "Users"],
         ["age", t.age], ["content", t.content], ["payments", t.payments],
       ].map(([key, label]) => <button type="button" className={tab === key ? "is-active" : ""} onClick={() => { setTab(key); setNotice(""); setError(""); }} key={key}>{label}</button>)}</nav>
       {busy && <p className="form-notice" role="status">{t.loading}</p>}
       {notice && <p className="form-notice form-notice--success" role="status">{notice}</p>}
       {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
+
+      {tab === "overview" && <section className="admin-overview-grid">
+        <article className="admin-metric-card"><span>{language === "de" ? "Aktive Nutzer" : "Active users"}</span><strong>{users.filter((item) => item.account_status === "ACTIVE").length}</strong><small>{users.length} {language === "de" ? "Konten gesamt" : "accounts total"}</small></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Offene Altersprüfungen" : "Pending age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
+      </section>}
+
+      {tab === "users" && <section className="admin-panel user-management">
+        <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "ACCOUNT CONTROL" : "ACCOUNT CONTROL"}</p><h2>{language === "de" ? "Nutzerverwaltung" : "User management"}</h2></div><span>{users.length}</span></div>
+        <label className="form-field user-search"><span>{language === "de" ? "Suchen" : "Search"}</span><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder={language === "de" ? "Name, E-Mail oder User-ID" : "Name, email or user ID"} /></label>
+        <div className="admin-user-list">{users.filter((profile) => `${profile.display_name} ${profile.email} ${profile.appwrite_user_id}`.toLowerCase().includes(userSearch.toLowerCase())).map((profile) => {
+          const restricted = profile.account_status === "RESTRICTED";
+          const reason = userReasons[profile.appwrite_user_id] || "";
+          return <article className="admin-user-card" key={profile.appwrite_user_id}>
+            <div className="admin-user-card__head"><div><strong>{profile.display_name || "Member"}</strong><span>{profile.email}</span></div><span className="order-status">{profile.account_status}</span></div>
+            <dl className="admin-facts"><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
+            <label className="form-field"><span>{language === "de" ? "Admin-Begründung" : "Admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))} placeholder={language === "de" ? "Für Sperrung, Freigabe oder Löschung" : "For restriction, restore or deletion"} /></label>
+            <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button><button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
+          </article>;
+        })}</div>
+      </section>}
 
       {tab === "age" && <section className="admin-grid">
         <article className="admin-panel"><h2>{t.pending}</h2>{cases.length ? <div className="admin-list">{cases.map((item) => <button type="button" className={selectedCase?.case?.id === item.id ? "is-active" : ""} onClick={() => selectCase(item.id)} key={item.id}><strong>{item.display_name || item.appwrite_user_id}</strong><span>{item.evidence_count} Dateien · {formatDate(item.submitted_at, language)}</span></button>)}</div> : <p>{t.noCases}</p>}</article>
@@ -460,11 +544,11 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
                 <div><dt>{language === "de" ? "Zahlbar bis" : "Due by"}</dt><dd>{formatDate(order.payment_due_at, language)}</dd></div>
                 {order.settled_at && <div><dt>{language === "de" ? "Freigeschaltet" : "Activated"}</dt><dd>{formatDate(order.settled_at, language)}</dd></div>}
               </dl>
-              {canActivate && <div className="manual-payment-review">
+              <div className="manual-payment-review">
                 <label className="form-field"><span>{t.manualReason}</span><textarea minLength="3" maxLength="500" value={reason} onChange={(event) => setPaymentReasons((current) => ({ ...current, [order.id]: event.target.value }))} /></label>
-                <label className="checkout-confirmation"><input type="checkbox" checked={Boolean(paymentConfirmations[order.id])} onChange={(event) => setPaymentConfirmations((current) => ({ ...current, [order.id]: event.target.checked }))} /><span>{t.manualConfirmation}</span></label>
-                <button className="danger-action" type="button" disabled={busy || reason.trim().length < 3 || !paymentConfirmations[order.id]} onClick={() => activatePayment(order.id)}>{t.manualActivate}</button>
-              </div>}
+                {canActivate && <><label className="checkout-confirmation"><input type="checkbox" checked={Boolean(paymentConfirmations[order.id])} onChange={(event) => setPaymentConfirmations((current) => ({ ...current, [order.id]: event.target.checked }))} /><span>{t.manualConfirmation}</span></label><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3 || !paymentConfirmations[order.id]} onClick={() => activatePayment(order.id)}>{t.manualActivate}</button></>}
+                <div className="order-admin-actions">{order.status === "PENDING" && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "CANCEL")}>{language === "de" ? "Auftrag stornieren" : "Cancel order"}</button>}{["CANCELLED","EXPIRED","REFUNDED"].includes(order.status) && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "ARCHIVE")}>{language === "de" ? "Archivieren" : "Archive"}</button>}</div>
+              </div>
             </section>;
           })}</div> : <p>{t.noOrders}</p>}
         </article>
