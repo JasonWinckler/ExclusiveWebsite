@@ -71,13 +71,24 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
       ),
     ]);
   }
-  await env.DB.prepare(`
-    UPDATE subscriptions SET status = 'EXPIRED', version = version + 1, updated_at = ?
-    WHERE id IN (
-      SELECT id FROM subscriptions
-      WHERE status = 'PENDING' AND payment_due_at <= ? LIMIT ?
-    )
-  `).bind(now, now, batchSize).run();
+  const expiredOrders = await env.DB.prepare(`
+    SELECT id FROM subscriptions
+    WHERE status = 'PENDING' AND payment_due_at <= ? LIMIT ?
+  `).bind(now, batchSize).all<{ id: string }>();
+  for (const order of expiredOrders.results) {
+    await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE subscriptions SET status = 'CANCELLED', cancelled_at = ?,
+          cancellation_source = 'SYSTEM', cancellation_reason = 'PAYMENT_NOT_RECEIVED_WITHIN_48_HOURS',
+          version = version + 1, updated_at = ?
+        WHERE id = ? AND status = 'PENDING'
+      `).bind(now, now, order.id),
+      env.DB.prepare(`
+        UPDATE invoices SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
+        WHERE subscription_id = ? AND status = 'OPEN'
+      `).bind(now, now, order.id),
+    ]);
+  }
   const expiringEntitlements = await env.DB.prepare(`
     SELECT id, appwrite_user_id FROM entitlements
     WHERE status = 'ACTIVE' AND expires_at <= ? LIMIT ?
