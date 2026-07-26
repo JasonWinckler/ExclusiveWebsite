@@ -10,7 +10,7 @@
     "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   },
-  "triggers": { "crons": ["17 2 * * *"] },
+  "triggers": { "crons": ["17 * * * *"] },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "exclusive-membership",
