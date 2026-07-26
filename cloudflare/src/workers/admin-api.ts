@@ -791,6 +791,10 @@ async function manuallyActivatePaymentOrder(
   if (results.slice(1).some((result) => (result.meta.changes ?? 0) !== 1)) {
     throw new ApiError(503, "MANUAL_PAYMENT_ACTIVATION_INCOMPLETE");
   }
+  await env.DB.prepare(`
+    UPDATE invoices SET status = 'PAID', paid_at = ?, updated_at = ?
+    WHERE subscription_id = ? AND status = 'OPEN'
+  `).bind(settledAt, settledAt, subscription.id).run();
 
   let labelSyncStatus = "SYNCED";
   try {
@@ -1039,6 +1043,10 @@ async function importN26Csv(
         settledAt,
         settledAt,
       ),
+      env.DB.prepare(`
+        UPDATE invoices SET status = 'PAID', paid_at = ?, updated_at = ?
+        WHERE subscription_id = ? AND status = 'OPEN'
+      `).bind(settledAt, settledAt, subscription.id),
       auditStatement(env.DB, {
         administratorUserId,
         action: "SEPA_PAYMENT_MATCHED",
