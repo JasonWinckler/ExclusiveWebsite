@@ -78,6 +78,7 @@ export interface MembershipEnv extends BaseEnv {
   INVOICE_SELLER_EMAIL?: string;
   INVOICE_TAX_NOTE?: string;
   PREMIUM_TELEGRAM_INVITE_URL?: string;
+  VIP_WHATSAPP_NUMBER?: string;
 }
 
 export interface AdminEnv extends BaseEnv {
