@@ -153,8 +153,8 @@ export const submitAgeVerificationCase = (caseId) => apiRequest(
   `/v1/age-verification/cases/${encodeURIComponent(caseId)}/submit`,
   { method: "POST", json: {}, idempotent: true },
 );
-export const createSepaOrder = (productSku, billing, locale = "de") => apiRequest("/v1/payments/sepa-orders", {
-  method: "POST", json: { productSku, billing, locale }, idempotent: true,
+export const createSepaOrder = (productSku, billing, locale = "de", legal = {}) => apiRequest("/v1/payments/sepa-orders", {
+  method: "POST", json: { productSku, billing, locale, ...legal }, idempotent: true,
 });
 export const getPaymentOrders = () => apiRequest("/v1/payments/orders");
 export const cancelPaymentOrder = (orderId, reason) => apiRequest(
