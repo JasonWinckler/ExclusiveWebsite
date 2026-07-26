@@ -467,6 +467,13 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
   const key = tierNames[tier];
   const showcase = products.find((product) => product.durationUnit === "DAYS" && product.durationValue === 30) || products[0];
   const perks = showcase?.perks || [];
+  const perkPriority = (perk) => {
+    const text = `${perk.title || ""} ${perk.description || ""}`.toLowerCase();
+    if (key === "vip" && /whatsapp/.test(text)) return 0;
+    if (key === "vip" && /treffen|meeting/.test(text)) return 1;
+    return 10;
+  };
+  const showcasePerks = [...perks].sort((left, right) => perkPriority(left) - perkPriority(right));
   const symbols = { basic: "◇", premium: "✦", vip: "♛" };
   return <article className={`pricing-group pricing-group--${key}`}>
     <div className="membership-symbol" aria-hidden="true">{symbols[key]}</div>
@@ -477,7 +484,7 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
       <div className="showcase-price"><strong>{formatCurrency(showcase, language)}</strong><span>{durationLabel(showcase, language)}</span></div>
     </div>
     <ul className="membership-perks">
-      {(perks.length ? perks : [{ title: ui[`${key}Text`] }]).slice(0, 4).map((perk) => <li key={perk.id || perk.title}><span>✓</span><strong>{perk.title}</strong></li>)}
+      {(showcasePerks.length ? showcasePerks : [{ title: ui[`${key}Text`] }]).slice(0, key === "vip" ? 5 : 4).map((perk) => <li key={perk.id || perk.title}><span>✓</span><div><strong>{perk.title}</strong>{key === "vip" && /treffen|meeting/i.test(`${perk.title} ${perk.description || ""}`) && perk.description ? <small>{perk.description}</small> : null}</div></li>)}
     </ul>
     <button className="membership-card-cta" type="button" onClick={() => onChoose(products)}>
       <span>{language === "de" ? "Laufzeit & Benefits wählen" : "Choose term & benefits"}</span><strong>→</strong>
