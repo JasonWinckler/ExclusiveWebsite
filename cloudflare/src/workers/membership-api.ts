@@ -25,6 +25,7 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import { authorizeProtectedContent, deletionBlockers } from "../shared/policy";
+import { sendTransactionalEmail } from "../shared/identity-service";
 import { sha256Hex, validateDeviceToken } from "../shared/security";
 import type { AgeEvidenceKind, MembershipEnv, PaymentStatus } from "../shared/types";
 
@@ -425,6 +426,120 @@ export interface SepaInstructions {
   bic: string | null;
 }
 
+interface BillingDetails {
+  name: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  countryCode: string;
+}
+
+function normalizedBillingText(value: unknown, maximum: number): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized || normalized.length > maximum || /[\u0000-\u001f\u007f]/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function billingDetails(value: unknown): BillingDetails | null {
+  if (value == null) return null;
+  exactObjectKeys(value, ["name", "street", "postalCode", "city", "countryCode"]);
+  const name = normalizedBillingText(value.name, 128);
+  const street = normalizedBillingText(value.street, 160);
+  const postalCode = normalizedBillingText(value.postalCode, 24);
+  const city = normalizedBillingText(value.city, 100);
+  const countryCode = typeof value.countryCode === "string"
+    ? value.countryCode.trim().toUpperCase()
+    : "";
+  if (!name || !street || !postalCode || !city || !/^[A-Z]{2}$/.test(countryCode)) {
+    throw new ApiError(400, "INVALID_BILLING_DETAILS");
+  }
+  return { name, street, postalCode, city, countryCode };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]!);
+}
+
+function invoiceNumber(orderId: string, issuedAt: string): string {
+  return `ST-${issuedAt.slice(0, 4)}-${orderId.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+}
+
+function invoiceEmailHtml(input: {
+  locale: "de" | "en";
+  invoiceNumber: string;
+  customerName: string;
+  productName: string;
+  amountMinor: number;
+  currency: string;
+  dueAt: string;
+  reference: string;
+  beneficiary: string;
+  iban: string;
+  bic: string | null;
+  sellerName: string;
+  sellerAddress: string;
+  sellerEmail: string;
+  taxNote: string | null;
+}): string {
+  const isGerman = input.locale === "de";
+  const amount = new Intl.NumberFormat(isGerman ? "de-DE" : "en-IE", {
+    style: "currency",
+    currency: input.currency,
+  }).format(input.amountMinor / 100);
+  const due = new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Berlin",
+  }).format(new Date(input.dueAt));
+  const title = isGerman ? "Deine Rechnung & Zahlungsdaten" : "Your invoice & payment details";
+  const intro = isGerman
+    ? "Danke für deine Bestellung. Der Auftrag ist 48 Stunden reserviert und wird automatisch storniert, wenn bis dahin kein Zahlungseingang bestätigt wurde."
+    : "Thank you for your order. It is reserved for 48 hours and will be cancelled automatically if payment has not been confirmed by then.";
+  const labels = isGerman
+    ? { invoice: "Rechnung", product: "Mitgliedschaft", total: "Gesamtbetrag", due: "Zahlbar bis", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
+    : { invoice: "Invoice", product: "Membership", total: "Total", due: "Pay by", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
+  return `<!doctype html><html><body style="margin:0;background:#120306;color:#f8eee7;font-family:Arial,sans-serif">
+  <div style="max-width:680px;margin:0 auto;padding:32px 20px">
+    <div style="background:linear-gradient(145deg,#2a0710,#150407);border:1px solid #7f2438;border-radius:22px;overflow:hidden">
+      <div style="padding:28px 32px;border-bottom:1px solid #5a1b2a">
+        <div style="color:#d7ad62;font-size:12px;letter-spacing:3px;text-transform:uppercase">Shadow's Temptation</div>
+        <h1 style="margin:10px 0 8px;font-family:Georgia,serif;font-size:30px;color:#fff7ed">${title}</h1>
+        <p style="margin:0;color:#d9c9c2;line-height:1.6">${intro}</p>
+      </div>
+      <div style="padding:28px 32px">
+        <p style="margin:0 0 20px">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.customerName)},</p>
+        <table style="width:100%;border-collapse:collapse;color:#f8eee7">
+          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.invoice}</td><td style="padding:9px 0;text-align:right;font-weight:bold">${escapeHtml(input.invoiceNumber)}</td></tr>
+          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.product}</td><td style="padding:9px 0;text-align:right">${escapeHtml(input.productName)}</td></tr>
+          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.total}</td><td style="padding:9px 0;text-align:right;font-size:22px;color:#e7c47d;font-weight:bold">${escapeHtml(amount)}</td></tr>
+          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.due}</td><td style="padding:9px 0;text-align:right">${escapeHtml(due)}</td></tr>
+        </table>
+        <div style="margin:24px 0;padding:20px;background:#0c0204;border-radius:14px;border:1px solid #4a1521">
+          <p style="margin:0 0 8px"><strong>${labels.beneficiary}:</strong> ${escapeHtml(input.beneficiary)}</p>
+          <p style="margin:0 0 8px"><strong>IBAN:</strong> ${escapeHtml(input.iban)}</p>
+          ${input.bic ? `<p style="margin:0 0 8px"><strong>BIC:</strong> ${escapeHtml(input.bic)}</p>` : ""}
+          <p style="margin:0"><strong>${labels.reference}:</strong><br><span style="color:#e7c47d;font-weight:bold">${escapeHtml(input.reference)}</span></p>
+        </div>
+        <p style="padding:14px 16px;background:#3a111b;border-left:3px solid #d7ad62;border-radius:8px;line-height:1.55"><strong>${labels.note}:</strong> ${isGerman ? "Bitte übernimm den Verwendungszweck exakt. Die Freischaltung erfolgt erst nach bestätigtem Zahlungseingang." : "Please use the remittance information exactly as shown. Access is activated only after payment has been confirmed."}</p>
+        ${input.taxNote ? `<p style="font-size:12px;color:#aa9993">${escapeHtml(input.taxNote)}</p>` : ""}
+      </div>
+      <div style="padding:20px 32px;background:#0d0204;color:#998984;font-size:12px;line-height:1.6">
+        ${escapeHtml(input.sellerName)} · ${escapeHtml(input.sellerAddress)} · ${escapeHtml(input.sellerEmail)}<br>
+        <a href="https://exclusive.jason-shadow.com/" style="color:#d7ad62">exclusive.jason-shadow.com</a>
+      </div>
+    </div>
+  </div></body></html>`;
+}
+
 function sepaInstructions(env: MembershipEnv): SepaInstructions {
   const beneficiary = env.SEPA_BENEFICIARY_NAME?.trim();
   const iban = env.SEPA_IBAN?.replace(/\s+/g, "").toUpperCase();
@@ -481,6 +596,16 @@ function sepaOrderResponse(
     amountMinor: number;
     currency: string;
     paymentDueAt: string;
+    productName?: string;
+    productSku?: string;
+    durationUnit?: string;
+    durationValue?: number;
+    createdAt?: string;
+    cancelledAt?: string | null;
+    cancellationSource?: string | null;
+    invoiceNumber?: string | null;
+    invoiceStatus?: string | null;
+    invoiceEmailStatus?: string | null;
   },
 ): Record<string, unknown> {
   const instructions = sepaInstructions(env);
@@ -492,6 +617,18 @@ function sepaOrderResponse(
     currency: order.currency,
     paymentDueAt: order.paymentDueAt,
     reference: order.transferReference,
+    productName: order.productName ?? null,
+    productSku: order.productSku ?? null,
+    durationUnit: order.durationUnit ?? null,
+    durationValue: order.durationValue ?? null,
+    createdAt: order.createdAt ?? null,
+    cancelledAt: order.cancelledAt ?? null,
+    cancellationSource: order.cancellationSource ?? null,
+    invoice: order.invoiceNumber ? {
+      number: order.invoiceNumber,
+      status: order.invoiceStatus ?? "OPEN",
+      emailStatus: order.invoiceEmailStatus ?? "PENDING",
+    } : null,
     beneficiary: instructions.beneficiary,
     iban: instructions.iban,
     bic: instructions.bic,
@@ -515,14 +652,22 @@ async function createSepaOrder(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactObjectKeys(body, ["productSku"]);
+  exactObjectKeys(body, ["productSku", "billing", "locale"]);
   if (typeof body.productSku !== "string" || !/^[a-z0-9-]{1,64}$/.test(body.productSku)) {
     throw new ApiError(400, "INVALID_PRODUCT");
   }
+  const locale: "de" | "en" = body.locale === "en" ? "en" : "de";
+  const billing = billingDetails(body.billing);
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
-    SELECT id, transfer_reference, status, amount_minor, currency, payment_due_at
-    FROM subscriptions WHERE appwrite_user_id = ? AND idempotency_key = ?
+    SELECT s.id, s.transfer_reference, s.status, s.amount_minor, s.currency,
+      s.payment_due_at, s.created_at, p.display_name AS product_name, p.sku,
+      p.duration_unit, p.duration_value, i.invoice_number, i.status AS invoice_status,
+      i.email_status AS invoice_email_status
+    FROM subscriptions s
+    JOIN products p ON p.id = s.product_id
+    LEFT JOIN invoices i ON i.subscription_id = s.id
+    WHERE s.appwrite_user_id = ? AND s.idempotency_key = ?
   `).bind(userId, idempotencyKey).first<{
     id: string;
     transfer_reference: string;
@@ -530,6 +675,14 @@ async function createSepaOrder(
     amount_minor: number;
     currency: string;
     payment_due_at: string;
+    created_at: string;
+    product_name: string;
+    sku: string;
+    duration_unit: string;
+    duration_value: number;
+    invoice_number: string | null;
+    invoice_status: string | null;
+    invoice_email_status: string | null;
   }>();
   if (replay) {
     return sepaOrderResponse(env, {
@@ -539,6 +692,14 @@ async function createSepaOrder(
       amountMinor: replay.amount_minor,
       currency: replay.currency,
       paymentDueAt: replay.payment_due_at,
+      productName: replay.product_name,
+      productSku: replay.sku,
+      durationUnit: replay.duration_unit,
+      durationValue: replay.duration_value,
+      createdAt: replay.created_at,
+      invoiceNumber: replay.invoice_number,
+      invoiceStatus: replay.invoice_status,
+      invoiceEmailStatus: replay.invoice_email_status,
     });
   }
 
@@ -579,26 +740,119 @@ async function createSepaOrder(
   const orderId = crypto.randomUUID();
   const now = isoNow();
   const paymentDueAt = new Date(
-    Date.now() + parsePositiveInt(env.SEPA_ORDER_EXPIRY_DAYS, 7, 30) * 86_400_000,
+    Date.now() + parsePositiveInt(env.SEPA_ORDER_EXPIRY_HOURS, 48, 168) * 3_600_000,
   ).toISOString();
   const reference = createSepaTransferPurpose(crypto.randomUUID().replace(/-/g, ""));
-  await env.DB.prepare(`
-    INSERT INTO subscriptions (
-      id, appwrite_user_id, product_id, payment_method, transfer_reference,
-      amount_minor, currency, status, payment_due_at, idempotency_key, created_at, updated_at
-    ) VALUES (?, ?, ?, 'SEPA_CREDIT_TRANSFER', ?, ?, ?, 'PENDING', ?, ?, ?, ?)
-  `).bind(
-    orderId,
-    userId,
-    product.id,
-    reference,
-    product.amount_minor,
-    product.currency,
-    paymentDueAt,
-    idempotencyKey,
-    now,
-    now,
-  ).run();
+  const invoiceId = billing ? crypto.randomUUID() : null;
+  const number = billing ? invoiceNumber(orderId, now) : null;
+  const sellerName = env.INVOICE_SELLER_NAME?.trim() || "Shadow's Temptation · Jason Winckler";
+  const sellerAddress = env.INVOICE_SELLER_ADDRESS?.trim() || "Kleiberweg 24, 48432 Rheine, Deutschland";
+  const sellerEmail = env.INVOICE_SELLER_EMAIL?.trim() || "info@exclusive.jason-shadow.com";
+  const taxNote = env.INVOICE_TAX_NOTE?.trim() || null;
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO subscriptions (
+        id, appwrite_user_id, product_id, payment_method, transfer_reference,
+        amount_minor, currency, status, payment_due_at, idempotency_key,
+        billing_name, billing_street, billing_postal_code, billing_city,
+        billing_country_code, customer_locale, created_at, updated_at
+      ) VALUES (?, ?, ?, 'SEPA_CREDIT_TRANSFER', ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      orderId,
+      userId,
+      product.id,
+      reference,
+      product.amount_minor,
+      product.currency,
+      paymentDueAt,
+      idempotencyKey,
+      billing?.name ?? null,
+      billing?.street ?? null,
+      billing?.postalCode ?? null,
+      billing?.city ?? null,
+      billing?.countryCode ?? null,
+      locale,
+      now,
+      now,
+    ),
+  ];
+  if (billing && invoiceId && number) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO invoices (
+        id, subscription_id, invoice_number, status, billing_name, billing_street,
+        billing_postal_code, billing_city, billing_country_code, seller_name,
+        seller_address, seller_email, amount_minor, tax_amount_minor, currency,
+        tax_note, issued_at, due_at, email_status, created_at, updated_at
+      ) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'PENDING', ?, ?)
+    `).bind(
+      invoiceId,
+      orderId,
+      number,
+      billing.name,
+      billing.street,
+      billing.postalCode,
+      billing.city,
+      billing.countryCode,
+      sellerName,
+      sellerAddress,
+      sellerEmail,
+      product.amount_minor,
+      product.currency,
+      taxNote,
+      now,
+      paymentDueAt,
+      now,
+      now,
+    ));
+  }
+  const writeResults = await env.DB.batch(statements);
+  if (writeResults.some((result) => (result.meta.changes ?? 0) !== 1)) {
+    throw new ApiError(503, "ORDER_CREATION_INCOMPLETE");
+  }
+
+  let invoiceEmailStatus: string | null = null;
+  if (billing && invoiceId && number) {
+    const instructions = sepaInstructions(env);
+    const messageId = `inv-${orderId.replace(/-/g, "").slice(0, 32)}`;
+    try {
+      await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+        userId,
+        messageId,
+        subject: locale === "de"
+          ? `Rechnung ${number} · Zahlung binnen 48 Stunden`
+          : `Invoice ${number} · Payment due within 48 hours`,
+        html: invoiceEmailHtml({
+          locale,
+          invoiceNumber: number,
+          customerName: billing.name,
+          productName: product.display_name,
+          amountMinor: product.amount_minor,
+          currency: product.currency,
+          dueAt: paymentDueAt,
+          reference,
+          beneficiary: instructions.beneficiary,
+          iban: instructions.iban,
+          bic: instructions.bic,
+          sellerName,
+          sellerAddress,
+          sellerEmail,
+          taxNote,
+        }),
+      });
+      invoiceEmailStatus = "SENT";
+      await env.DB.prepare(`
+        UPDATE invoices SET email_status = 'SENT', email_message_id = ?,
+          email_last_error_code = NULL, emailed_at = ?, updated_at = ? WHERE id = ?
+      `).bind(messageId, isoNow(), isoNow(), invoiceId).run();
+    } catch {
+      invoiceEmailStatus = "FAILED";
+      await env.DB.prepare(`
+        UPDATE invoices SET email_status = 'FAILED',
+          email_last_error_code = 'TRANSACTIONAL_EMAIL_FAILED', updated_at = ? WHERE id = ?
+      `).bind(isoNow(), invoiceId).run();
+    }
+  }
+
   return sepaOrderResponse(env, {
     id: orderId,
     status: "PENDING",
@@ -606,7 +860,112 @@ async function createSepaOrder(
     amountMinor: product.amount_minor,
     currency: product.currency,
     paymentDueAt,
+    productName: product.display_name,
+    productSku: product.sku,
+    durationUnit: product.duration_unit,
+    durationValue: product.duration_value,
+    createdAt: now,
+    invoiceNumber: number,
+    invoiceStatus: number ? "OPEN" : null,
+    invoiceEmailStatus,
   });
+}
+
+async function listUserPaymentOrders(
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const orders = await env.DB.prepare(`
+    SELECT s.id, s.transfer_reference, s.amount_minor, s.currency, s.status,
+      s.payment_due_at, s.created_at, s.cancelled_at, s.cancellation_source,
+      p.display_name AS product_name, p.sku, p.duration_unit, p.duration_value,
+      i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status
+    FROM subscriptions s
+    JOIN products p ON p.id = s.product_id
+    LEFT JOIN invoices i ON i.subscription_id = s.id
+    WHERE s.appwrite_user_id = ? AND s.archived_at IS NULL
+    ORDER BY s.created_at DESC LIMIT 100
+  `).bind(userId).all<{
+    id: string;
+    transfer_reference: string;
+    amount_minor: number;
+    currency: string;
+    status: string;
+    payment_due_at: string;
+    created_at: string;
+    cancelled_at: string | null;
+    cancellation_source: string | null;
+    product_name: string;
+    sku: string;
+    duration_unit: string;
+    duration_value: number;
+    invoice_number: string | null;
+    invoice_status: string | null;
+    invoice_email_status: string | null;
+  }>();
+  return {
+    orders: orders.results.map((order) => sepaOrderResponse(env, {
+      id: order.id,
+      status: order.status,
+      transferReference: order.transfer_reference,
+      amountMinor: order.amount_minor,
+      currency: order.currency,
+      paymentDueAt: order.payment_due_at,
+      productName: order.product_name,
+      productSku: order.sku,
+      durationUnit: order.duration_unit,
+      durationValue: order.duration_value,
+      createdAt: order.created_at,
+      cancelledAt: order.cancelled_at,
+      cancellationSource: order.cancellation_source,
+      invoiceNumber: order.invoice_number,
+      invoiceStatus: order.invoice_status,
+      invoiceEmailStatus: order.invoice_email_status,
+    })),
+  };
+}
+
+async function cancelUserPaymentOrder(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  orderId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ApiError(400, "INVALID_PAYMENT_ORDER_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["reason"]);
+  const reason = typeof body.reason === "string"
+    ? body.reason.trim().slice(0, 500)
+    : "Cancelled by customer";
+  requireIdempotencyKey(request);
+  const now = isoNow();
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE subscriptions SET status = 'CANCELLED', cancelled_at = ?,
+        cancellation_source = 'CUSTOMER', cancellation_reason = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'PENDING'
+    `).bind(now, reason || "Cancelled by customer", now, orderId, userId),
+    env.DB.prepare(`
+      UPDATE invoices SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
+      WHERE subscription_id = ? AND status = 'OPEN' AND EXISTS (
+        SELECT 1 FROM subscriptions WHERE id = ? AND appwrite_user_id = ?
+          AND status = 'CANCELLED' AND cancelled_at = ?
+      )
+    `).bind(now, now, orderId, orderId, userId, now),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    const existing = await env.DB.prepare(`
+      SELECT status FROM subscriptions WHERE id = ? AND appwrite_user_id = ?
+    `).bind(orderId, userId).first<{ status: string }>();
+    if (!existing) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
+    if (existing.status === "CANCELLED") return { orderId, status: "CANCELLED", existing: true };
+    throw new ApiError(409, "PAYMENT_ORDER_NOT_CANCELLABLE");
+  }
+  return { orderId, status: "CANCELLED", existing: false };
 }
 
 async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>> {
@@ -1031,6 +1390,8 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     .exec(requestUrl.pathname);
   const ageSubmitPath = /^\/v1\/age-verification\/cases\/([0-9a-f-]{36})\/submit$/i
     .exec(requestUrl.pathname);
+  const paymentOrderPath = /^\/v1\/payments\/orders\/([0-9a-f-]{36})$/i
+    .exec(requestUrl.pathname);
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
     result = await statusResponse(env, identity.userId);
@@ -1051,6 +1412,10 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     result = await submitAgeCase(request, env, identity.userId, ageSubmitPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/payments/sepa-orders") {
     result = await createSepaOrder(request, env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/payments/orders") {
+    result = await listUserPaymentOrders(env, identity.userId);
+  } else if (request.method === "DELETE" && paymentOrderPath) {
+    result = await cancelUserPaymentOrder(request, env, identity.userId, paymentOrderPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") {
     result = await requestDeletion(request, env, identity.userId);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/devices/register") {
