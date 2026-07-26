@@ -8,7 +8,9 @@ import {
   adminImportN26Csv,
   adminListAgeCases,
   adminListContent,
+  adminListContentComments,
   adminListPaymentOrders,
+  adminModerateContentComment,
   adminUploadContent,
 } from "./lib/appwrite";
 
@@ -32,15 +34,15 @@ const copy = {
     approved: "Die Altersprüfung wurde freigegeben.",
     rejected: "Die Altersprüfung wurde abgelehnt.",
     privacy: "Prüfdateien werden nur über den geschützten Admin-Endpunkt geladen. Jeder Abruf wird protokolliert.",
-    uploadTitle: "Content hochladen und direkt veröffentlichen",
+    uploadTitle: "Neuen Beitrag erstellen",
     slug: "Slug",
     contentTitle: "Titel",
     tier: "Galerie / Zugriff",
-    file: "Bild oder Video",
-    publish: "Hochladen & veröffentlichen",
-    published: "Content wurde hochgeladen und direkt veröffentlicht.",
-    currentContent: "Veröffentlichter Content",
-    noContent: "Noch kein Content vorhanden.",
+    file: "Beitragsmedium (Bild oder Video)",
+    publish: "Beitrag jetzt veröffentlichen",
+    published: "Der Beitrag wurde veröffentlicht.",
+    currentContent: "Veröffentlichte Beiträge",
+    noContent: "Noch keine Beiträge vorhanden.",
     csvTitle: "N26-CSV importieren",
     csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Exclusive Content - ID #…“ für den Abgleich verarbeitet; die vollständige CSV wird nicht gespeichert.",
     import: "CSV prüfen und zuordnen",
@@ -75,15 +77,15 @@ const copy = {
     approved: "Age verification was approved.",
     rejected: "Age verification was rejected.",
     privacy: "Evidence is loaded only through the protected admin endpoint. Every access is audited.",
-    uploadTitle: "Upload and publish content",
+    uploadTitle: "Create a new post",
     slug: "Slug",
     contentTitle: "Title",
     tier: "Gallery / access",
-    file: "Image or video",
-    publish: "Upload & publish",
-    published: "Content was uploaded and published.",
-    currentContent: "Published content",
-    noContent: "No content yet.",
+    file: "Post media (image or video)",
+    publish: "Publish post now",
+    published: "The post was published.",
+    currentContent: "Published posts",
+    noContent: "No posts yet.",
     csvTitle: "Import N26 CSV",
     csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Exclusive Content - ID #…” remittance value are processed for matching; the complete CSV is not stored.",
     import: "Check and match CSV",
@@ -172,6 +174,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [cases, setCases] = useState([]);
   const [selectedCase, setSelectedCase] = useState(null);
   const [items, setItems] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [commentReasons, setCommentReasons] = useState({});
   const [orders, setOrders] = useState([]);
   const [paymentReasons, setPaymentReasons] = useState({});
   const [paymentConfirmations, setPaymentConfirmations] = useState({});
@@ -190,6 +194,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListContent();
     setItems(result.items || []);
   };
+  const loadComments = async () => {
+    const result = await adminListContentComments();
+    setComments(result.comments || []);
+  };
   const loadPayments = async () => {
     const result = await adminListPaymentOrders();
     setOrders(result.orders || []);
@@ -198,7 +206,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     setBusy(true);
     setError("");
     try {
-      await Promise.all([loadCases(), loadContent(), loadPayments()]);
+      await Promise.all([loadCases(), loadContent(), loadComments(), loadPayments()]);
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -281,6 +289,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         slug: String(data.get("slug") || ""),
         title: String(data.get("title") || ""),
         tier: String(data.get("tier") || ""),
+        bodyText: String(data.get("bodyText") || ""),
+        allowComments: data.get("allowComments") === "on",
       });
       await adminUploadContent(item.id, file);
       form.reset();
@@ -333,6 +343,24 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const moderateComment = async (commentId, action) => {
+    const reason = String(commentReasons[commentId] || "").trim();
+    if (reason.length < 3) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminModerateContentComment(commentId, action, reason);
+      setCommentReasons((current) => ({ ...current, [commentId]: "" }));
+      setNotice(language === "de" ? "Kommentarstatus wurde aktualisiert." : "Comment status was updated.");
+      await loadComments();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedEvidence = selectedCase?.evidence || [];
   const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de);
   const selectedChallenge = useMemo(() => {
@@ -350,7 +378,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
   return <div className="admin-shell">
     <header className="admin-header">
-      <div><a className="brand" href="/">JS<span>.</span></a><p>{t.subtitle}</p></div>
+      <div><a className="brand brand--wordmark" href="/">Shadow’s Temptation</a><p>{t.subtitle}</p></div>
       <div className="admin-header__actions">
         <span>{user.email}</span>
         <div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div>
@@ -382,9 +410,28 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         </> : <p>{t.selectCase}</p>}</article>
       </section>}
 
-      {tab === "content" && <section className="admin-grid">
-        <article className="admin-panel"><h2>{t.uploadTitle}</h2><p className="admin-note">{t.directPublish}</p><form className="admin-form" onSubmit={uploadContent}><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" placeholder="vip-gallery-july" required /></label><label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" required /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue="FREE">{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="form-field"><span>{t.file}</span><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required /></label><button className="primary-action" disabled={busy}>{t.publish}</button></form></article>
-        <article className="admin-panel"><h2>{t.currentContent}</h2>{items.length ? <div className="content-admin-list">{items.map((item) => <div key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span></div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span></div>)}</div> : <p>{t.noContent}</p>}</article>
+      {tab === "content" && <section className="admin-grid admin-content-studio">
+        <article className="admin-panel post-composer">
+          <p className="eyebrow">{language === "de" ? "CREATOR STUDIO" : "CREATOR STUDIO"}</p>
+          <h2>{t.uploadTitle}</h2>
+          <p className="admin-note">{language === "de" ? "Erstelle einen vollständigen Beitrag aus Titel, persönlichem Text, Medium und Zugriffslevel. Erfolgreiche Uploads werden sofort veröffentlicht." : "Create a complete post with a title, personal text, media and access level. Successful uploads publish immediately."}</p>
+          <form className="admin-form post-composer__form" onSubmit={uploadContent}>
+            <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" placeholder={language === "de" ? "Gib dem Moment einen Titel…" : "Give the moment a title…"} required /></label>
+            <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" placeholder={language === "de" ? "Erzähle die Geschichte hinter dem Beitrag, sprich deine Mitglieder direkt an oder kündige etwas Besonderes an…" : "Tell the story behind this post, speak directly to your members, or tease something special…"} /></label>
+            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" placeholder="midnight-confession" required /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue="FREE">{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
+            <label className="media-drop-field"><span>{t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required /></label>
+            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked /><span>{language === "de" ? "Paid Member dürfen diesen Beitrag kommentieren." : "Paid members may comment on this post."}</span></label>
+            <div className="composer-publish-row"><small>{language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload."}</small><button className="primary-action" disabled={busy}>{t.publish}</button></div>
+          </form>
+        </article>
+        <article className="admin-panel">
+          <h2>{t.currentContent}</h2>
+          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small></div></div>)}</div> : <p>{t.noContent}</p>}
+        </article>
+        <article className="admin-panel admin-panel--wide comment-moderation">
+          <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>
+          {comments.length ? <div className="admin-comment-list">{comments.map((comment) => <article className={`admin-comment-card status-${String(comment.status).toLowerCase()}`} key={comment.id}><div className="admin-comment-card__head"><div><strong>{comment.display_name || comment.email || "Member"}</strong><span>{comment.content_title} · {formatDate(comment.created_at, language)}</span></div><span className="order-status">{comment.status}</span></div><p>{comment.body}</p><label className="form-field"><span>{language === "de" ? "Moderationsgrund" : "Moderation reason"}</span><input minLength="3" maxLength="500" value={commentReasons[comment.id] || ""} onChange={(event) => setCommentReasons((current) => ({ ...current, [comment.id]: event.target.value }))} placeholder={language === "de" ? "Interner, nachvollziehbarer Grund" : "Internal moderation reason"} /></label><div className="decision-actions">{comment.status !== "ACTIVE" && <button className="secondary-action" type="button" disabled={busy || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "RESTORE")}>{language === "de" ? "Wiederherstellen" : "Restore"}</button>}{comment.status === "ACTIVE" && <button className="secondary-action" type="button" disabled={busy || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "HIDE")}>{language === "de" ? "Ausblenden" : "Hide"}</button>}<button className="danger-action" type="button" disabled={busy || comment.status === "DELETED" || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "DELETE")}>{language === "de" ? "Löschen" : "Delete"}</button></div></article>)}</div> : <p>{language === "de" ? "Noch keine Kommentare vorhanden." : "No comments yet."}</p>}
+        </article>
       </section>}
 
       {tab === "payments" && <section className="admin-grid">
