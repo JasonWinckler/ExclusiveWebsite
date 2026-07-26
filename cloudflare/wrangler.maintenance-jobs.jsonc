@@ -1,0 +1,62 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "exclusive-maintenance-jobs",
+  "main": "src/workers/maintenance-jobs.ts",
+  "compatibility_date": "2026-07-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  },
+  "triggers": { "crons": ["17 2 * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "exclusive-membership",
+    "database_id": "fc38b1d0-2e77-42a5-ac5c-72603fcb95ab",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [
+    {
+      "binding": "VERIFICATION_UPLOADS",
+      "bucket_name": "exclusive-age-evidence",
+      "jurisdiction": "eu"
+    }
+  ],
+  "services": [{
+    "binding": "IDENTITY_PROJECTION",
+    "service": "exclusive-identity-projection"
+  }],
+  "vars": {
+    "INACTIVE_ACCOUNT_DAYS": "30",
+    "DELETION_GRACE_DAYS": "7",
+    "MAINTENANCE_BATCH_SIZE": "50",
+    "AUDIT_RETENTION_DAYS": "2555"
+  },
+  "env": {
+    "preview": {
+      "name": "exclusive-maintenance-jobs-preview",
+      "triggers": { "crons": [] },
+      "d1_databases": [{
+        "binding": "DB",
+        "database_name": "exclusive-membership-preview",
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }],
+      "r2_buckets": [
+        { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" }
+      ],
+      "services": [{
+        "binding": "IDENTITY_PROJECTION",
+        "service": "exclusive-identity-projection-preview"
+      }],
+      "vars": {
+        "INACTIVE_ACCOUNT_DAYS": "30",
+        "DELETION_GRACE_DAYS": "1",
+        "MAINTENANCE_BATCH_SIZE": "10",
+        "AUDIT_RETENTION_DAYS": "2555"
+      }
+    }
+  }
+}

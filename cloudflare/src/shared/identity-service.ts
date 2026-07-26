@@ -1,0 +1,53 @@
+import { ApiError } from "./http";
+
+async function callIdentityService(
+  service: Service,
+  secret: string,
+  path: string,
+  body: unknown,
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await service.fetch(`https://identity.internal${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Service-Secret": secret,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(503, "IDENTITY_PROJECTION_UNAVAILABLE");
+  }
+  if (!response.ok) {
+    throw new ApiError(503, "IDENTITY_PROJECTION_FAILED");
+  }
+}
+
+export function syncAppwriteLabel(
+  service: Service,
+  secret: string,
+  input: {
+    userId: string;
+    category: "AGE" | "ACCESS";
+    desiredLabel: string | null;
+  },
+): Promise<void> {
+  return callIdentityService(service, secret, "/sync-labels", input);
+}
+
+export function deleteAppwriteUser(
+  service: Service,
+  secret: string,
+  userId: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/delete-user", { userId });
+}
+
+export function revokeAppwriteSessions(
+  service: Service,
+  secret: string,
+  userId: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/revoke-sessions", { userId });
+}

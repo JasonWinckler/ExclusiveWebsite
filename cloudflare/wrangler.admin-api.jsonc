@@ -1,0 +1,88 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "exclusive-admin-api",
+  "main": "src/workers/admin-api.ts",
+  "compatibility_date": "2026-07-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 0.25 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "exclusive-membership",
+    "database_id": "fc38b1d0-2e77-42a5-ac5c-72603fcb95ab",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [
+    {
+      "binding": "VERIFICATION_UPLOADS",
+      "bucket_name": "exclusive-age-evidence",
+      "jurisdiction": "eu"
+    },
+    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" }
+  ],
+  "services": [{
+    "binding": "IDENTITY_PROJECTION",
+    "service": "exclusive-identity-projection"
+  }],
+  "ratelimits": [{
+    "name": "ADMIN_RATE_LIMITER",
+    "namespace_id": "64000201",
+    "simple": { "limit": 30, "period": 60 }
+  }],
+  "vars": {
+    "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+    "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+    "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
+    "MAX_JSON_BODY_BYTES": "32768",
+    "MAX_UPSTREAM_JSON_BYTES": "65536",
+    "ADMIN_LABEL": "admin",
+    "AGE_EVIDENCE_RETENTION_DAYS": "7",
+    "AGE_APPROVAL_VALID_DAYS": "365",
+    "N26_CSV_IMPORT_MODE": "n26-csv-v1",
+    "MAX_N26_CSV_BYTES": "2000000",
+    "CONTENT_IMAGE_MAX_BYTES": "15000000",
+    "CONTENT_VIDEO_MAX_BYTES": "50000000"
+  },
+  "env": {
+    "preview": {
+      "name": "exclusive-admin-api-preview",
+      "d1_databases": [{
+        "binding": "DB",
+        "database_name": "exclusive-membership-preview",
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }],
+      "r2_buckets": [
+        { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" },
+        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" }
+      ],
+      "services": [{
+        "binding": "IDENTITY_PROJECTION",
+        "service": "exclusive-identity-projection-preview"
+      }],
+      "ratelimits": [{
+        "name": "ADMIN_RATE_LIMITER",
+        "namespace_id": "64000202",
+        "simple": { "limit": 60, "period": 60 }
+      }],
+      "vars": {
+        "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+        "SITE_ORIGINS": "http://localhost:5173",
+        "MAX_JSON_BODY_BYTES": "32768",
+        "MAX_UPSTREAM_JSON_BYTES": "65536",
+        "ADMIN_LABEL": "admin",
+        "AGE_EVIDENCE_RETENTION_DAYS": "1",
+        "AGE_APPROVAL_VALID_DAYS": "365",
+        "N26_CSV_IMPORT_MODE": "n26-csv-v1",
+        "MAX_N26_CSV_BYTES": "2000000",
+        "CONTENT_IMAGE_MAX_BYTES": "15000000",
+        "CONTENT_VIDEO_MAX_BYTES": "50000000"
+      }
+    }
+  }
+}

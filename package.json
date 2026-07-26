@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "node scripts/prepare-appwrite-site.js && npm run build:appwrite",
     "preview": "http-server dist",
+    "cloudflare:install": "npm --prefix cloudflare install",
+    "cloudflare:check": "npm --prefix cloudflare run check",
     "install:browsers": "playwright install chromium --with-deps",
     "test": "playwright test",
     "test:screenshots": "playwright test tests/screenshot.spec.js",
@@ -18,6 +20,7 @@
   "type": "module",
   "dependencies": {
     "appwrite": "^21.2.0",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

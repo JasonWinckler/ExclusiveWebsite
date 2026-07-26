@@ -1,24 +1,35 @@
-# README
+# ExclusiveWebsite
 
-This repository provides a React frontend connected to Appwrite Accounts and a conservative, manual age-review intake queue.
+This repository contains the public React frontend plus the staged Cloudflare membership backend.
 
-## Appwrite Sites
+## Security boundary
 
-The frontend is built for Appwrite Sites and connects to the **Jason Shadow Enterprises** Appwrite project (`6a64cbeb0009826c9efc`) at `https://fra.cloud.appwrite.io/v1`, using database `registered_users` (`6a64f96800187b534953`). The Appwrite integration lives in `src/lib/appwrite.js`.
+Appwrite owns email/password registration, verification, recovery, login and sessions. The browser creates a short-lived Appwrite JWT for Cloudflare API calls. Cloudflare Workers and D1 own membership state, hosted age-verification sessions, provider webhooks, SEPA checkout sessions, entitlements, device state, administration and inactive-account deletion.
 
-Run `npm install` and `npm run build`. The deployable static site is written to `dist/`. In Appwrite Sites, use `npm install` as the install command, `npm run build` as the build command, and `dist` as the output directory.
+Protected authorization never trusts Appwrite labels alone. D1 is canonical; labels are a coarse server-maintained projection. Age verification, payments and protected content remain fail-closed until a reviewed provider integration is explicitly enabled.
 
-## Required production blockers
-- Registration, login, logout, email confirmation, password recovery, and age-review intake are implemented with Appwrite.
-- Manual approval and protected-content access require a professionally reviewed process and server-side authorization.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
+## Local development
 
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
+Frontend:
 
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+```sh
+npm install
+npm run dev
+```
+
+Cloudflare:
+
+```sh
+cd cloudflare
+pnpm install
+pnpm run typecheck
+pnpm test
+```
+
+The frontend public variables are listed in `.env.example`. Cloudflare secret names are listed without values in `cloudflare/.dev.vars.example`; real values must be stored with Wrangler secrets or the Cloudflare dashboard.
+
+## Migration status
+
+The repository is in the reversible implementation phase. Legacy Appwrite Function source is intentionally retained as rollback material, but the frontend no longer calls Appwrite Functions, TablesDB or Storage for membership. Do not remove deployed Appwrite resources until the Cloudflare replacement is deployed and production negative-path tests pass.
+
+See [docs/CLOUDFLARE_MIGRATION.md](docs/CLOUDFLARE_MIGRATION.md) and [docs/PROVIDER_DECISIONS.md](docs/PROVIDER_DECISIONS.md).

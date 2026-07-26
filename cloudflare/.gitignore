@@ -1,0 +1,8 @@
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/
+.wrangler-dryrun/
+.wrangler-validation-*/
+node_modules/
+coverage/

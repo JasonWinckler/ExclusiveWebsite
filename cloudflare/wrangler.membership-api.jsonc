@@ -1,0 +1,94 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "exclusive-membership-api",
+  "main": "src/workers/membership-api.ts",
+  "compatibility_date": "2026-07-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 0.1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "exclusive-membership",
+    "database_id": "fc38b1d0-2e77-42a5-ac5c-72603fcb95ab",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [
+    {
+      "binding": "VERIFICATION_UPLOADS",
+      "bucket_name": "exclusive-age-evidence",
+      "jurisdiction": "eu"
+    },
+    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" }
+  ],
+  "services": [{
+    "binding": "IDENTITY_PROJECTION",
+    "service": "exclusive-identity-projection"
+  }],
+  "ratelimits": [{
+    "name": "USER_RATE_LIMITER",
+    "namespace_id": "64000101",
+    "simple": { "limit": 60, "period": 60 }
+  }],
+  "vars": {
+    "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+    "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+    "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
+    "MAX_JSON_BODY_BYTES": "32768",
+    "MAX_UPSTREAM_JSON_BYTES": "65536",
+    "DEVICE_LIMIT": "3",
+    "INACTIVE_ACCOUNT_DAYS": "30",
+    "DELETION_GRACE_DAYS": "7",
+    "PROTECTED_CONTENT_MODE": "private-r2-v1",
+    "AGE_REVIEW_MODE": "manual-r2-v1",
+    "AGE_UPLOAD_WINDOW_MINUTES": "60",
+    "AGE_IMAGE_MAX_BYTES": "10000000",
+    "AGE_VIDEO_MAX_BYTES": "25000000",
+    "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
+    "SEPA_ORDER_EXPIRY_DAYS": "7"
+  },
+  "env": {
+    "preview": {
+      "name": "exclusive-membership-api-preview",
+      "d1_databases": [{
+        "binding": "DB",
+        "database_name": "exclusive-membership-preview",
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }],
+      "r2_buckets": [
+        { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" },
+        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" }
+      ],
+      "services": [{
+        "binding": "IDENTITY_PROJECTION",
+        "service": "exclusive-identity-projection-preview"
+      }],
+      "ratelimits": [{
+        "name": "USER_RATE_LIMITER",
+        "namespace_id": "64000102",
+        "simple": { "limit": 120, "period": 60 }
+      }],
+      "vars": {
+        "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+        "SITE_ORIGINS": "http://localhost:5173",
+        "MAX_JSON_BODY_BYTES": "32768",
+        "MAX_UPSTREAM_JSON_BYTES": "65536",
+        "DEVICE_LIMIT": "3",
+        "INACTIVE_ACCOUNT_DAYS": "30",
+        "DELETION_GRACE_DAYS": "1",
+        "PROTECTED_CONTENT_MODE": "private-r2-v1",
+        "AGE_REVIEW_MODE": "manual-r2-v1",
+        "AGE_UPLOAD_WINDOW_MINUTES": "60",
+        "AGE_IMAGE_MAX_BYTES": "10000000",
+        "AGE_VIDEO_MAX_BYTES": "25000000",
+        "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
+        "SEPA_ORDER_EXPIRY_DAYS": "7"
+      }
+    }
+  }
+}

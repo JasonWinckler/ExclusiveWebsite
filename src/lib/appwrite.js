@@ -1,29 +1,122 @@
-import { Account, Client, Functions, ID, Permission, Query, Role, Storage, TablesDB } from "appwrite";
+import { Account, Client, ID } from "appwrite";
 
 export const appwriteConfig = Object.freeze({
   endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1",
   projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || "6a64cbeb0009826c9efc",
-  databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || "6a64f96800187b534953",
-  usersCollectionId: import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID || "user_profiles",
-  ageVerificationCollectionId: import.meta.env.VITE_APPWRITE_AGE_COLLECTION_ID || "age_verification_cases",
-  storageBucketId: import.meta.env.VITE_APPWRITE_STORAGE_BUCKET_ID || "6a657e2b0008347358ee",
-  provisionFunctionId: import.meta.env.VITE_APPWRITE_PROVISION_FUNCTION_ID || "account-provisioning",
-  verificationFunctionId: import.meta.env.VITE_APPWRITE_VERIFICATION_FUNCTION_ID || "age-verification-finalize",
 });
 
-const client = new Client().setEndpoint(appwriteConfig.endpoint).setProject(appwriteConfig.projectId);
-const account = new Account(client);
-const tables = new TablesDB(client);
-const storage = new Storage(client);
-const functions = new Functions(client);
+export const cloudflareConfig = Object.freeze({
+  apiBaseUrl: (
+    import.meta.env.VITE_CLOUDFLARE_API_BASE_URL ||
+    "https://exclusive-membership-api.jason-winckler-business.workers.dev"
+  ).replace(/\/$/, ""),
+  adminApiBaseUrl: (
+    import.meta.env.VITE_CLOUDFLARE_ADMIN_API_BASE_URL ||
+    "https://exclusive-admin-api.jason-winckler-business.workers.dev"
+  ).replace(/\/$/, ""),
+});
 
-// Browser permissions are deliberately limited to reading the user's own records.
-// Status, tier, expiry, payment, jurisdiction, and entitlement fields are written
-// only by the server Functions.
-const privateReadPermission = (userId) => [Permission.read(Role.user(userId))];
+const client = new Client()
+  .setEndpoint(appwriteConfig.endpoint)
+  .setProject(appwriteConfig.projectId);
+const account = new Account(client);
+const deviceStorageKey = "jason-shadow-device-token-v1";
+export const ageInstructionsVersion = "manual-age-v3";
+
+export class CloudflareApiError extends Error {
+  constructor(code, status) {
+    super(code);
+    this.name = "CloudflareApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+const callbackUrl = (action) => `${window.location.origin}/?action=${encodeURIComponent(action)}`;
+
+function requireApiUrl(value, code) {
+  if (!value) throw new CloudflareApiError(code, 503);
+  const url = new URL(value);
+  const isLocal = ["localhost", "127.0.0.1"].includes(url.hostname);
+  if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) {
+    throw new CloudflareApiError(code, 503);
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+async function errorFromResponse(response) {
+  let code = "API_REQUEST_FAILED";
+  try {
+    const payload = await response.clone().json();
+    code = payload?.error?.code || code;
+  } catch {
+    // API responses fail closed when their documented JSON error is unavailable.
+  }
+  return new CloudflareApiError(code, response.status);
+}
+
+async function apiRequest(path, options = {}) {
+  const baseUrl = options.admin
+    ? requireApiUrl(cloudflareConfig.adminApiBaseUrl, "ADMIN_API_NOT_CONFIGURED")
+    : requireApiUrl(cloudflareConfig.apiBaseUrl, "MEMBERSHIP_API_NOT_CONFIGURED");
+  const headers = new Headers(options.headers);
+  headers.set("Accept", options.responseType === "response" ? "*/*" : "application/json");
+  if (options.authenticated !== false) {
+    const jwt = await account.createJWT();
+    headers.set("Authorization", `Bearer ${jwt.jwt}`);
+  }
+  if (options.idempotent) headers.set("Idempotency-Key", options.idempotencyKey || crypto.randomUUID());
+  if (options.device) headers.set("X-Device-Token", getDeviceToken());
+
+  let body;
+  if (options.json !== undefined) {
+    headers.set("Content-Type", "application/json");
+    body = JSON.stringify(options.json);
+  } else if (options.raw !== undefined) {
+    headers.set("Content-Type", options.contentType || options.raw.type || "application/octet-stream");
+    body = options.raw;
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method || "GET",
+    headers,
+    body,
+    credentials: "omit",
+    redirect: "error",
+  });
+  if (!response.ok) throw await errorFromResponse(response);
+  if (options.responseType === "response") return response;
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new CloudflareApiError("INVALID_API_RESPONSE", 503);
+  }
+  if (!payload || typeof payload !== "object") {
+    throw new CloudflareApiError("INVALID_API_RESPONSE", 503);
+  }
+  return payload;
+}
+
+function createDeviceToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function getDeviceToken() {
+  let token = localStorage.getItem(deviceStorageKey);
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    token = createDeviceToken();
+    localStorage.setItem(deviceStorageKey, token);
+  }
+  return token;
+}
 
 export async function getCurrentUser() {
-  try { return await account.get(); } catch (error) {
+  try {
+    return await account.get();
+  } catch (error) {
     if (error?.code === 401) return null;
     throw error;
   }
@@ -32,92 +125,71 @@ export async function getCurrentUser() {
 export async function registerAccount({ name, email, password }) {
   const user = await account.create({ userId: ID.unique(), email, password, name });
   await account.createEmailPasswordSession({ email, password });
-  try {
-    await functions.createExecution({
-      functionId: appwriteConfig.provisionFunctionId,
-      body: JSON.stringify({ name }),
-      async: false,
-    });
-  } catch (error) {
-    await account.deleteSession({ sessionId: "current" }).catch(() => undefined);
-    throw error;
-  }
-  await account.createVerification({ url: `${window.location.origin}/?action=verify-email` });
+  await account.createVerification({ url: callbackUrl("verify-email") });
   return user;
 }
 
 export const login = (email, password) => account.createEmailPasswordSession({ email, password });
 export const logout = () => account.deleteSession({ sessionId: "current" });
-export const resendVerification = () => account.createVerification({ url: `${window.location.origin}/?action=verify-email` });
-export const requestPasswordReset = (email) => account.createRecovery({ email, url: `${window.location.origin}/?action=recover` });
+export const resendVerification = () => account.createVerification({ url: callbackUrl("verify-email") });
+export const requestPasswordReset = (email) => account.createRecovery({ email, url: callbackUrl("recover") });
 export const completePasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
 export const completeEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
 
-export async function getMemberProfile(userId) {
-  try {
-    return await tables.getRow({ databaseId: appwriteConfig.databaseId, tableId: appwriteConfig.usersCollectionId, rowId: userId });
-  } catch (error) {
-    if (error?.code === 404) return null;
-    throw error;
-  }
-}
+export const getProducts = () => apiRequest("/v1/products", { authenticated: false });
+export const getMembershipStatus = () => apiRequest("/v1/membership/status");
+export const getEntitlementStatus = () => apiRequest("/v1/entitlements/status");
+export const createAgeVerificationCase = () => apiRequest("/v1/age-verification/cases", {
+  method: "POST",
+  json: { consent: true, instructionsVersion: ageInstructionsVersion },
+  idempotent: true,
+});
+export const uploadAgeEvidence = (caseId, kind, file) => apiRequest(
+  `/v1/age-verification/cases/${encodeURIComponent(caseId)}/evidence/${encodeURIComponent(kind)}`,
+  { method: "PUT", raw: file, contentType: file.type, idempotent: true },
+);
+export const submitAgeVerificationCase = (caseId) => apiRequest(
+  `/v1/age-verification/cases/${encodeURIComponent(caseId)}/submit`,
+  { method: "POST", json: {}, idempotent: true },
+);
+export const createSepaOrder = (productSku) => apiRequest("/v1/payments/sepa-orders", {
+  method: "POST", json: { productSku }, idempotent: true,
+});
+export const registerCurrentDevice = (displayName = navigator.userAgent.slice(0, 80)) => apiRequest(
+  "/v1/devices/register",
+  { method: "POST", json: { deviceToken: getDeviceToken(), displayName }, idempotent: true },
+);
+export const getContentItems = () => apiRequest("/v1/content", { device: true });
+export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURIComponent(slug)}`, {
+  device: true, responseType: "response",
+});
+export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deletion", {
+  method: "POST", json: { reason }, idempotent: true,
+});
 
-export async function getAgeVerification(userId) {
-  try {
-    const result = await tables.listRows({ databaseId: appwriteConfig.databaseId, tableId: appwriteConfig.ageVerificationCollectionId, queries: [Query.equal("userId", [userId]), Query.orderDesc("submittedAt"), Query.limit(1)] });
-    return result.rows[0] || null;
-  } catch (error) {
-    if (error?.code === 404) return null;
-    throw error;
-  }
-}
+export const adminListAgeCases = () => apiRequest("/v1/age-verification/cases", { admin: true });
+export const adminGetAgeCase = (caseId) => apiRequest(
+  `/v1/age-verification/cases/${encodeURIComponent(caseId)}`,
+  { admin: true },
+);
+export const adminFetchAgeEvidence = (evidenceId) => apiRequest(
+  `/v1/age-verification/evidence/${encodeURIComponent(evidenceId)}`,
+  { admin: true, responseType: "response" },
+);
+export const adminDecideAgeCase = (caseId, decision, reason, checklist = []) => apiRequest(
+  `/v1/age-verification/cases/${encodeURIComponent(caseId)}/decision`,
+  { admin: true, method: "POST", json: { decision, reason, checklist }, idempotent: true },
+);
+export const adminImportN26Csv = (file) => apiRequest("/v1/payments/n26-csv-import", {
+  admin: true, method: "POST", raw: file, contentType: "text/csv", idempotent: true,
+});
+export const adminListContent = () => apiRequest("/v1/content/items", { admin: true });
+export const adminCreateContent = ({ slug, title, tier }) => apiRequest("/v1/content/items", {
+  admin: true, method: "POST", json: { slug, title, tier }, idempotent: true,
+});
+export const adminUploadContent = (contentId, file) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}/media`,
+  { admin: true, method: "PUT", raw: file, contentType: file.type, idempotent: true },
+);
 
-const acceptedVerificationTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
-const validateVerificationFile = (file) => {
-  if (!(file instanceof File) || !file.size) throw new Error("VERIFICATION_FILES_REQUIRED");
-  if (!acceptedVerificationTypes.has(file.type)) throw new Error("VERIFICATION_FILE_TYPE");
-  if (file.size > 10 * 1024 * 1024) throw new Error("VERIFICATION_FILE_SIZE");
-};
-
-export async function submitAgeVerification(user, { birthDate, country, legalName, identityDocument, selfie }) {
-  const age = Math.floor((Date.now() - new Date(`${birthDate}T00:00:00Z`).getTime()) / 31557600000);
-  if (!Number.isFinite(age) || age < 18) throw new Error("AGE_REQUIREMENT_NOT_MET");
-  validateVerificationFile(identityDocument);
-  validateVerificationFile(selfie);
-  const uploaded = [];
-  try {
-    for (const file of [identityDocument, selfie]) {
-      uploaded.push(await storage.createFile({
-        bucketId: appwriteConfig.storageBucketId,
-        fileId: ID.unique(),
-        file,
-        permissions: privateReadPermission(user.$id),
-      }));
-    }
-  } catch (error) {
-    throw error;
-  }
-  const request = {
-    legalName,
-    birthDate,
-    country: country.toUpperCase(),
-    documentFileId: uploaded[0].$id,
-    selfieFileId: uploaded[1].$id,
-  };
-  try {
-    const execution = await functions.createExecution({
-      functionId: appwriteConfig.verificationFunctionId,
-      body: JSON.stringify(request),
-      async: false,
-    });
-    if (execution.status === "failed") throw new Error("AGE_SUBMISSION_FAILED");
-  } catch (error) {
-    // Files have no browser-side delete permission, so a reviewer can audit and
-    // remove an orphan safely if document creation fails.
-    if (error?.code === 409) throw new Error("AGE_REQUEST_EXISTS");
-    throw error;
-  }
-  return { ...request, status: "PENDING_REVIEW" };
-}
-
-export { account, client, functions, storage, tables };
+export { account, client };

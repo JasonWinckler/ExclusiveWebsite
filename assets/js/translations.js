@@ -108,3 +108,60 @@ Object.assign(window.SiteTranslations.de, {
   curatedLabel: 'GESPERRTE KOLLEKTION', readyLabel: 'PRIVATE MITGLIEDSCHAFT', readyTitle: 'Bereit anzufangen?', readyText: 'Erstelle ein Konto oder kehre zu deinem privaten Dashboard zurück. Registrierung und Altersprüfung erscheinen nie direkt auf dieser öffentlichen Seite.',
   createAccount: 'Konto erstellen', openDashboard: 'Dashboard öffnen', viewStatus: 'Status ansehen', welcomeBack: 'Willkommen zurück', close: 'Dialog schließen', submitReview: 'Zur Prüfung einreichen'
 });
+Object.assign(window.SiteTranslations.en, {
+  ageFormTitle: 'Hosted age verification',
+  ageFormText: 'Continue to the specialist provider’s short-lived, hosted verification flow. This website does not upload or store your identity document, selfie or verification video.',
+  hostedVerificationPrivacy: 'The provider result is accepted only through a signed server-to-server webhook. Returning to this website does not approve the account.',
+  startHostedVerification: 'Continue to verification provider',
+  ageSubmitted: 'Your verification session has been created.',
+  ageAlreadyApproved: 'Age verification is already approved for this account.',
+  ageUnavailable: 'Age verification is not available yet. Access remains locked.',
+  emailRequired: 'Confirm your email address before starting age verification.',
+  backendUnavailable: 'The membership service is temporarily unavailable. Registration and Appwrite account access remain available; protected access stays locked.',
+  stepVerifyText: 'After email confirmation, continue to the specialist provider’s hosted age-verification flow.',
+  stepAccessText: 'Your dashboard shows the server-verified status. Protected areas remain closed unless every authorization check succeeds.',
+  backendLiveText: 'Appwrite handles account registration and sessions. Cloudflare is the fail-closed membership and authorization boundary.',
+  backendAvsLive: 'Verified-email users are redirected to a specialist provider; verification media is never uploaded to Appwrite.',
+  footerLive: 'Account authentication uses Appwrite. Membership authorization remains locked until the Cloudflare and provider rollout is verified.'
+});
+
+Object.assign(window.SiteTranslations.de, {
+  ageFormTitle: 'Gehostete Altersprüfung',
+  ageFormText: 'Du wechselst in einen kurzlebigen, gehosteten Prüfprozess eines spezialisierten Anbieters. Diese Website lädt weder Ausweisdokumente noch Selfies oder Prüfvideos hoch oder speichert sie.',
+  hostedVerificationPrivacy: 'Das Anbieterergebnis wird ausschließlich über einen signierten Server-zu-Server-Webhook akzeptiert. Die Rückkehr zu dieser Website erteilt keine Freigabe.',
+  startHostedVerification: 'Weiter zum Prüfungsanbieter',
+  ageSubmitted: 'Deine Prüfungssitzung wurde erstellt.',
+  ageAlreadyApproved: 'Die Altersprüfung für dieses Konto ist bereits freigegeben.',
+  ageUnavailable: 'Die Altersprüfung ist noch nicht verfügbar. Der Zugang bleibt gesperrt.',
+  emailRequired: 'Bestätige zuerst deine E-Mail-Adresse.',
+  backendUnavailable: 'Der Mitgliedschaftsdienst ist vorübergehend nicht verfügbar. Registrierung und Appwrite-Kontozugang bleiben verfügbar; geschützte Zugriffe bleiben gesperrt.',
+  stepVerifyText: 'Wechsle nach der E-Mail-Bestätigung in den gehosteten Altersprüfungsprozess eines spezialisierten Anbieters.',
+  stepAccessText: 'Dein Dashboard zeigt den serverseitig bestätigten Status. Geschützte Bereiche bleiben gesperrt, solange nicht jede Autorisierungsprüfung erfolgreich ist.',
+  backendLiveText: 'Appwrite übernimmt Kontoregistrierung und Sitzungen. Cloudflare bildet die standardmäßig sperrende Mitgliedschafts- und Autorisierungsgrenze.',
+  backendAvsLive: 'Nutzer mit bestätigter E-Mail werden zu einem spezialisierten Anbieter weitergeleitet; Prüfmedien werden nie in Appwrite hochgeladen.',
+  footerLive: 'Die Kontoauthentifizierung nutzt Appwrite. Mitgliedschaftszugriff bleibt gesperrt, bis Cloudflare- und Anbieter-Rollout verifiziert sind.'
+});
+
+Object.assign(window.SiteTranslations.en, {
+  stepVerifyText: 'After email confirmation, upload the front and back of your ID and record the required live camera video for manual review.',
+  stepAccessText: 'Your dashboard shows the owner-reviewed status. Protected areas remain closed unless every server-side authorization check succeeds.',
+  backendLiveText: 'Appwrite handles account registration and sessions. Cloudflare provides the fail-closed membership, manual review and authorization boundary.',
+  backendAvsLive: 'Verified-email users submit private ID images and a browser-recorded live video for owner-operated manual review.',
+  footerLive: 'Authentication uses Appwrite. Age evidence and protected media remain private behind Cloudflare authorization.',
+  ageAlreadyApproved: 'Age verification is already approved for this account.',
+  ageUnavailable: 'Age verification is not available yet. Access remains locked.',
+  emailRequired: 'Confirm your email address and complete age review before continuing.',
+  backendUnavailable: 'The membership service is temporarily unavailable. Protected access remains locked.'
+});
+
+Object.assign(window.SiteTranslations.de, {
+  stepVerifyText: 'Lade nach der E-Mail-Bestätigung Vorder- und Rückseite deines Ausweises hoch und nimm das verpflichtende Live-Kameravideo für die manuelle Prüfung auf.',
+  stepAccessText: 'Dein Dashboard zeigt den manuell geprüften Status. Geschützte Bereiche bleiben gesperrt, solange nicht jede serverseitige Zugriffsprüfung erfolgreich ist.',
+  backendLiveText: 'Appwrite übernimmt Kontoregistrierung und Sitzungen. Cloudflare bildet die standardmäßig sperrende Grenze für Mitgliedschaft, manuelle Prüfung und Autorisierung.',
+  backendAvsLive: 'Nutzer mit bestätigter E-Mail reichen private Ausweisbilder und ein direkt im Browser aufgenommenes Live-Video zur manuellen Prüfung ein.',
+  footerLive: 'Die Authentifizierung nutzt Appwrite. Altersnachweise und geschützte Medien bleiben privat hinter der Cloudflare-Autorisierung.',
+  ageAlreadyApproved: 'Die Altersprüfung für dieses Konto ist bereits freigegeben.',
+  ageUnavailable: 'Die Altersprüfung ist noch nicht verfügbar. Der Zugang bleibt gesperrt.',
+  emailRequired: 'Bestätige deine E-Mail-Adresse und schließe die Altersprüfung ab, bevor du fortfährst.',
+  backendUnavailable: 'Der Mitgliedschaftsdienst ist vorübergehend nicht verfügbar. Geschützte Zugriffe bleiben gesperrt.'
+});
