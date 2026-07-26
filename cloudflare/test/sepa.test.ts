@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { parseCsv } from "../src/shared/csv";
 import {
   accessLabelForTier,
   canManuallyActivatePaymentStatus,
   extractSepaTransferPurpose,
+  resolveN26CsvColumns,
 } from "../src/workers/admin-api";
 import {
   createSepaTransferPurpose,
@@ -36,6 +38,33 @@ describe("SEPA transfer purpose", () => {
       "exclusive content - id #a1b2c3d4e5f6",
       "4,99",
     ])).toBe("Exclusive Content - ID #A1B2C3D4E5F6");
+  });
+
+  it("accepts the current English N26 CSV export headers", () => {
+    const table = parseCsv([
+      '"Booking Date","Value Date","Partner Name","Partner Iban",Type,"Payment Reference","Account Name","Amount (EUR)","Original Amount","Original Currency","Exchange Rate"',
+      '"2026-07-26","2026-07-26","Test Sender","DE89370400440532013000","Credit Transfer","Exclusive Content - ID #A1B2C3D4E5F6","Test Account","1.99","","",""',
+    ].join("\n"));
+
+    expect(resolveN26CsvColumns(table.headers)).toEqual({
+      dateColumn: 0,
+      amountColumn: 7,
+    });
+    expect(extractSepaTransferPurpose(table.rows[0]!))
+      .toBe("Exclusive Content - ID #A1B2C3D4E5F6");
+  });
+
+  it("does not infer a payment purpose from an amount-only N26 credit", () => {
+    const table = parseCsv([
+      '"Booking Date","Value Date","Partner Name","Partner Iban",Type,"Payment Reference","Account Name","Amount (EUR)","Original Amount","Original Currency","Exchange Rate"',
+      '"2026-07-26","2026-07-26","Test Sender","DE89370400440532013000","Credit Transfer","","Test Account","1.99","","",""',
+    ].join("\n"));
+
+    expect(resolveN26CsvColumns(table.headers)).toEqual({
+      dateColumn: 0,
+      amountColumn: 7,
+    });
+    expect(extractSepaTransferPurpose(table.rows[0]!)).toBeNull();
   });
 
   it("allows manual support activation only for unsettled order states", () => {
