@@ -135,6 +135,7 @@ export const resendVerification = () => account.createVerification({ url: callba
 export const requestPasswordReset = (email) => account.createRecovery({ email, url: callbackUrl("recover") });
 export const completePasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
 export const completeEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
+export const updateProfileName = (name) => account.updateName({ name });
 
 export const getProducts = () => apiRequest("/v1/products", { authenticated: false });
 export const getMembershipStatus = () => apiRequest("/v1/membership/status");
@@ -152,9 +153,15 @@ export const submitAgeVerificationCase = (caseId) => apiRequest(
   `/v1/age-verification/cases/${encodeURIComponent(caseId)}/submit`,
   { method: "POST", json: {}, idempotent: true },
 );
-export const createSepaOrder = (productSku) => apiRequest("/v1/payments/sepa-orders", {
-  method: "POST", json: { productSku }, idempotent: true,
+export const createSepaOrder = (productSku, billing, locale = "de") => apiRequest("/v1/payments/sepa-orders", {
+  method: "POST", json: { productSku, billing, locale }, idempotent: true,
 });
+export const getPaymentOrders = () => apiRequest("/v1/payments/orders");
+export const cancelPaymentOrder = (orderId, reason) => apiRequest(
+  `/v1/payments/orders/${encodeURIComponent(orderId)}`,
+  { method: "DELETE", json: { reason }, idempotent: true },
+);
+export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/premium-telegram");
 export const registerCurrentDevice = (displayName = navigator.userAgent.slice(0, 80)) => apiRequest(
   "/v1/devices/register",
   { method: "POST", json: { deviceToken: getDeviceToken(), displayName }, idempotent: true },
@@ -166,6 +173,23 @@ export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURICom
 export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deletion", {
   method: "POST", json: { reason }, idempotent: true,
 });
+
+export const adminListUsers = () => apiRequest("/v1/users", { admin: true });
+export const adminGetUserStatus = (userId) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/status`, { admin: true },
+);
+export const adminRestrictUser = (userId, reason) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/restrict`,
+  { admin: true, method: "POST", json: { reason }, idempotent: true },
+);
+export const adminUnrestrictUser = (userId, reason) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/unrestrict`,
+  { admin: true, method: "POST", json: { reason }, idempotent: true },
+);
+export const adminScheduleAccountDeletion = (userId, reason) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}`,
+  { admin: true, method: "DELETE", json: { reason, confirmed: true }, idempotent: true },
+);
 
 export const adminListAgeCases = () => apiRequest("/v1/age-verification/cases", { admin: true });
 export const adminGetAgeCase = (caseId) => apiRequest(
@@ -191,6 +215,14 @@ export const adminActivatePaymentOrder = (orderId, reason) => apiRequest(
     json: { reason, confirmedPaymentReceived: true },
     idempotent: true,
   },
+);
+export const adminCancelPaymentOrder = (orderId, reason) => apiRequest(
+  `/v1/payments/orders/${encodeURIComponent(orderId)}/cancel`,
+  { admin: true, method: "POST", json: { reason }, idempotent: true },
+);
+export const adminArchivePaymentOrder = (orderId, reason) => apiRequest(
+  `/v1/payments/orders/${encodeURIComponent(orderId)}`,
+  { admin: true, method: "DELETE", json: { reason }, idempotent: true },
 );
 export const adminImportN26Csv = (file) => apiRequest("/v1/payments/n26-csv-import", {
   admin: true, method: "POST", raw: file, contentType: "text/csv", idempotent: true,
