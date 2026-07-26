@@ -195,14 +195,15 @@ async function createAgeCase(
         INSERT INTO age_verification_cases (
           id, appwrite_user_id, status, review_method, manual_review_status,
           instructions_version, consented_at, liveness_challenge_json,
-          upload_expires_at, idempotency_key, created_at, updated_at
-        ) VALUES (?, ?, 'PENDING', 'MANUAL_R2', 'UPLOADING', ?, ?, ?, ?, ?, ?, ?)
+          upload_expires_at, retention_until, idempotency_key, created_at, updated_at
+        ) VALUES (?, ?, 'PENDING', 'MANUAL_R2', 'UPLOADING', ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         caseId,
         userId,
         AGE_INSTRUCTIONS_VERSION,
         now,
         JSON.stringify(challenge),
+        uploadExpiresAt,
         uploadExpiresAt,
         idempotencyKey,
         now,
@@ -398,7 +399,8 @@ async function submitAgeCase(
   const now = isoNow();
   const updated = await env.DB.prepare(`
     UPDATE age_verification_cases SET manual_review_status = 'READY_FOR_REVIEW',
-      submitted_at = ?, submission_idempotency_key = ?, version = version + 1, updated_at = ?
+      submitted_at = ?, submission_idempotency_key = ?, retention_until = NULL,
+      version = version + 1, updated_at = ?
     WHERE id = ? AND appwrite_user_id = ? AND status = 'PENDING'
       AND manual_review_status = 'UPLOADING' AND submission_idempotency_key IS NULL
   `).bind(now, idempotencyKey, now, caseId, userId).run();
