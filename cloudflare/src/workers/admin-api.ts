@@ -380,6 +380,29 @@ function n26Column(headers: string[], candidates: readonly string[]): number {
   return normalized.findIndex((header) => candidates.includes(header));
 }
 
+export function resolveN26CsvColumns(
+  headers: string[],
+): { dateColumn: number; amountColumn: number } | null {
+  const dateColumn = n26Column(headers, [
+    "booking date",
+    "buchungsdatum",
+    "buchungstag",
+    "date",
+    "datum",
+    "value date",
+    "wertstellungsdatum",
+  ]);
+  const amountColumn = n26Column(headers, [
+    "amount (eur)",
+    "betrag (eur)",
+    "amount",
+    "betrag",
+  ]);
+  return dateColumn >= 0 && amountColumn >= 0
+    ? { dateColumn, amountColumn }
+    : null;
+}
+
 function parseN26Date(value: string): string | null {
   const trimmed = value.trim();
   const german = /^(\d{2})\.(\d{2})\.(\d{4})(?:[ T].*)?$/.exec(trimmed);
@@ -617,14 +640,13 @@ async function manuallyActivatePaymentOrder(
         payload_sha256, idempotency_key, matched_subscription_id,
         match_status, created_at
       )
-      SELECT ?, 'ADMIN', ?, ?, ?, ?, ?, ?, ?, ?, ?, id, 'MATCHED', ?
+      SELECT ?, 'ADMIN', ?, ?, ?, NULL, ?, ?, ?, ?, ?, id, 'MATCHED', ?
       FROM subscriptions WHERE id = ? AND settlement_note = ?
     `).bind(
       transactionId,
       `admin:${transactionId}`,
       subscription.amount_minor,
       subscription.currency,
-      subscription.transfer_reference,
       subscription.transfer_reference,
       settledAt,
       settledAt,
@@ -767,9 +789,9 @@ async function importN26Csv(
     throw new ApiError(400, "CSV_MUST_BE_UTF8");
   }
   const table = parseCsv(csv, 2_000, 64);
-  const dateColumn = n26Column(table.headers, ["date", "datum"]);
-  const amountColumn = n26Column(table.headers, ["amount (eur)", "betrag (eur)", "amount", "betrag"]);
-  if (dateColumn < 0 || amountColumn < 0) throw new ApiError(400, "UNSUPPORTED_N26_CSV_HEADERS");
+  const columns = resolveN26CsvColumns(table.headers);
+  if (!columns) throw new ApiError(400, "UNSUPPORTED_N26_CSV_HEADERS");
+  const { dateColumn, amountColumn } = columns;
   const importId = crypto.randomUUID();
   const fileHash = await sha256Hex(bytes);
   const startedAt = isoNow();
@@ -810,15 +832,15 @@ async function importN26Csv(
       summary.duplicates += 1;
       continue;
     }
-    const reference = extractSepaTransferPurpose(row);
-    const subscription = reference
+    const transferPurpose = extractSepaTransferPurpose(row);
+    const subscription = transferPurpose
       ? await env.DB.prepare(`
         SELECT s.id, s.appwrite_user_id, s.status, s.amount_minor, s.currency,
           p.id AS product_id, p.tier, p.duration_unit, p.duration_value
         FROM subscriptions s
         JOIN products p ON p.id = s.product_id
         WHERE s.transfer_reference = ?
-      `).bind(reference).first<{
+      `).bind(transferPurpose).first<{
         id: string;
         appwrite_user_id: string;
         status: string;
@@ -833,8 +855,8 @@ async function importN26Csv(
     const exactMatch = subscription?.status === "PENDING" &&
       subscription.amount_minor === amountMinor && subscription.currency === "EUR";
     const matchStatus = exactMatch ? "MATCHED" : subscription ? "REVIEW_REQUIRED" : "UNMATCHED";
-    const errorCode = !reference
-      ? "CREDITOR_REFERENCE_NOT_FOUND"
+    const errorCode = !transferPurpose
+      ? "REMITTANCE_INFORMATION_NOT_FOUND"
       : subscription && !exactMatch
         ? "ORDER_STATUS_OR_AMOUNT_MISMATCH"
         : null;
@@ -843,14 +865,14 @@ async function importN26Csv(
       await env.DB.prepare(`
         INSERT INTO bank_transactions (
           id, source, external_transaction_id, amount_minor, currency,
-          creditor_reference, booked_at, received_at, payload_sha256,
+          remittance_information, booked_at, received_at, payload_sha256,
           idempotency_key, match_status, processing_error_code, created_at
         ) VALUES (?, 'N26_CSV', ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         transactionId,
         externalTransactionId,
         amountMinor,
-        reference,
+        transferPurpose,
         bookedAt,
         startedAt,
         payloadHash,
@@ -884,14 +906,14 @@ async function importN26Csv(
       env.DB.prepare(`
         INSERT INTO bank_transactions (
           id, source, external_transaction_id, amount_minor, currency,
-          creditor_reference, booked_at, received_at, payload_sha256,
+          remittance_information, booked_at, received_at, payload_sha256,
           idempotency_key, matched_subscription_id, match_status, created_at
         ) VALUES (?, 'N26_CSV', ?, ?, 'EUR', ?, ?, ?, ?, ?, ?, 'MATCHED', ?)
       `).bind(
         transactionId,
         externalTransactionId,
         amountMinor,
-        reference,
+        transferPurpose,
         bookedAt,
         settledAt,
         payloadHash,
