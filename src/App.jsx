@@ -49,7 +49,7 @@ const copy = {
     paymentTitle: "Bestellung & SEPA-Zahlung",
     paymentIntro: "Prüfe deine Auswahl und Rechnungsdaten. Anschließend erhältst du deine persönlichen SEPA-Zahlungsdaten.",
     checkoutReviewTitle: "Bestellübersicht",
-    checkoutReviewText: "Deine Bestellung wird erst nach deiner Bestätigung verbindlich angelegt.",
+    checkoutReviewText: "Prüfe alle Angaben in Ruhe. Verbindlich wird die Bestellung erst mit dem abschließenden, eindeutig gekennzeichneten Bestellbutton.",
     productLabel: "Mitgliedschaft",
     durationCheckout: "Laufzeit",
     billingAccount: "Abrechnungskonto",
@@ -60,10 +60,11 @@ const copy = {
     accessLabel: "Freischaltung",
     accessValue: "Nach bestätigtem Zahlungseingang",
     totalDue: "Heute zu zahlen",
-    confirmationText: "Ich bestätige Tarif, Laufzeit und Gesamtbetrag und möchte im nächsten Schritt die SEPA-Zahlungsdaten anfordern.",
-    confirmOrder: "Bestellung bestätigen",
+    confirmationText: "Ich habe Tarif, Laufzeit, Gesamtpreis und Rechnungsdaten geprüft.",
+    digitalConsentText: "Ich verlange ausdrücklich, dass der digitale Zugang nach bestätigtem Zahlungseingang vor Ablauf der 14-tägigen Widerrufsfrist beginnt. Mir ist bekannt, dass mein Widerrufsrecht mit Beginn der Bereitstellung erlischt.",
+    confirmOrder: "Weiter zur SEPA-Zahlung",
     backToSummary: "Zurück zur Bestellübersicht",
-    payWithSepa: "PAY WITH SEPA",
+    payWithSepa: "ZAHLUNGSPFLICHTIG BESTELLEN",
     databaseOrderNote: "Im nächsten Schritt erhältst du QR-Code und Zahlungsdaten für eine einmalige SEPA-Überweisung.",
     qrView: "QR-Code",
     detailsView: "Zahlungsdaten",
@@ -74,7 +75,7 @@ const copy = {
     amount: "Betrag",
     reference: "Verwendungszweck",
     due: "Zahlbar bis",
-    paymentPending: "Nach der Überweisung kann die Zuordnung erst mit dem nächsten N26-CSV-Abgleich im Adminbereich erfolgen.",
+    paymentPending: "Sobald dein Zahlungseingang bestätigt wurde, wird dein Zugang automatisch freigeschaltet. Den aktuellen Status findest du jederzeit unter „Bestellungen“.",
     ageTitle: "Manuelle Altersprüfung",
     ageText: "Lade gut lesbare Bilder der Vorder- und Rückseite deines Ausweises hoch. Nimm danach direkt im Browser ein Live-Video auf, in dem dein Gesicht sichtbar ist, du den Ausweis hochhältst und deinen Kopf bewegst.",
     documentFront: "Ausweis – Vorderseite",
@@ -98,7 +99,7 @@ const copy = {
     consentText: "Ich bin mindestens 18 Jahre alt, verwende meinen eigenen gültigen Ausweis und willige in die ausschließlich zur Alters- und Identitätsprüfung erforderliche Verarbeitung der Ausweisbilder und Live-Aufnahme ein. Ich habe die Datenschutzhinweise und Löschfrist gelesen.",
     beginVerification: "Einmal-Challenge erzeugen",
     challengeTitle: "Deine persönliche Live-Challenge",
-    agePrivacy: "Bilder und Videos werden privat in Cloudflare R2 gespeichert, sind nicht öffentlich abrufbar und werden nach der festgelegten Aufbewahrungsfrist gelöscht.",
+    agePrivacy: "Deine Nachweise werden verschlüsselt und ausschließlich zur manuellen Altersprüfung verarbeitet. Nach einer Freigabe werden Ausweisbilder und Video unmittelbar gelöscht. Mehr dazu in der Datenschutzerklärung.",
     submitAge: "Sicher hochladen & zur Prüfung senden",
     ageSubmitted: "Deine Anfrage wurde zur manuellen Prüfung eingereicht.",
     reviewReady: "Zur Prüfung eingereicht",
@@ -133,7 +134,7 @@ const copy = {
     paymentTitle: "Order & SEPA payment",
     paymentIntro: "Review your selection and billing details. Your personal SEPA payment details are shown in the next step.",
     checkoutReviewTitle: "Order summary",
-    checkoutReviewText: "Your order is created only after you confirm it.",
+    checkoutReviewText: "Review every detail at your pace. The order becomes binding only when you select the final button that clearly states the payment obligation.",
     productLabel: "Membership",
     durationCheckout: "Term",
     billingAccount: "Billing account",
@@ -144,10 +145,11 @@ const copy = {
     accessLabel: "Activation",
     accessValue: "After confirmed receipt of payment",
     totalDue: "Due now",
-    confirmationText: "I confirm the plan, term and total amount and want to request the SEPA payment details in the next step.",
-    confirmOrder: "Confirm order",
+    confirmationText: "I have reviewed the tier, term, total price and billing details.",
+    digitalConsentText: "I expressly request digital access to begin after confirmed payment and before the 14-day withdrawal period ends. I understand that my withdrawal right expires when supply begins.",
+    confirmOrder: "Continue to SEPA payment",
     backToSummary: "Back to order summary",
-    payWithSepa: "PAY WITH SEPA",
+    payWithSepa: "ORDER & PAY WITH SEPA",
     databaseOrderNote: "The next step shows your QR code and payment details for a one-time SEPA credit transfer.",
     qrView: "QR code",
     detailsView: "Payment details",
@@ -158,7 +160,7 @@ const copy = {
     amount: "Amount",
     reference: "Remittance information",
     due: "Pay by",
-    paymentPending: "After transfer, matching takes place with the next N26 CSV reconciliation in the admin portal.",
+    paymentPending: "Your access activates as soon as payment is confirmed. You can check the current status at any time under Orders.",
     ageTitle: "Manual age review",
     ageText: "Upload legible images of the front and back of your ID. Then record a live video in the browser showing your face, holding up the ID and moving your head.",
     documentFront: "ID – front",
@@ -182,7 +184,7 @@ const copy = {
     consentText: "I am at least 18, use my own valid ID and consent to processing the ID images and live recording only as necessary for age and identity review. I have read the privacy and deletion information.",
     beginVerification: "Create one-time challenge",
     challengeTitle: "Your personal live challenge",
-    agePrivacy: "Images and videos are stored privately in Cloudflare R2, cannot be accessed publicly, and are removed after the configured retention period.",
+    agePrivacy: "Your evidence is encrypted and processed only for manual age verification. ID images and video are deleted immediately after approval. Learn more in the privacy notice.",
     submitAge: "Upload securely & submit",
     ageSubmitted: "Your request was submitted for manual review.",
     reviewReady: "Submitted for review",
@@ -497,6 +499,7 @@ export default function App() {
   const [sepaOrder, setSepaOrder] = useState(null);
   const [checkoutStep, setCheckoutStep] = useState("review");
   const [checkoutAccepted, setCheckoutAccepted] = useState(false);
+  const [digitalConsentAccepted, setDigitalConsentAccepted] = useState(false);
   const [paymentView, setPaymentView] = useState("qr");
   const [gallery, setGallery] = useState([]);
   const [contentPreview, setContentPreview] = useState(null);
@@ -723,6 +726,7 @@ export default function App() {
     setSepaOrder(null);
     setCheckoutStep("review");
     setCheckoutAccepted(false);
+    setDigitalConsentAccepted(false);
     setPaymentView("qr");
     setModal("payment");
   };
@@ -731,7 +735,11 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      const order = await createSepaOrder(selectedProduct.sku, billing, language);
+      const order = await createSepaOrder(selectedProduct.sku, billing, language, {
+        termsVersion: "EU-2026-07-27-v1",
+        digitalContentConsent: digitalConsentAccepted,
+        withdrawalAcknowledgement: digitalConsentAccepted,
+      });
       setSepaOrder(order);
       await refresh();
     } catch (error) {
@@ -915,7 +923,7 @@ export default function App() {
       <section id="access" className="section access-section"><div><p className="eyebrow">{t.readyLabel}</p><h2>{t.readyTitle}</h2><p>{t.readyText}</p></div><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.openDashboard : t.createAccount}</button><button className="secondary-action" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.viewStatus : t.login}</button></div></section>
       </>}
     </main>
-    <footer id="legal" className="site-footer legal-footer"><div><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><p>{t.footerLive}</p></div><nav><a href="https://www.instagram.com/shadows.temptation_official/" target="_blank" rel="noopener noreferrer">Instagram</a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a></nav></footer>
+    <footer id="legal" className="site-footer legal-footer"><div><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><p>{language === "de" ? "Private Memberships. Persönlich kuratiert. Ausschließlich für verifizierte Erwachsene." : "Private memberships. Personally curated. Exclusively for verified adults."}</p></div><nav><a href="https://www.instagram.com/shadows.temptation_official/" target="_blank" rel="noopener noreferrer">Instagram</a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a></nav></footer>
 
     {modal === "auth" && <Modal title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset} eyebrow={t.secureAccount} onClose={() => setModal(null)} t={t}><div className="auth-tabs">{["login", "register", "reset"].map((item) => <button type="button" className={mode === item ? "is-active" : ""} onClick={() => { setMode(item); setNotice(""); }} key={item}>{t[item]}</button>)}</div>{notice && <p className="form-notice" role="status">{notice}</p>}<form className="auth-panel" onSubmit={handleAuth}>{mode === "register" && <Field label={t.name} name="name" autoComplete="name" required maxLength="128" />}{mode !== "recover" && <Field label={t.emailLabel} name="email" type="email" autoComplete="email" required />}{mode !== "reset" && <Field label={t.password} name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength="8" required />}<button className="primary-action" disabled={busy}>{busy ? ui.loading : t[`${mode}Submit`]}</button></form></Modal>}
 
@@ -1017,8 +1025,12 @@ export default function App() {
           <input type="checkbox" checked={checkoutAccepted} onChange={(event) => setCheckoutAccepted(event.target.checked)} />
           <span>{ui.confirmationText}</span>
         </label>
-        <p className="checkout-legal-note">{language === "de" ? <>Mit der Bestellung gelten unsere <a href="/legal/#terms" target="_blank">AGB</a>, <a href="/legal/#withdrawal" target="_blank">Widerrufsinformationen</a> und <a href="/legal/#privacy" target="_blank">Datenschutzhinweise</a>.</> : <>Your order is subject to our <a href="/legal/#terms" target="_blank">Terms</a>, <a href="/legal/#withdrawal" target="_blank">Cancellation information</a> and <a href="/legal/#privacy" target="_blank">Privacy notice</a>.</>}</p>
-        <button className="primary-action" type="button" disabled={!checkoutAccepted || busy || !billing.name.trim() || !billing.street.trim() || !billing.postalCode.trim() || !billing.city.trim() || !/^[A-Z]{2}$/.test(billing.countryCode)} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
+        <label className="checkout-confirmation">
+          <input type="checkbox" checked={digitalConsentAccepted} onChange={(event) => setDigitalConsentAccepted(event.target.checked)} />
+          <span>{ui.digitalConsentText}</span>
+        </label>
+        <p className="checkout-legal-note">{language === "de" ? <>Es gelten unsere <a href="/legal/eu/#terms" target="_blank" rel="noopener noreferrer">AGB</a>, <a href="/legal/eu/#withdrawal" target="_blank" rel="noopener noreferrer">Widerrufsinformationen</a> und <a href="/legal/eu/#privacy" target="_blank" rel="noopener noreferrer">Datenschutzhinweise</a>.</> : <>Your order is subject to our <a href="/legal/eu/#terms" target="_blank" rel="noopener noreferrer">Terms</a>, <a href="/legal/eu/#withdrawal" target="_blank" rel="noopener noreferrer">withdrawal information</a> and <a href="/legal/eu/#privacy" target="_blank" rel="noopener noreferrer">Privacy notice</a>.</>}</p>
+        <button className="primary-action" type="button" disabled={!checkoutAccepted || !digitalConsentAccepted || busy || !billing.name.trim() || !billing.street.trim() || !billing.postalCode.trim() || !billing.city.trim() || !/^[A-Z]{2}$/.test(billing.countryCode)} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
       </div>}
       {!sepaOrder && checkoutStep === "pay" && <div className="payment-start">
         <div className="payment-total"><span>{selectedProduct.displayName} · {durationLabel(selectedProduct, language)}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
