@@ -1,21 +1,25 @@
-import { Account, Client, Databases, ID, Permission, Role, Storage } from "appwrite";
+import { Account, Client, Functions, ID, Permission, Query, Role, Storage, TablesDB } from "appwrite";
 
 export const appwriteConfig = Object.freeze({
   endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1",
   projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || "6a64cbeb0009826c9efc",
   databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || "6a64f96800187b534953",
-  usersCollectionId: import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
-  ageVerificationCollectionId: import.meta.env.VITE_APPWRITE_AGE_COLLECTION_ID || "age_verifications",
+  usersCollectionId: import.meta.env.VITE_APPWRITE_USERS_COLLECTION_ID || "user_profiles",
+  ageVerificationCollectionId: import.meta.env.VITE_APPWRITE_AGE_COLLECTION_ID || "age_verification_cases",
   storageBucketId: import.meta.env.VITE_APPWRITE_STORAGE_BUCKET_ID || "6a657e2b0008347358ee",
+  provisionFunctionId: import.meta.env.VITE_APPWRITE_PROVISION_FUNCTION_ID || "account-provisioning",
+  verificationFunctionId: import.meta.env.VITE_APPWRITE_VERIFICATION_FUNCTION_ID || "age-verification-finalize",
 });
 
 const client = new Client().setEndpoint(appwriteConfig.endpoint).setProject(appwriteConfig.projectId);
 const account = new Account(client);
-const databases = new Databases(client);
+const tables = new TablesDB(client);
 const storage = new Storage(client);
+const functions = new Functions(client);
 
-// Status fields are intentionally read-only to the browser. Only Appwrite Console or
-// a future server Function holding an API key may approve or reject a request.
+// Browser permissions are deliberately limited to reading the user's own records.
+// Status, tier, expiry, payment, jurisdiction, and entitlement fields are written
+// only by the server Functions.
 const privateReadPermission = (userId) => [Permission.read(Role.user(userId))];
 
 export async function getCurrentUser() {
@@ -29,12 +33,10 @@ export async function registerAccount({ name, email, password }) {
   const user = await account.create({ userId: ID.unique(), email, password, name });
   await account.createEmailPasswordSession({ email, password });
   try {
-    await databases.createDocument({
-      databaseId: appwriteConfig.databaseId,
-      collectionId: appwriteConfig.usersCollectionId,
-      documentId: user.$id,
-      data: { userId: user.$id, email, name, status: "EMAIL_PENDING", ageVerificationStatus: "NOT_STARTED" },
-      permissions: privateReadPermission(user.$id),
+    await functions.createExecution({
+      functionId: appwriteConfig.provisionFunctionId,
+      body: JSON.stringify({ name }),
+      async: false,
     });
   } catch (error) {
     await account.deleteSession({ sessionId: "current" }).catch(() => undefined);
@@ -53,7 +55,7 @@ export const completeEmailVerification = (userId, secret) => account.updateVerif
 
 export async function getMemberProfile(userId) {
   try {
-    return await databases.getDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.usersCollectionId, documentId: userId });
+    return await tables.getRow({ databaseId: appwriteConfig.databaseId, tableId: appwriteConfig.usersCollectionId, rowId: userId });
   } catch (error) {
     if (error?.code === 404) return null;
     throw error;
@@ -62,7 +64,8 @@ export async function getMemberProfile(userId) {
 
 export async function getAgeVerification(userId) {
   try {
-    return await databases.getDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.ageVerificationCollectionId, documentId: userId });
+    const result = await tables.listRows({ databaseId: appwriteConfig.databaseId, tableId: appwriteConfig.ageVerificationCollectionId, queries: [Query.equal("userId", [userId]), Query.orderDesc("submittedAt"), Query.limit(1)] });
+    return result.rows[0] || null;
   } catch (error) {
     if (error?.code === 404) return null;
     throw error;
@@ -94,25 +97,27 @@ export async function submitAgeVerification(user, { birthDate, country, legalNam
   } catch (error) {
     throw error;
   }
-  const data = {
-    userId: user.$id,
+  const request = {
     legalName,
     birthDate,
     country: country.toUpperCase(),
-    status: "MANUAL_REVIEW_PENDING",
-    submittedAt: new Date().toISOString(),
     documentFileId: uploaded[0].$id,
     selfieFileId: uploaded[1].$id,
   };
   try {
-    await databases.createDocument({ databaseId: appwriteConfig.databaseId, collectionId: appwriteConfig.ageVerificationCollectionId, documentId: user.$id, data, permissions: privateReadPermission(user.$id) });
+    const execution = await functions.createExecution({
+      functionId: appwriteConfig.verificationFunctionId,
+      body: JSON.stringify(request),
+      async: false,
+    });
+    if (execution.status === "failed") throw new Error("AGE_SUBMISSION_FAILED");
   } catch (error) {
     // Files have no browser-side delete permission, so a reviewer can audit and
     // remove an orphan safely if document creation fails.
     if (error?.code === 409) throw new Error("AGE_REQUEST_EXISTS");
     throw error;
   }
-  return data;
+  return { ...request, status: "PENDING_REVIEW" };
 }
 
-export { account, client, databases, storage };
+export { account, client, functions, storage, tables };
