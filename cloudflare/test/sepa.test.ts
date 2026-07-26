@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractSepaTransferPurpose } from "../src/workers/admin-api";
+import {
+  accessLabelForTier,
+  canManuallyActivatePaymentStatus,
+  extractSepaTransferPurpose,
+} from "../src/workers/admin-api";
 import {
   createSepaTransferPurpose,
   epcQrPayload,
@@ -32,6 +36,20 @@ describe("SEPA transfer purpose", () => {
       "exclusive content - id #a1b2c3d4e5f6",
       "4,99",
     ])).toBe("Exclusive Content - ID #A1B2C3D4E5F6");
+  });
+
+  it("allows manual support activation only for unsettled order states", () => {
+    expect(canManuallyActivatePaymentStatus("PENDING")).toBe(true);
+    expect(canManuallyActivatePaymentStatus("PROCESSING")).toBe(true);
+    expect(canManuallyActivatePaymentStatus("PAID")).toBe(true);
+    expect(canManuallyActivatePaymentStatus("ACTIVE")).toBe(false);
+    expect(canManuallyActivatePaymentStatus("REFUNDED")).toBe(false);
+  });
+
+  it("maps payment tiers to the Appwrite access labels", () => {
+    expect(accessLabelForTier("EXCLUSIVE_BASIC")).toBe("active_basic");
+    expect(accessLabelForTier("EXCLUSIVE_PREMIUM")).toBe("active_premium");
+    expect(accessLabelForTier("EXCLUSIVE_VIP")).toBe("active_vip");
   });
 
   it("validates an IBAN without embedding production bank data", () => {
