@@ -17,7 +17,10 @@ import {
   requestId,
   requireIdempotencyKey,
 } from "../shared/http";
-import { syncAppwriteLabel } from "../shared/identity-service";
+import {
+  syncAppwriteLabel,
+  updateAppwriteUserStatus,
+} from "../shared/identity-service";
 import { sha256Hex } from "../shared/security";
 import type { AdminEnv, AgeEvidenceRow } from "../shared/types";
 
@@ -122,6 +125,27 @@ async function userStatus(env: AdminEnv, userId: string): Promise<Record<string,
   };
 }
 
+async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
+  const users = await env.DB.prepare(`
+    SELECT u.appwrite_user_id, u.email, u.display_name, u.email_verified,
+      u.account_status, u.age_status, u.restricted_at, u.restriction_reason,
+      u.administrative_hold, u.last_active_at, u.created_at, u.updated_at,
+      COUNT(DISTINCT s.id) AS order_count,
+      SUM(CASE WHEN s.status IN ('PENDING', 'PROCESSING', 'PAID') THEN 1 ELSE 0 END) AS open_order_count,
+      MAX(e.expires_at) AS entitlement_expires_at
+    FROM user_profiles u
+    LEFT JOIN subscriptions s ON s.appwrite_user_id = u.appwrite_user_id
+      AND s.archived_at IS NULL
+    LEFT JOIN entitlements e ON e.appwrite_user_id = u.appwrite_user_id
+      AND e.status = 'ACTIVE'
+    WHERE u.account_status != 'DELETED'
+    GROUP BY u.appwrite_user_id
+    ORDER BY u.created_at DESC
+    LIMIT 500
+  `).all();
+  return { users: users.results };
+}
+
 async function pendingAgeCases(env: AdminEnv): Promise<Record<string, unknown>> {
   const cases = await env.DB.prepare(`
     SELECT c.id, c.appwrite_user_id, c.status, c.manual_review_status,
@@ -210,6 +234,36 @@ async function streamAgeEvidence(
   return new Response(object.body, { headers });
 }
 
+async function deleteAgeEvidenceImmediately(
+  env: AdminEnv,
+  caseId: string,
+  now: string,
+): Promise<"DELETED" | "NONE"> {
+  const uploads = await env.DB.prepare(`
+    SELECT id, r2_object_key FROM age_verification_uploads
+    WHERE age_case_id = ? AND deleted_at IS NULL
+  `).bind(caseId).all<{ id: string; r2_object_key: string }>();
+  if (!uploads.results.length) {
+    await env.DB.prepare(`
+      UPDATE age_verification_cases SET evidence_deleted_at = COALESCE(evidence_deleted_at, ?),
+        retention_until = ?, updated_at = ? WHERE id = ?
+    `).bind(now, now, now, caseId).run();
+    return "NONE";
+  }
+  await Promise.all(uploads.results.map((upload) => env.VERIFICATION_UPLOADS.delete(upload.r2_object_key)));
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE age_verification_uploads SET deleted_at = ?, updated_at = ?
+      WHERE age_case_id = ? AND deleted_at IS NULL
+    `).bind(now, now, caseId),
+    env.DB.prepare(`
+      UPDATE age_verification_cases SET evidence_deleted_at = ?, retention_until = ?,
+        updated_at = ? WHERE id = ?
+    `).bind(now, now, now, caseId),
+  ]);
+  return "DELETED";
+}
+
 async function decideAgeCase(
   request: Request,
   env: AdminEnv,
@@ -253,9 +307,11 @@ async function decideAgeCase(
     throw new ApiError(409, "AGE_CASE_NOT_DECIDABLE");
   }
   const now = isoNow();
-  const retentionUntil = new Date(
-    Date.now() + parsePositiveInt(env.AGE_EVIDENCE_RETENTION_DAYS, 7, 90) * 86_400_000,
-  ).toISOString();
+  const retentionUntil = body.decision === "APPROVED"
+    ? now
+    : new Date(
+      Date.now() + parsePositiveInt(env.AGE_EVIDENCE_RETENTION_DAYS, 7, 90) * 86_400_000,
+    ).toISOString();
   const approvalExpiresAt = body.decision === "APPROVED"
     ? new Date(
       Date.now() + parsePositiveInt(env.AGE_APPROVAL_VALID_DAYS, 365, 3_650) * 86_400_000,
@@ -361,12 +417,26 @@ async function decideAgeCase(
       `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, attemptId),
     ]);
   }
+  let evidenceDeletionStatus: "NOT_REQUIRED" | "DELETED" | "NONE" | "RETRY_REQUIRED" =
+    body.decision === "APPROVED" ? "RETRY_REQUIRED" : "NOT_REQUIRED";
+  if (body.decision === "APPROVED") {
+    try {
+      evidenceDeletionStatus = await deleteAgeEvidenceImmediately(env, ageCase.id, isoNow());
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "approved_age_evidence_deletion_failed",
+        caseId: ageCase.id,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
   return {
     caseId: ageCase.id,
     userId: ageCase.appwrite_user_id,
     status: body.decision,
     expiresAt: approvalExpiresAt,
     evidenceRetentionUntil: retentionUntil,
+    evidenceDeletionStatus,
     labelSyncStatus,
   };
 }
@@ -480,7 +550,9 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
     SELECT s.id, s.appwrite_user_id, s.transfer_reference, s.amount_minor,
       s.currency, s.status, s.payment_due_at, s.current_period_start,
       s.current_period_end, s.settled_at, s.settlement_note,
-      s.created_at, s.updated_at, p.sku AS product_sku,
+      s.created_at, s.updated_at, s.cancelled_at, s.cancellation_source,
+      s.cancellation_reason, s.archived_at, s.archive_reason,
+      p.sku AS product_sku,
       p.display_name AS product_name, p.tier, p.duration_unit,
       p.duration_value, u.email, u.display_name
     FROM subscriptions s
@@ -1316,7 +1388,240 @@ async function restrictUser(
       now,
     }),
   ]);
-  return { accountStatus: "RESTRICTED" };
+  let appwriteStatusSync = "SYNCED";
+  try {
+    await updateAppwriteUserStatus(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      false,
+    );
+  } catch {
+    appwriteStatusSync = "FAILED";
+  }
+  return { accountStatus: "RESTRICTED", appwriteStatusSync };
+}
+
+async function unrestrictUser(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason"]);
+  const reason = validateReason(body.reason);
+  const previous = await getUserProfile(env.DB, userId);
+  if (!previous) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  if (previous.account_status !== "RESTRICTED") {
+    throw new ApiError(409, "ACCOUNT_NOT_RESTRICTED");
+  }
+  const now = isoNow();
+  const nextStatus = previous.email_verified === 1 ? "ACTIVE" : "EMAIL_PENDING";
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE user_profiles SET account_status = ?, restricted_at = NULL,
+        restriction_reason = NULL, version = version + 1, updated_at = ?
+      WHERE appwrite_user_id = ? AND version = ? AND account_status = 'RESTRICTED'
+    `).bind(nextStatus, now, userId, previous.version),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "ACCOUNT_REACTIVATED",
+      targetType: "USER",
+      targetId: userId,
+      previousState: { accountStatus: previous.account_status },
+      newState: { accountStatus: nextStatus },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  let appwriteStatusSync = "SYNCED";
+  try {
+    await updateAppwriteUserStatus(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      true,
+    );
+  } catch {
+    appwriteStatusSync = "FAILED";
+  }
+  return { accountStatus: nextStatus, appwriteStatusSync };
+}
+
+async function scheduleAdminAccountDeletion(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason"]);
+  const reason = validateReason(body.reason);
+  const profile = await getUserProfile(env.DB, userId);
+  if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  const idempotencyKey = `admin-account-delete:${administratorUserId}:${requireIdempotencyKey(request)}`;
+  const existing = await env.DB.prepare(`
+    SELECT id, status, scheduled_at FROM deletion_jobs
+    WHERE appwrite_user_id = ? AND status IN ('DELETION_PENDING', 'EXECUTING', 'BLOCKED', 'FAILED')
+    ORDER BY created_at DESC LIMIT 1
+  `).bind(userId).first<{ id: string; status: string; scheduled_at: string }>();
+  if (existing) {
+    return { deletionJobId: existing.id, status: existing.status, scheduledAt: existing.scheduled_at, existing: true };
+  }
+  const now = isoNow();
+  const jobId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO deletion_jobs (
+        id, appwrite_user_id, status, reason, idempotency_key,
+        inactivity_cutoff_at, scheduled_at, retention_checks_json, created_at, updated_at
+      ) VALUES (?, ?, 'DELETION_PENDING', ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      jobId,
+      userId,
+      reason,
+      idempotencyKey,
+      now,
+      now,
+      JSON.stringify({ requestedBy: administratorUserId, administrativeRequest: true }),
+      now,
+      now,
+    ),
+    env.DB.prepare(`
+      UPDATE user_profiles SET account_status = 'DELETION_PENDING',
+        version = version + 1, updated_at = ? WHERE appwrite_user_id = ?
+    `).bind(now, userId),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "ACCOUNT_DELETION_SCHEDULED",
+      targetType: "USER",
+      targetId: userId,
+      previousState: { accountStatus: profile.account_status },
+      newState: { accountStatus: "DELETION_PENDING", deletionJobId: jobId },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  let appwriteStatusSync = "SYNCED";
+  try {
+    await updateAppwriteUserStatus(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      false,
+    );
+  } catch {
+    appwriteStatusSync = "FAILED";
+  }
+  return {
+    deletionJobId: jobId,
+    status: "DELETION_PENDING",
+    scheduledAt: now,
+    appwriteStatusSync,
+    existing: false,
+  };
+}
+
+async function cancelAdminPaymentOrder(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  orderId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ApiError(400, "INVALID_PAYMENT_ORDER_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason"]);
+  const reason = validateReason(body.reason);
+  const order = await env.DB.prepare(`
+    SELECT id, status, appwrite_user_id, version FROM subscriptions WHERE id = ?
+  `).bind(orderId).first<{ id: string; status: string; appwrite_user_id: string; version: number }>();
+  if (!order) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
+  if (order.status !== "PENDING") throw new ApiError(409, "PAYMENT_ORDER_NOT_CANCELLABLE");
+  const now = isoNow();
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE subscriptions SET status = 'CANCELLED', cancelled_at = ?,
+        cancellation_source = 'ADMIN', cancellation_reason = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND version = ? AND status = 'PENDING'
+    `).bind(now, reason, now, order.id, order.version),
+    env.DB.prepare(`
+      UPDATE invoices SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
+      WHERE subscription_id = ? AND status = 'OPEN'
+    `).bind(now, now, order.id),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "SEPA_ORDER_CANCELLED",
+      targetType: "SUBSCRIPTION",
+      targetId: order.id,
+      previousState: { status: order.status },
+      newState: { status: "CANCELLED", cancellationSource: "ADMIN" },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new ApiError(409, "PAYMENT_ORDER_CONCURRENTLY_UPDATED");
+  return { orderId: order.id, status: "CANCELLED" };
+}
+
+async function archiveAdminPaymentOrder(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  orderId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ApiError(400, "INVALID_PAYMENT_ORDER_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason"]);
+  const reason = validateReason(body.reason);
+  const order = await env.DB.prepare(`
+    SELECT id, status, archived_at FROM subscriptions WHERE id = ?
+  `).bind(orderId).first<{ id: string; status: string; archived_at: string | null }>();
+  if (!order) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
+  if (order.archived_at) return { orderId, archived: true, existing: true };
+  if (["ACTIVE", "PAID", "REFUNDED", "DISPUTED", "REVERSED"].includes(order.status)) {
+    throw new ApiError(409, "PAYMENT_ORDER_RETENTION_REQUIRED");
+  }
+  const now = isoNow();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE subscriptions SET archived_at = ?, archived_by_appwrite_user_id = ?,
+        archive_reason = ?, version = version + 1, updated_at = ?
+      WHERE id = ? AND archived_at IS NULL
+    `).bind(now, administratorUserId, reason, now, orderId),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "PAYMENT_ORDER_ARCHIVED",
+      targetType: "SUBSCRIPTION",
+      targetId: orderId,
+      previousState: { status: order.status, archived: false },
+      newState: { status: order.status, archived: true },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  return { orderId, archived: true, existing: false };
 }
 
 async function retryLabelSync(
@@ -1401,10 +1706,13 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   }
   let result: Record<string, unknown>;
-  const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict)$/.exec(url.pathname);
+  const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict|unrestrict)$/.exec(url.pathname);
+  const userDeletePath = /^\/v1\/users\/([^/]+)$/.exec(url.pathname);
   const ageCasePath = /^\/v1\/age-verification\/cases\/([^/]+)$/.exec(url.pathname);
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
   const paymentActivationPath = /^\/v1\/payments\/orders\/([^/]+)\/activate$/.exec(url.pathname);
+  const paymentCancellationPath = /^\/v1\/payments\/orders\/([^/]+)\/cancel$/.exec(url.pathname);
+  const paymentOrderPath = /^\/v1\/payments\/orders\/([^/]+)$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
   if (userPath) {
     const userId = validateUserId(decodeURIComponent(userPath[1]!));
@@ -1426,9 +1734,21 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
       });
     } else if (request.method === "POST" && userPath[2] === "restrict") {
       result = await restrictUser(request, env, administrator.userId, userId, correlationId);
+    } else if (request.method === "POST" && userPath[2] === "unrestrict") {
+      result = await unrestrictUser(request, env, administrator.userId, userId, correlationId);
     } else {
       throw new ApiError(405, "METHOD_NOT_ALLOWED");
     }
+  } else if (request.method === "GET" && url.pathname === "/v1/users") {
+    result = await listUsers(env);
+  } else if (request.method === "DELETE" && userDeletePath) {
+    result = await scheduleAdminAccountDeletion(
+      request,
+      env,
+      administrator.userId,
+      validateUserId(decodeURIComponent(userDeletePath[1]!)),
+      correlationId,
+    );
   } else if (request.method === "GET" && url.pathname === "/v1/age-verification/cases") {
     result = await pendingAgeCases(env);
   } else if (request.method === "GET" && ageCasePath) {
@@ -1449,6 +1769,22 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
       env,
       decodeURIComponent(paymentActivationPath[1]!),
       administrator.userId,
+      correlationId,
+    );
+  } else if (request.method === "POST" && paymentCancellationPath) {
+    result = await cancelAdminPaymentOrder(
+      request,
+      env,
+      administrator.userId,
+      decodeURIComponent(paymentCancellationPath[1]!),
+      correlationId,
+    );
+  } else if (request.method === "DELETE" && paymentOrderPath) {
+    result = await archiveAdminPaymentOrder(
+      request,
+      env,
+      administrator.userId,
+      decodeURIComponent(paymentOrderPath[1]!),
       correlationId,
     );
   } else if (request.method === "POST" && url.pathname === "/v1/payments/n26-csv-import") {
