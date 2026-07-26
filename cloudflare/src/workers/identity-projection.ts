@@ -35,7 +35,7 @@ async function appwriteRequest(
   try {
     response = await fetch(`${appwriteBaseUrl(env.APPWRITE_ENDPOINT)}${path}`, {
       ...init,
-      redirect: "error",
+      redirect: "manual",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
