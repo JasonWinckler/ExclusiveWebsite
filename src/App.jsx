@@ -44,9 +44,9 @@ const copy = {
     trial: "Einmaliges Schnupperangebot",
     catalogUnavailable: "Der Produktkatalog ist derzeit nicht erreichbar. Es kann kein Zahlungsauftrag erzeugt werden.",
     paymentTitle: "Bestellung & SEPA-Zahlung",
-    paymentIntro: "Prüfe und bestätige zuerst deine Bestellung. Erst mit „PAY WITH SEPA“ wird der Zahlungsauftrag in der Datenbank angelegt und der persönliche QR-Code erzeugt.",
+    paymentIntro: "Prüfe deine Auswahl und Rechnungsdaten. Anschließend erhältst du deine persönlichen SEPA-Zahlungsdaten.",
     checkoutReviewTitle: "Bestellübersicht",
-    checkoutReviewText: "Noch wurde kein Zahlungsauftrag angelegt und keine Zahlung ausgelöst.",
+    checkoutReviewText: "Deine Bestellung wird erst nach deiner Bestätigung verbindlich angelegt.",
     productLabel: "Mitgliedschaft",
     durationCheckout: "Laufzeit",
     billingAccount: "Abrechnungskonto",
@@ -61,7 +61,7 @@ const copy = {
     confirmOrder: "Bestellung bestätigen",
     backToSummary: "Zurück zur Bestellübersicht",
     payWithSepa: "PAY WITH SEPA",
-    databaseOrderNote: "Mit diesem Button wird der eindeutige Zahlungsauftrag in Cloudflare D1 gespeichert. Die Website führt selbst keine Banküberweisung aus.",
+    databaseOrderNote: "Im nächsten Schritt erhältst du QR-Code und Zahlungsdaten für eine einmalige SEPA-Überweisung.",
     qrView: "QR-Code",
     detailsView: "Zahlungsdaten",
     scanQr: "Scanne den QR-Code mit deiner Banking-App und prüfe die vorausgefüllten Daten vor der Freigabe.",
@@ -128,9 +128,9 @@ const copy = {
     trial: "One-time trial offer",
     catalogUnavailable: "The product catalog is unavailable. A payment order cannot be created.",
     paymentTitle: "Order & SEPA payment",
-    paymentIntro: "Review and confirm the order first. Only “PAY WITH SEPA” creates the payment order in the database and generates the personal QR code.",
+    paymentIntro: "Review your selection and billing details. Your personal SEPA payment details are shown in the next step.",
     checkoutReviewTitle: "Order summary",
-    checkoutReviewText: "No payment order has been created and no payment has been initiated yet.",
+    checkoutReviewText: "Your order is created only after you confirm it.",
     productLabel: "Membership",
     durationCheckout: "Term",
     billingAccount: "Billing account",
@@ -145,7 +145,7 @@ const copy = {
     confirmOrder: "Confirm order",
     backToSummary: "Back to order summary",
     payWithSepa: "PAY WITH SEPA",
-    databaseOrderNote: "This button stores the unique payment order in Cloudflare D1. The website itself does not execute a bank transfer.",
+    databaseOrderNote: "The next step shows your QR code and payment details for a one-time SEPA credit transfer.",
     qrView: "QR code",
     detailsView: "Payment details",
     scanQr: "Scan the QR code with your banking app and verify the pre-filled details before approving it.",
@@ -953,13 +953,14 @@ export default function App() {
           <Field label={language === "de" ? "Straße und Hausnummer" : "Street and number"} value={billing.street} onChange={(event) => setBilling({ ...billing, street: event.target.value })} autoComplete="street-address" required />
           <div className="billing-fields__row"><Field label={language === "de" ? "Postleitzahl" : "Postal code"} value={billing.postalCode} onChange={(event) => setBilling({ ...billing, postalCode: event.target.value })} autoComplete="postal-code" required /><Field label={language === "de" ? "Ort" : "City"} value={billing.city} onChange={(event) => setBilling({ ...billing, city: event.target.value })} autoComplete="address-level2" required /></div>
           <Field label={language === "de" ? "Ländercode (z. B. DE)" : "Country code (e.g. DE)"} value={billing.countryCode} onChange={(event) => setBilling({ ...billing, countryCode: event.target.value.toUpperCase().slice(0, 2) })} autoComplete="country" pattern="[A-Za-z]{2}" required />
-          <p className="upload-note">{language === "de" ? "An diese Angaben wird die Rechnung ausgestellt und per E-Mail versendet. Nicht bezahlte Aufträge werden nach 48 Stunden automatisch storniert." : "The invoice is issued to these details and sent by email. Unpaid orders are cancelled automatically after 48 hours."}</p>
+          <p className="upload-note">{language === "de" ? "Die Rechnung wird an diese Angaben ausgestellt. Zahlungsfrist: 48 Stunden." : "The invoice is issued to these details. Payment term: 48 hours."}</p>
         </div>
         <div className="payment-total"><span>{ui.totalDue}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
         <label className="checkout-confirmation">
           <input type="checkbox" checked={checkoutAccepted} onChange={(event) => setCheckoutAccepted(event.target.checked)} />
           <span>{ui.confirmationText}</span>
         </label>
+        <p className="checkout-legal-note">{language === "de" ? <>Mit der Bestellung gelten unsere <a href="/legal/#terms" target="_blank">AGB</a>, <a href="/legal/#withdrawal" target="_blank">Widerrufsinformationen</a> und <a href="/legal/#privacy" target="_blank">Datenschutzhinweise</a>.</> : <>Your order is subject to our <a href="/legal/#terms" target="_blank">Terms</a>, <a href="/legal/#withdrawal" target="_blank">Cancellation information</a> and <a href="/legal/#privacy" target="_blank">Privacy notice</a>.</>}</p>
         <button className="primary-action" type="button" disabled={!checkoutAccepted || busy || !billing.name.trim() || !billing.street.trim() || !billing.postalCode.trim() || !billing.city.trim() || !/^[A-Z]{2}$/.test(billing.countryCode)} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
       </div>}
       {!sepaOrder && checkoutStep === "pay" && <div className="payment-start">
