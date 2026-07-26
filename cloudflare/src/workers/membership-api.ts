@@ -1212,8 +1212,10 @@ async function listContent(
     getRegisteredDevice(env.DB, userId, tokenHash),
     getActiveDeviceCount(env.DB, userId),
     env.DB.prepare(`
-      SELECT c.slug, c.title, c.required_tier, c.jurisdiction_policy,
-        u.content_type, u.size_bytes
+      SELECT c.slug, c.title, c.body_text, c.allow_comments,
+        c.required_tier, c.jurisdiction_policy, u.content_type, u.size_bytes,
+        (SELECT COUNT(*) FROM content_comments comments
+          WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
       FROM content_items c
       JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
       WHERE c.content_status = 'ACTIVE'
@@ -1222,10 +1224,13 @@ async function listContent(
     `).all<{
       slug: string;
       title: string;
+      body_text: string;
+      allow_comments: number;
       required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
       jurisdiction_policy: string | null;
       content_type: string;
       size_bytes: number;
+      comment_count: number;
     }>(),
   ]);
   const baseDecision = authorizeProtectedContent({
@@ -1258,14 +1263,165 @@ async function listContent(
       return {
         slug: item.slug,
         title: item.title,
+        bodyText: item.body_text,
         tier: item.required_tier,
         contentType: item.content_type,
         sizeBytes: item.size_bytes,
+        allowComments: item.allow_comments === 1,
+        commentCount: item.comment_count,
         accessible: decision.allowed,
         denialCode: decision.allowed ? null : decision.code,
       };
     }),
   };
+}
+
+interface CommentContext {
+  contentId: string;
+  allowComments: boolean;
+  entitlementActive: boolean;
+}
+
+async function commentContext(
+  env: MembershipEnv,
+  userId: string,
+  slug: string,
+): Promise<CommentContext> {
+  if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
+  const [profile, entitlement, content] = await Promise.all([
+    getUserProfile(env.DB, userId),
+    getActiveEntitlement(env.DB, userId),
+    env.DB.prepare(`
+      SELECT id, content_status, required_tier, jurisdiction_policy, allow_comments
+      FROM content_items WHERE slug = ?
+    `).bind(slug).first<{
+      id: string;
+      content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
+      required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
+      jurisdiction_policy: string | null;
+      allow_comments: number;
+    }>(),
+  ]);
+  if (!content) throw new ApiError(404, "CONTENT_NOT_FOUND");
+  const decision = authorizeProtectedContent({
+    profile,
+    entitlement,
+    requiredTier: content.required_tier,
+    contentStatus: content.content_status,
+    activeDeviceCount: 0,
+    deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
+    currentDeviceActive: true,
+    jurisdictionAllowed: jurisdictionAllowed(
+      content.jurisdiction_policy,
+      profile?.jurisdiction_code ?? null,
+    ),
+  });
+  if (!decision.allowed) throw new ApiError(403, decision.code);
+  return {
+    contentId: content.id,
+    allowComments: content.allow_comments === 1,
+    entitlementActive: Boolean(entitlement),
+  };
+}
+
+async function listContentComments(
+  env: MembershipEnv,
+  userId: string,
+  slug: string,
+): Promise<Record<string, unknown>> {
+  const context = await commentContext(env, userId, slug);
+  const comments = await env.DB.prepare(`
+    SELECT comments.id, comments.appwrite_user_id, comments.body, comments.created_at,
+      profiles.display_name, profiles.account_status
+    FROM content_comments comments
+    LEFT JOIN user_profiles profiles
+      ON profiles.appwrite_user_id = comments.appwrite_user_id
+    WHERE comments.content_item_id = ? AND comments.status = 'ACTIVE'
+    ORDER BY comments.created_at ASC
+    LIMIT 300
+  `).bind(context.contentId).all<{
+    id: string;
+    appwrite_user_id: string;
+    body: string;
+    created_at: string;
+    display_name: string | null;
+    account_status: string | null;
+  }>();
+  return {
+    allowComments: context.allowComments,
+    canComment: context.allowComments && context.entitlementActive,
+    comments: comments.results.map((comment) => ({
+      id: comment.id,
+      body: comment.body,
+      displayName: comment.account_status === "DELETED"
+        ? "Deleted member"
+        : comment.display_name || "Member",
+      createdAt: comment.created_at,
+      own: comment.appwrite_user_id === userId,
+    })),
+  };
+}
+
+async function createContentComment(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  slug: string,
+): Promise<Record<string, unknown>> {
+  const context = await commentContext(env, userId, slug);
+  if (!context.allowComments) throw new ApiError(403, "COMMENTS_DISABLED");
+  if (!context.entitlementActive) throw new ApiError(403, "PAID_MEMBERSHIP_REQUIRED");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["body"]);
+  if (typeof body.body !== "string") throw new ApiError(400, "INVALID_COMMENT");
+  const commentBody = body.body.trim();
+  if (
+    commentBody.length < 1 || commentBody.length > 1200 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(commentBody)
+  ) throw new ApiError(400, "INVALID_COMMENT");
+  const idempotencyKey = requireIdempotencyKey(request);
+  const replay = await env.DB.prepare(`
+    SELECT id, body, created_at FROM content_comments
+    WHERE appwrite_user_id = ? AND idempotency_key = ?
+  `).bind(userId, idempotencyKey).first<{ id: string; body: string; created_at: string }>();
+  if (replay) return { comment: { id: replay.id, body: replay.body, createdAt: replay.created_at, own: true }, existing: true };
+  const commentId = crypto.randomUUID();
+  const now = isoNow();
+  await env.DB.prepare(`
+    INSERT INTO content_comments (
+      id, content_item_id, appwrite_user_id, body, status,
+      idempotency_key, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+  `).bind(commentId, context.contentId, userId, commentBody, idempotencyKey, now, now).run();
+  return { comment: { id: commentId, body: commentBody, createdAt: now, own: true }, existing: false };
+}
+
+async function deleteOwnContentComment(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  commentId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(commentId)) throw new ApiError(400, "INVALID_COMMENT_ID");
+  requireIdempotencyKey(request);
+  const now = isoNow();
+  const result = await env.DB.prepare(`
+    UPDATE content_comments
+    SET body = '[deleted]', status = 'DELETED', deleted_at = ?, updated_at = ?
+    WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
+  `).bind(now, now, commentId, userId).run();
+  if ((result.meta.changes ?? 0) !== 1) {
+    const existing = await env.DB.prepare(`
+      SELECT status FROM content_comments WHERE id = ? AND appwrite_user_id = ?
+    `).bind(commentId, userId).first<{ status: string }>();
+    if (!existing) throw new ApiError(404, "COMMENT_NOT_FOUND");
+    if (existing.status === "DELETED") return { commentId, status: "DELETED", existing: true };
+    throw new ApiError(409, "COMMENT_NOT_DELETABLE");
+  }
+  return { commentId, status: "DELETED", existing: false };
 }
 
 async function authorizeContent(
@@ -1461,6 +1617,10 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     .exec(requestUrl.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([0-9a-f-]{36})$/i
     .exec(requestUrl.pathname);
+  const contentCommentsPath = /^\/v1\/content\/([a-z0-9-]{1,128})\/comments$/
+    .exec(requestUrl.pathname);
+  const contentCommentPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})$/i
+    .exec(requestUrl.pathname);
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
     result = await statusResponse(env, identity.userId);
@@ -1497,6 +1657,12 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     result = await revokeCurrentDevice(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/content") {
     result = await listContent(request, env, identity.userId);
+  } else if (request.method === "GET" && contentCommentsPath) {
+    result = await listContentComments(env, identity.userId, contentCommentsPath[1]!);
+  } else if (request.method === "POST" && contentCommentsPath) {
+    result = await createContentComment(request, env, identity.userId, contentCommentsPath[1]!);
+  } else if (request.method === "DELETE" && contentCommentPath) {
+    result = await deleteOwnContentComment(request, env, identity.userId, contentCommentPath[1]!);
   } else {
     const contentPath = /^\/v1\/content\/([^/]+)$/.exec(requestUrl.pathname);
     if (request.method === "GET" && contentPath) {
