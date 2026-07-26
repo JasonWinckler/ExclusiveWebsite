@@ -736,7 +736,7 @@ export default function App() {
     setNotice("");
     try {
       const order = await createSepaOrder(selectedProduct.sku, billing, language, {
-        termsVersion: "EU-2026-07-27-v1",
+        termsVersion: "EU-2026-07-27-V1",
         digitalContentConsent: digitalConsentAccepted,
         withdrawalAcknowledgement: digitalConsentAccepted,
       });
