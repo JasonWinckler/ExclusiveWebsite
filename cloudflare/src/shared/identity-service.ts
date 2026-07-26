@@ -51,3 +51,25 @@ export function revokeAppwriteSessions(
 ): Promise<void> {
   return callIdentityService(service, secret, "/revoke-sessions", { userId });
 }
+
+export function updateAppwriteUserStatus(
+  service: Service,
+  secret: string,
+  userId: string,
+  status: boolean,
+): Promise<void> {
+  return callIdentityService(service, secret, "/update-user-status", { userId, status });
+}
+
+export function sendTransactionalEmail(
+  service: Service,
+  secret: string,
+  input: {
+    userId: string;
+    messageId: string;
+    subject: string;
+    html: string;
+  },
+): Promise<void> {
+  return callIdentityService(service, secret, "/send-transactional-email", input);
+}
