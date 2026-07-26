@@ -421,7 +421,7 @@ export function extractSepaTransferPurpose(row: string[]): string | null {
   return null;
 }
 
-function entitlementExpiry(
+export function entitlementExpiry(
   startsAt: string,
   unit: "DAYS" | "MONTHS",
   value: number,
@@ -436,6 +436,301 @@ function entitlementExpiry(
   const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
   start.setUTCDate(Math.min(day, lastDay));
   return start.toISOString();
+}
+
+type AccessTier = "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
+
+export function accessLabelForTier(tier: AccessTier): string {
+  return {
+    EXCLUSIVE_BASIC: "active_basic",
+    EXCLUSIVE_PREMIUM: "active_premium",
+    EXCLUSIVE_VIP: "active_vip",
+  }[tier];
+}
+
+export function canManuallyActivatePaymentStatus(status: string): boolean {
+  return status === "PENDING" || status === "PROCESSING" || status === "PAID";
+}
+
+async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>> {
+  const orders = await env.DB.prepare(`
+    SELECT s.id, s.appwrite_user_id, s.transfer_reference, s.amount_minor,
+      s.currency, s.status, s.payment_due_at, s.current_period_start,
+      s.current_period_end, s.settled_at, s.settlement_note,
+      s.created_at, s.updated_at, p.sku AS product_sku,
+      p.display_name AS product_name, p.tier, p.duration_unit,
+      p.duration_value, u.email, u.display_name
+    FROM subscriptions s
+    JOIN products p ON p.id = s.product_id
+    JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
+    ORDER BY
+      CASE s.status
+        WHEN 'PENDING' THEN 1 WHEN 'PROCESSING' THEN 2 WHEN 'PAID' THEN 3
+        WHEN 'ACTIVE' THEN 4 ELSE 5
+      END,
+      s.created_at DESC
+    LIMIT 200
+  `).all();
+  return { orders: orders.results };
+}
+
+async function manuallyActivatePaymentOrder(
+  request: Request,
+  env: AdminEnv,
+  orderId: string,
+  administratorUserId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ApiError(400, "INVALID_PAYMENT_ORDER_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason", "confirmedPaymentReceived"]);
+  const reason = validateReason(body.reason);
+  if (body.confirmedPaymentReceived !== true) {
+    throw new ApiError(400, "PAYMENT_RECEIPT_CONFIRMATION_REQUIRED");
+  }
+
+  const manualIdempotencyKey =
+    `admin-payment:${administratorUserId}:${requireIdempotencyKey(request)}`;
+  const labelIdempotencyKey = `${manualIdempotencyKey}:label`;
+  const replay = await env.DB.prepare(`
+    SELECT s.id, s.appwrite_user_id, s.transfer_reference, s.status,
+      s.current_period_start, s.current_period_end, p.tier,
+      l.status AS label_sync_status
+    FROM bank_transactions bt
+    JOIN subscriptions s ON s.id = bt.matched_subscription_id
+    JOIN products p ON p.id = s.product_id
+    LEFT JOIN label_sync_attempts l ON l.idempotency_key = ?
+    WHERE bt.idempotency_key = ? AND bt.source = 'ADMIN'
+    LIMIT 1
+  `).bind(labelIdempotencyKey, manualIdempotencyKey).first<{
+    id: string;
+    appwrite_user_id: string;
+    transfer_reference: string;
+    status: string;
+    current_period_start: string | null;
+    current_period_end: string | null;
+    tier: AccessTier;
+    label_sync_status: string | null;
+  }>();
+  if (replay) {
+    return {
+      orderId: replay.id,
+      userId: replay.appwrite_user_id,
+      reference: replay.transfer_reference,
+      status: replay.status,
+      tier: replay.tier,
+      startsAt: replay.current_period_start,
+      expiresAt: replay.current_period_end,
+      labelSyncStatus: replay.label_sync_status ?? "PENDING",
+      existing: true,
+    };
+  }
+
+  const subscription = await env.DB.prepare(`
+    SELECT s.id, s.appwrite_user_id, s.product_id, s.transfer_reference,
+      s.amount_minor, s.currency, s.status, s.version,
+      p.tier, p.duration_unit, p.duration_value,
+      u.account_status, u.age_status
+    FROM subscriptions s
+    JOIN products p ON p.id = s.product_id
+    JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
+    WHERE s.id = ?
+  `).bind(orderId).first<{
+    id: string;
+    appwrite_user_id: string;
+    product_id: string;
+    transfer_reference: string;
+    amount_minor: number;
+    currency: string;
+    status: string;
+    version: number;
+    tier: AccessTier;
+    duration_unit: "DAYS" | "MONTHS";
+    duration_value: number;
+    account_status: string;
+    age_status: string;
+  }>();
+  if (!subscription) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
+  if (!canManuallyActivatePaymentStatus(subscription.status)) {
+    throw new ApiError(409, "PAYMENT_ORDER_NOT_MANUALLY_ACTIVATABLE");
+  }
+  if (subscription.account_status !== "ACTIVE" || subscription.age_status !== "APPROVED") {
+    throw new ApiError(409, "PAYMENT_ORDER_USER_NOT_ELIGIBLE");
+  }
+
+  const active = await env.DB.prepare(`
+    SELECT MAX(expires_at) AS expires_at FROM entitlements
+    WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+  `).bind(subscription.appwrite_user_id).first<{ expires_at: string | null }>();
+  const settledAt = isoNow();
+  const startsAt = active?.expires_at && Date.parse(active.expires_at) > Date.parse(settledAt)
+    ? active.expires_at
+    : settledAt;
+  const expiresAt = entitlementExpiry(
+    startsAt,
+    subscription.duration_unit,
+    subscription.duration_value,
+  );
+  const transactionId = crypto.randomUUID();
+  const entitlementId = crypto.randomUUID();
+  const attemptId = crypto.randomUUID();
+  const desiredLabel = accessLabelForTier(subscription.tier);
+  const settlementMarker = `ADMIN_MANUAL_SUPPORT:${transactionId}`;
+  const payloadHash = await sha256Hex(JSON.stringify({
+    orderId: subscription.id,
+    administratorUserId,
+    reason,
+    settledAt,
+  }));
+  const previousState = JSON.stringify({ status: subscription.status });
+  const newState = JSON.stringify({
+    status: "ACTIVE",
+    transactionId,
+    startsAt,
+    expiresAt,
+    source: "ADMIN",
+  });
+
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE subscriptions SET status = 'ACTIVE', current_period_start = ?,
+        current_period_end = ?, settled_at = ?, settled_by_appwrite_user_id = ?,
+        settlement_note = ?, version = version + 1, updated_at = ?
+      WHERE id = ? AND version = ? AND status IN ('PENDING', 'PROCESSING', 'PAID')
+    `).bind(
+      startsAt,
+      expiresAt,
+      settledAt,
+      administratorUserId,
+      settlementMarker,
+      settledAt,
+      subscription.id,
+      subscription.version,
+    ),
+    env.DB.prepare(`
+      INSERT INTO bank_transactions (
+        id, source, external_transaction_id, amount_minor, currency,
+        creditor_reference, remittance_information, booked_at, received_at,
+        payload_sha256, idempotency_key, matched_subscription_id,
+        match_status, created_at
+      )
+      SELECT ?, 'ADMIN', ?, ?, ?, ?, ?, ?, ?, ?, ?, id, 'MATCHED', ?
+      FROM subscriptions WHERE id = ? AND settlement_note = ?
+    `).bind(
+      transactionId,
+      `admin:${transactionId}`,
+      subscription.amount_minor,
+      subscription.currency,
+      subscription.transfer_reference,
+      subscription.transfer_reference,
+      settledAt,
+      settledAt,
+      payloadHash,
+      manualIdempotencyKey,
+      settledAt,
+      subscription.id,
+      settlementMarker,
+    ),
+    env.DB.prepare(`
+      INSERT INTO entitlements (
+        id, appwrite_user_id, product_id, subscription_id, tier, status,
+        starts_at, expires_at, source_event_id, created_at, updated_at
+      )
+      SELECT ?, appwrite_user_id, product_id, id, ?, 'ACTIVE', ?, ?, ?, ?, ?
+      FROM subscriptions WHERE id = ? AND settlement_note = ?
+    `).bind(
+      entitlementId,
+      subscription.tier,
+      startsAt,
+      expiresAt,
+      transactionId,
+      settledAt,
+      settledAt,
+      subscription.id,
+      settlementMarker,
+    ),
+    env.DB.prepare(`
+      INSERT INTO label_sync_attempts (
+        id, appwrite_user_id, category, desired_label, status,
+        idempotency_key, created_at, updated_at
+      )
+      SELECT ?, appwrite_user_id, 'ACCESS', ?, 'PENDING', ?, ?, ?
+      FROM subscriptions WHERE id = ? AND settlement_note = ?
+    `).bind(
+      attemptId,
+      desiredLabel,
+      labelIdempotencyKey,
+      settledAt,
+      settledAt,
+      subscription.id,
+      settlementMarker,
+    ),
+    env.DB.prepare(`
+      INSERT INTO admin_audit_events (
+        id, administrator_appwrite_user_id, action, target_type, target_id,
+        previous_state_json, new_state_json, reason, correlation_id, created_at
+      )
+      SELECT ?, ?, 'SEPA_PAYMENT_MANUALLY_ACTIVATED', 'SUBSCRIPTION', id,
+        ?, ?, ?, ?, ?
+      FROM subscriptions WHERE id = ? AND settlement_note = ?
+    `).bind(
+      crypto.randomUUID(),
+      administratorUserId,
+      previousState,
+      newState,
+      reason,
+      correlationId,
+      settledAt,
+      subscription.id,
+      settlementMarker,
+    ),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    throw new ApiError(409, "PAYMENT_ORDER_CONCURRENTLY_UPDATED");
+  }
+  if (results.slice(1).some((result) => (result.meta.changes ?? 0) !== 1)) {
+    throw new ApiError(503, "MANUAL_PAYMENT_ACTIVATION_INCOMPLETE");
+  }
+
+  let labelSyncStatus = "SYNCED";
+  try {
+    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      userId: subscription.appwrite_user_id,
+      category: "ACCESS",
+      desiredLabel,
+    });
+    await env.DB.prepare(`
+      UPDATE label_sync_attempts SET status = 'SYNCED', attempt_count = 1,
+        updated_at = ? WHERE id = ?
+    `).bind(isoNow(), attemptId).run();
+  } catch {
+    labelSyncStatus = "FAILED";
+    const failedAt = isoNow();
+    await env.DB.prepare(`
+      UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
+        last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(
+      new Date(Date.now() + 60 * 60_000).toISOString(),
+      failedAt,
+      attemptId,
+    ).run();
+  }
+
+  return {
+    orderId: subscription.id,
+    userId: subscription.appwrite_user_id,
+    reference: subscription.transfer_reference,
+    status: "ACTIVE",
+    tier: subscription.tier,
+    startsAt,
+    expiresAt,
+    labelSyncStatus,
+    existing: false,
+  };
 }
 
 async function importN26Csv(
@@ -584,11 +879,7 @@ async function importN26Csv(
     );
     const entitlementId = crypto.randomUUID();
     const attemptId = crypto.randomUUID();
-    const desiredLabel = {
-      EXCLUSIVE_BASIC: "active_basic",
-      EXCLUSIVE_PREMIUM: "active_premium",
-      EXCLUSIVE_VIP: "active_vip",
-    }[subscription.tier];
+    const desiredLabel = accessLabelForTier(subscription.tier);
     await env.DB.batch([
       env.DB.prepare(`
         INSERT INTO bank_transactions (
@@ -1091,6 +1382,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict)$/.exec(url.pathname);
   const ageCasePath = /^\/v1\/age-verification\/cases\/([^/]+)$/.exec(url.pathname);
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
+  const paymentActivationPath = /^\/v1\/payments\/orders\/([^/]+)\/activate$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
   if (userPath) {
     const userId = validateUserId(decodeURIComponent(userPath[1]!));
@@ -1124,6 +1416,16 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
       request,
       env,
       decodeURIComponent(ageDecisionPath[1]!),
+      administrator.userId,
+      correlationId,
+    );
+  } else if (request.method === "GET" && url.pathname === "/v1/payments/orders") {
+    result = await listPaymentOrders(env);
+  } else if (request.method === "POST" && paymentActivationPath) {
+    result = await manuallyActivatePaymentOrder(
+      request,
+      env,
+      decodeURIComponent(paymentActivationPath[1]!),
       administrator.userId,
       correlationId,
     );
