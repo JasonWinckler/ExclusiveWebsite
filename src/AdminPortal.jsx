@@ -177,7 +177,7 @@ const formatDate = (value, language) => value
 
 export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const t = copy[language] || copy.de;
-  const [tab, setTab] = useState("age");
+  const [tab, setTab] = useState("overview");
   const [cases, setCases] = useState([]);
   const [selectedCase, setSelectedCase] = useState(null);
   const [items, setItems] = useState([]);
