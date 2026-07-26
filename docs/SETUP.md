@@ -48,7 +48,21 @@ Grant the **Users** role only **Create documents**. Do not grant collection-leve
 
 The document ID is the user ID, which enforces one request per account. The submitting user receives document-level read access only. Do **not** add client update permission: otherwise a user could approve their own request.
 
-## 4. Configure the Site build
+## 4. Configure private verification storage
+
+Use bucket `content_and_verification` (`6a657e2b0008347358ee`) with **File security enabled**. Grant authenticated **Users** the bucket-level **Create files** permission only. Do not grant bucket-level read, update, or delete permissions. Allow JPG, PNG, WebP, and PDF files, with a maximum size of 10 MB.
+
+The browser assigns each uploaded file document-level read permission for its submitting user. Appwrite project administrators retain review access. The browser deliberately receives no update or delete permission after submission. Add these required string attributes to `age_verifications`:
+
+| Attribute | Size | Required |
+|---|---:|:---:|
+| `documentFileId` | 36 | yes |
+| `selfieFileId` | 36 | yes |
+
+Never make this bucket public. Verification files must not be used as content, exposed through previews, written to logs, or copied into source control.
+
+
+## 5. Configure the Site build
 
 Use:
 
@@ -58,7 +72,7 @@ Use:
 
 Add the variables from `.env.example` to Appwrite Sites if your collection IDs differ. These values are public identifiers, not secrets.
 
-## 5. Manual review procedure
+## 6. Manual review procedure
 
 1. Confirm the account's Appwrite Auth record has `emailVerification: true`.
 2. Review the matching `age_verifications` document under a documented, legally reviewed process.
@@ -66,7 +80,6 @@ Add the variables from `.env.example` to Appwrite Sites if your collection IDs d
 4. Change `age_verifications.status` to `APPROVED` or `REJECTED` using Appwrite Console or trusted server code. Never provide update permission to the user.
 5. Change `users.status` to `ACTIVE` only after all required checks pass. Protected media must be served by an authenticated backend that checks both records on every request.
 
-The current site deliberately does not collect identity images or challenge videos. Do not place those files in public Storage buckets, logs, source control, or browser-accessible collections.
 
 ## What is not activated
 
