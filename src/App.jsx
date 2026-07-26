@@ -460,7 +460,24 @@ const durationLabel = (product, language) => {
 
 function PricingGroup({ tier, products, language, ui, onChoose }) {
   const key = tierNames[tier];
-  return <article className={`pricing-group pricing-group--${key}`}><div className="pricing-group__head"><p className="eyebrow">{ui[key]}</p><h3>{ui[key]}</h3><p>{ui[`${key}Text`]}</p></div><div className="price-options">{products.map((product) => <button type="button" onClick={() => onChoose(product)} key={product.sku}><span>{durationLabel(product, language)}{product.purchaseLimitPerUser ? <small>{ui.trial}</small> : null}</span><strong>{formatCurrency(product, language)}</strong><em>{ui.buy} →</em></button>)}</div></article>;
+  const showcase = products.find((product) => product.durationUnit === "DAYS" && product.durationValue === 30) || products[0];
+  const perks = showcase?.perks || [];
+  const symbols = { basic: "◇", premium: "✦", vip: "♛" };
+  return <article className={`pricing-group pricing-group--${key}`}>
+    <div className="membership-symbol" aria-hidden="true">{symbols[key]}</div>
+    <div className="pricing-group__head">
+      <p className="eyebrow">{key === "vip" ? "SIGNATURE ACCESS" : key === "premium" ? "MOST DESIRED" : "PRIVATE ENTRY"}</p>
+      <h3>{ui[key]}</h3>
+      <p>{ui[`${key}Text`]}</p>
+      <div className="showcase-price"><strong>{formatCurrency(showcase, language)}</strong><span>{durationLabel(showcase, language)}</span></div>
+    </div>
+    <ul className="membership-perks">
+      {(perks.length ? perks : [{ title: ui[`${key}Text`] }]).slice(0, 4).map((perk) => <li key={perk.id || perk.title}><span>✓</span><strong>{perk.title}</strong></li>)}
+    </ul>
+    <button className="membership-card-cta" type="button" onClick={() => onChoose(products)}>
+      <span>{language === "de" ? "Laufzeit & Benefits wählen" : "Choose term & benefits"}</span><strong>→</strong>
+    </button>
+  </article>;
 }
 
 export default function App() {
@@ -487,6 +504,7 @@ export default function App() {
   const [premiumTelegram, setPremiumTelegram] = useState(null);
   const [vipWhatsapp, setVipWhatsapp] = useState(null);
   const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
+  const [tierSelection, setTierSelection] = useState([]);
   const initialized = useRef(false);
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
@@ -682,6 +700,12 @@ export default function App() {
     }
   };
 
+  const openTierSelection = (tierProducts) => {
+    setTierSelection(tierProducts);
+    setNotice("");
+    setModal("membership");
+  };
+
   const chooseProduct = (product) => {
     setNotice("");
     if (!user) return openAuth("register");
@@ -824,12 +848,12 @@ export default function App() {
           {gallery.length ? <div className="member-content-grid">{gallery.slice(0, 6).map((item) => <article className="member-content-card" key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className="primary-action" type="button" onClick={() => viewContent(item)}>{ui.openContent}</button></article>)}</div> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
         </section>
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
-        <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={chooseProduct} key={tier} />)}</div></section>
+        <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       </> : <>
       <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Jason Shadow" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
       <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
-      <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={chooseProduct} key={tier} />)}</div></section>
+      <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       <section id="exclusive" className="section preview-section"><div className="section-heading"><p className="eyebrow">{t.curatedLabel}</p><h2>{t.exclusiveHeading}</h2><p>{ui.galleryText}</p></div><div className="locked-grid"><LockedCard t={t} /><LockedCard t={t} /><LockedCard t={t} /></div><div className="section-action"><button className="primary-action" type="button" onClick={openGallery}>{ui.openGallery}</button><p>{ui.deviceNote}</p></div></section>
       <section id="access" className="section access-section"><div><p className="eyebrow">{t.readyLabel}</p><h2>{t.readyTitle}</h2><p>{t.readyText}</p></div><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.openDashboard : t.createAccount}</button><button className="secondary-action" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.viewStatus : t.login}</button></div></section>
       </>}
@@ -886,6 +910,26 @@ export default function App() {
     </Modal>}
 
     {modal === "age" && <Modal title={ui.ageTitle} eyebrow={t.stepVerify} onClose={() => setModal("account")} t={t}><p className="modal-intro">{ui.ageText}</p>{notice && <p className="form-notice" role="status">{notice}</p>}{!activeAgeCase?.caseId ? <form className="auth-panel" onSubmit={beginAgeVerification}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><label className="consent-check"><input name="consent" type="checkbox" required /><span>{ui.consentText}</span></label><button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button></form> : <form className="auth-panel" onSubmit={submitAge}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><p className="eyebrow">{ui.challengeTitle}</p><Field label={`${ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`} name="documentFront" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")} /><Field label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`} name="documentBack" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")} />{activeAgeCase?.evidenceKinds?.includes("VIDEO") ? <p className="live-recorder__ready">✓ {ui.videoReady}</p> : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}<button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button></form>}</Modal>}
+
+    {modal === "membership" && tierSelection.length > 0 && <Modal
+      title={tierSelection[0].displayName.replace(/\s[–-].*$/, "")}
+      eyebrow={language === "de" ? "WÄHLE DEIN ERLEBNIS" : "CHOOSE YOUR EXPERIENCE"}
+      onClose={() => setModal(null)}
+      t={t}
+      wide
+    >
+      <p className="modal-intro">{language === "de" ? "30 Tage sind vorausgewählt gedacht – entscheide dich hier bewusst für deine gewünschte Laufzeit. Jede Buchung ist eine Einmalzahlung ohne automatische Verlängerung." : "The 30-day experience is the standard choice—select your preferred term here. Every purchase is a one-time payment with no automatic renewal."}</p>
+      <div className="duration-choice-grid">
+        {tierSelection.map((product) => <article className={`duration-choice-card${product.durationUnit === "DAYS" && product.durationValue === 30 ? " is-default" : ""}`} key={product.sku}>
+          {product.durationUnit === "DAYS" && product.durationValue === 30 && <span className="duration-badge">{language === "de" ? "STANDARD" : "DEFAULT"}</span>}
+          {product.purchaseLimitPerUser ? <span className="duration-badge is-trial">{ui.trial}</span> : null}
+          <p className="eyebrow">{durationLabel(product, language)}</p>
+          <strong className="duration-price">{formatCurrency(product, language)}</strong>
+          <ul>{(product.perks || []).map((perk) => <li key={perk.id}><span>✓</span><div><strong>{perk.title}</strong>{perk.description && <small>{perk.description}</small>}</div></li>)}</ul>
+          <button className="primary-action" type="button" onClick={() => chooseProduct(product)}>{language === "de" ? "Diese Membership wählen" : "Choose this membership"}</button>
+        </article>)}
+      </div>
+    </Modal>}
 
     {modal === "payment" && selectedProduct && <Modal title={ui.paymentTitle} eyebrow={selectedProduct.displayName} onClose={() => setModal(null)} t={t}>
       <p className="modal-intro">{ui.paymentIntro}</p>
