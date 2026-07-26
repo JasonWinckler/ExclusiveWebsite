@@ -72,6 +72,11 @@ export interface MembershipEnv extends BaseEnv {
   SEPA_IBAN?: string;
   SEPA_BIC?: string;
   SEPA_ORDER_EXPIRY_DAYS?: string;
+  SEPA_ORDER_EXPIRY_HOURS?: string;
+  INVOICE_SELLER_NAME?: string;
+  INVOICE_SELLER_ADDRESS?: string;
+  INVOICE_SELLER_EMAIL?: string;
+  INVOICE_TAX_NOTE?: string;
 }
 
 export interface AdminEnv extends BaseEnv {
