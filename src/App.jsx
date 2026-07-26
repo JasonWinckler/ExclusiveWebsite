@@ -10,7 +10,10 @@ import {
   getContentItems,
   getCurrentUser,
   getMembershipStatus,
+  getPaymentOrders,
+  getPremiumTelegramPerk,
   getProducts,
+  getVipWhatsappPerk,
   login,
   logout,
   registerAccount,
@@ -18,7 +21,9 @@ import {
   requestPasswordReset,
   resendVerification,
   submitAgeVerificationCase,
+  updateProfileName,
   uploadAgeEvidence,
+  cancelPaymentOrder,
 } from "./lib/appwrite";
 
 const languageKey = "jason-shadow-membership-language";
@@ -477,6 +482,11 @@ export default function App() {
   const [contentPreview, setContentPreview] = useState(null);
   const [liveVideo, setLiveVideo] = useState(null);
   const [ageSession, setAgeSession] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [dashboardTab, setDashboardTab] = useState("overview");
+  const [premiumTelegram, setPremiumTelegram] = useState(null);
+  const [vipWhatsapp, setVipWhatsapp] = useState(null);
+  const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
   const initialized = useRef(false);
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
@@ -492,12 +502,31 @@ export default function App() {
     setUser(current);
     if (!current || current.labels?.includes("admin")) {
       setMembership(null);
+      setOrders([]);
+      setPremiumTelegram(null);
+      setVipWhatsapp(null);
       return;
     }
+    setBilling((previous) => ({ ...previous, name: previous.name || current.name || "" }));
     try {
-      setMembership(await getMembershipStatus());
+      const [nextMembership, orderResult] = await Promise.all([
+        getMembershipStatus(),
+        getPaymentOrders().catch(() => ({ orders: [] })),
+      ]);
+      setMembership(nextMembership);
+      setOrders(orderResult.orders || []);
+      const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
+      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
+        ? await getPremiumTelegramPerk().catch(() => null)
+        : null);
+      setVipWhatsapp(tier === "EXCLUSIVE_VIP"
+        ? await getVipWhatsappPerk().catch(() => null)
+        : null);
     } catch {
       setMembership({ account: { status: "BACKEND_UNAVAILABLE" }, ageVerification: { status: "UNAVAILABLE" }, entitlement: { active: false } });
+      setOrders([]);
+      setPremiumTelegram(null);
+      setVipWhatsapp(null);
     }
   };
 
@@ -545,6 +574,24 @@ export default function App() {
   useEffect(() => () => {
     if (contentPreview?.url) URL.revokeObjectURL(contentPreview.url);
   }, [contentPreview]);
+
+  useEffect(() => {
+    if (!user || ageStatus !== "APPROVED") {
+      setGallery([]);
+      return;
+    }
+    let current = true;
+    (async () => {
+      try {
+        await registerCurrentDevice();
+        const result = await getContentItems();
+        if (current) setGallery((result.items || []).filter((item) => item.accessible));
+      } catch {
+        if (current) setGallery([]);
+      }
+    })();
+    return () => { current = false; };
+  }, [user?.$id, ageStatus, entitlement?.tier, entitlement?.expiresAt]);
 
   const openAuth = (nextMode) => {
     setMode(nextMode);
@@ -655,7 +702,9 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      setSepaOrder(await createSepaOrder(selectedProduct.sku));
+      const order = await createSepaOrder(selectedProduct.sku, billing, language);
+      setSepaOrder(order);
+      await refresh();
     } catch (error) {
       setNotice(messageFor(error, t));
     } finally {
@@ -694,6 +743,33 @@ export default function App() {
     }
   };
 
+  const viewContent = async (item) => {
+    setModal("gallery");
+    await openContent(item);
+  };
+
+  const cancelOrder = async (order) => {
+    const question = language === "de"
+      ? "Diesen noch offenen Zahlungsauftrag wirklich stornieren?"
+      : "Cancel this pending payment order?";
+    if (!window.confirm(question)) return;
+    await run(
+      () => cancelPaymentOrder(order.orderId, "Cancelled by customer in dashboard"),
+      language === "de" ? "Der Zahlungsauftrag wurde storniert." : "The payment order was cancelled.",
+      "account",
+    );
+  };
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    await run(
+      () => updateProfileName(String(data.get("name") || "").trim()),
+      language === "de" ? "Dein Profil wurde aktualisiert." : "Your profile was updated.",
+      "account",
+    );
+  };
+
   const handleAdminLogout = async () => {
     setBusy(true);
     try {
@@ -716,18 +792,98 @@ export default function App() {
     <div className="ember-field" aria-hidden="true" />
     <header className="exclusive-header"><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><nav className="main-nav desktop-nav" aria-label={t.navigation}><a href="#experience">{t.navProfile}</a><a href="#membership">{t.navExclusive}</a><a href="#pricing">Membership</a><a href="#access">{t.navAccess}</a></nav><div className="header-actions"><div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div></header>
     <main id="top">
+      {user ? <>
+        <section className="hero adult-hero member-hero">
+          <div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div>
+          <div className="hero-content adult-hero__content">
+            <img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Jason Shadow" />
+            <p className="eyebrow">{language === "de" ? "DEIN PRIVATER BEREICH" : "YOUR PRIVATE SPACE"}</p>
+            <h1>{language === "de" ? `Willkommen, ${user.name || "du"}` : `Welcome, ${user.name || "you"}`}</h1>
+            <p className="tagline">{ageStatus === "APPROVED"
+              ? entitlement?.active
+                ? (language === "de" ? "Dein Zugang ist aktiv. Entdecke neue Posts, deine freigeschalteten Galerien und persönlichen Benefits." : "Your access is active. Discover new posts, unlocked galleries and personal benefits.")
+                : (language === "de" ? "Deine Altersprüfung ist abgeschlossen. Die Free Gallery wartet auf dich." : "Your age review is complete. Your Free Gallery is ready.")
+              : (language === "de" ? "Vervollständige deine Altersprüfung, damit dein persönlicher Bereich freigeschaltet werden kann." : "Complete age verification to unlock your personal space.")}</p>
+            <div className="member-status-row">
+              <span className={user.emailVerification ? "status-chip is-active" : "status-chip"}>{user.emailVerification ? "✓ " : ""}E-Mail</span>
+              <span className={ageStatus === "APPROVED" ? "status-chip is-active" : "status-chip"}>{ageStatus === "APPROVED" ? "✓ " : ""}{language === "de" ? "18+ bestätigt" : "18+ verified"}</span>
+              <span className={entitlement?.active ? "status-chip is-active" : "status-chip"}>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : (language === "de" ? "Free Access" : "Free access")}</span>
+            </div>
+            <div className="hero-actions">
+              {ageStatus === "APPROVED" ? <button className="primary-action" type="button" onClick={openGallery}>{language === "de" ? "Meine Galerie öffnen" : "Open my gallery"}</button> : <button className="primary-action" type="button" onClick={() => setModal("age")}>{language === "de" ? "Verifizierung fortsetzen" : "Continue verification"}</button>}
+              <button className="secondary-action" type="button" onClick={() => { setDashboardTab("overview"); setModal("account"); }}>{language === "de" ? "Mein Dashboard" : "My dashboard"}</button>
+            </div>
+          </div>
+        </section>
+        <section className="section member-gallery-section" id="member-gallery">
+          <div className="section-heading">
+            <p className="eyebrow">{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : "FREE"}</p>
+            <h2>{language === "de" ? "Neu für dich" : "New for you"}</h2>
+            <p>{language === "de" ? "Deine freigeschalteten Veröffentlichungen – ohne Umwege." : "Your unlocked releases, ready to explore."}</p>
+          </div>
+          {gallery.length ? <div className="member-content-grid">{gallery.slice(0, 6).map((item) => <article className="member-content-card" key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className="primary-action" type="button" onClick={() => viewContent(item)}>{ui.openContent}</button></article>)}</div> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
+        </section>
+        {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
+        <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={chooseProduct} key={tier} />)}</div></section>
+      </> : <>
       <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Jason Shadow" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
       <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
       <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={chooseProduct} key={tier} />)}</div></section>
       <section id="exclusive" className="section preview-section"><div className="section-heading"><p className="eyebrow">{t.curatedLabel}</p><h2>{t.exclusiveHeading}</h2><p>{ui.galleryText}</p></div><div className="locked-grid"><LockedCard t={t} /><LockedCard t={t} /><LockedCard t={t} /></div><div className="section-action"><button className="primary-action" type="button" onClick={openGallery}>{ui.openGallery}</button><p>{ui.deviceNote}</p></div></section>
       <section id="access" className="section access-section"><div><p className="eyebrow">{t.readyLabel}</p><h2>{t.readyTitle}</h2><p>{t.readyText}</p></div><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.openDashboard : t.createAccount}</button><button className="secondary-action" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.viewStatus : t.login}</button></div></section>
+      </>}
     </main>
     <footer id="legal" className="site-footer legal-footer"><div><a className="brand" href="#top">{t.brand}</a><p>{t.footerLive}</p></div><nav><a href="/legal/">{t.legalLink}</a></nav></footer>
 
     {modal === "auth" && <Modal title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset} eyebrow={t.secureAccount} onClose={() => setModal(null)} t={t}><div className="auth-tabs">{["login", "register", "reset"].map((item) => <button type="button" className={mode === item ? "is-active" : ""} onClick={() => { setMode(item); setNotice(""); }} key={item}>{t[item]}</button>)}</div>{notice && <p className="form-notice" role="status">{notice}</p>}<form className="auth-panel" onSubmit={handleAuth}>{mode === "register" && <Field label={t.name} name="name" autoComplete="name" required maxLength="128" />}{mode !== "recover" && <Field label={t.emailLabel} name="email" type="email" autoComplete="email" required />}{mode !== "reset" && <Field label={t.password} name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength="8" required />}<button className="primary-action" disabled={busy}>{busy ? ui.loading : t[`${mode}Submit`]}</button></form></Modal>}
 
-    {modal === "account" && <Modal title={t.account} eyebrow={ageStatus} onClose={() => setModal(null)} t={t}>{notice && <p className="form-notice" role="status">{notice}</p>}{!user ? <button className="primary-action" onClick={() => openAuth("login")}>{t.login}</button> : <div className="dashboard"><dl><div><dt>{t.emailLabel}</dt><dd>{user.email}</dd></div><div><dt>{t.statusLabel}</dt><dd>{profile?.status || "EMAIL_PENDING"}</dd></div><div><dt>{t.avsLabel}</dt><dd>{reviewPending ? ui.reviewReady : ageStatus}</dd></div><div><dt>{ui.entitlement}</dt><dd>{entitlement?.active ? entitlement.tier : ui.noMembership}</dd></div>{entitlement?.expiresAt && <div><dt>{ui.expires}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}</dd></div>}</dl><div className="dashboard-actions">{!user.emailVerification && <button className="secondary-action" onClick={() => run(resendVerification, t.verificationSent)}>{t.resendVerification}</button>}<button className="primary-action" disabled={!user.emailVerification || reviewPending || ageStatus === "APPROVED"} onClick={() => { setNotice(""); setModal("age"); }}>{reviewPending ? ui.reviewReady : ageStatus === "APPROVED" ? t.ageAlreadyApproved : t.avsStart}</button>{ageStatus === "APPROVED" && <button className="secondary-action" type="button" onClick={openGallery}>{ui.openGallery}</button>}<a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={() => run(logout, t.logoutSuccess, "auth")}>{ui.logout}</button></div></div>}</Modal>}
+    {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? entitlement.tier : ageStatus} onClose={() => setModal(null)} t={t} wide>
+      {notice && <p className="form-notice" role="status">{notice}</p>}
+      {!user ? <button className="primary-action" onClick={() => openAuth("login")}>{t.login}</button> : <div className="account-dashboard">
+        <div className="dashboard-tabs" role="tablist" aria-label={language === "de" ? "Kontobereiche" : "Account sections"}>
+          {[
+            ["overview", language === "de" ? "Übersicht" : "Overview"],
+            ["profile", language === "de" ? "Meine Daten" : "My data"],
+            ["orders", language === "de" ? "Bestellungen" : "Orders"],
+            ["access", language === "de" ? "Zugang & Perks" : "Access & perks"],
+          ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
+        </div>
+        {dashboardTab === "overview" && <div className="dashboard-overview">
+          <div className="dashboard-profile-card"><img src="/linktree/uploads/profile.png" alt="" /><div><p className="eyebrow">{language === "de" ? "WILLKOMMEN ZURÜCK" : "WELCOME BACK"}</p><h3>{user.name || user.email}</h3><p>{user.email}</p></div></div>
+          <div className="dashboard-stat-grid">
+            <article><span>{language === "de" ? "Kontostatus" : "Account status"}</span><strong>{profile?.status || "EMAIL_PENDING"}</strong></article>
+            <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
+            <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
+          </div>
+          <div className="dashboard-actions">
+            {!user.emailVerification && <button className="secondary-action" onClick={() => run(resendVerification, t.verificationSent)}>{t.resendVerification}</button>}
+            <button className="primary-action" disabled={!user.emailVerification || reviewPending || ageStatus === "APPROVED"} onClick={() => { setNotice(""); setModal("age"); }}>{reviewPending ? ui.reviewReady : ageStatus === "APPROVED" ? t.ageAlreadyApproved : t.avsStart}</button>
+            {ageStatus === "APPROVED" && <button className="secondary-action" type="button" onClick={openGallery}>{ui.openGallery}</button>}
+          </div>
+        </div>}
+        {dashboardTab === "profile" && <form className="dashboard-form" onSubmit={saveProfile}>
+          <Field label={t.name} name="name" defaultValue={user.name || ""} autoComplete="name" required maxLength="128" />
+          <Field label={t.emailLabel} value={user.email} disabled readOnly />
+          <p className="upload-note">{language === "de" ? "Die E-Mail-Adresse wird zur Anmeldung, für Bestellbestätigungen und Rechnungen verwendet." : "Your email is used for sign-in, order confirmations and invoices."}</p>
+          <button className="primary-action" disabled={busy}>{language === "de" ? "Änderungen speichern" : "Save changes"}</button>
+        </form>}
+        {dashboardTab === "orders" && <div className="order-list">
+          {orders.length ? orders.map((order) => <article className="order-card" key={order.orderId}>
+            <div className="order-card__head"><div><p className="eyebrow">{order.status}</p><h3>{order.productName}</h3></div><strong>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: order.currency }).format(order.amountMinor / 100)}</strong></div>
+            <dl className="order-facts"><div><dt>{language === "de" ? "Verwendungszweck" : "Remittance information"}</dt><dd className="payment-reference">{order.reference}</dd></div><div><dt>{ui.due}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(order.paymentDueAt))}</dd></div>{order.invoice?.number && <div><dt>{language === "de" ? "Rechnung" : "Invoice"}</dt><dd>{order.invoice.number} · {order.invoice.emailStatus}</dd></div>}</dl>
+            {order.status === "PENDING" && <div className="order-actions"><button className="secondary-action" type="button" onClick={() => { setSelectedProduct(products.find((product) => product.sku === order.productSku) || { displayName: order.productName, currency: order.currency, amountMinor: order.amountMinor, durationValue: order.durationValue, durationUnit: order.durationUnit }); setSepaOrder(order); setPaymentView("details"); setModal("payment"); }}>{language === "de" ? "Zahlungsdetails" : "Payment details"}</button><button className="danger-action" type="button" onClick={() => cancelOrder(order)}>{language === "de" ? "Auftrag stornieren" : "Cancel order"}</button></div>}
+          </article>) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Bestellungen" : "No orders yet"}</h3><p>{language === "de" ? "Deine zukünftigen Zahlungsaufträge erscheinen hier." : "Your future payment orders will appear here."}</p></div>}
+        </div>}
+        {dashboardTab === "access" && <div className="access-perks">
+          <article className="perk-access-card"><span>✦</span><div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Access" : "Free access")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
+          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>Private Telegram Channel</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
+          {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
+          {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
+        </div>}
+        <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={() => run(logout, t.logoutSuccess, "auth")}>{ui.logout}</button></div>
+      </div>}
+    </Modal>}
 
     {modal === "age" && <Modal title={ui.ageTitle} eyebrow={t.stepVerify} onClose={() => setModal("account")} t={t}><p className="modal-intro">{ui.ageText}</p>{notice && <p className="form-notice" role="status">{notice}</p>}{!activeAgeCase?.caseId ? <form className="auth-panel" onSubmit={beginAgeVerification}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><label className="consent-check"><input name="consent" type="checkbox" required /><span>{ui.consentText}</span></label><button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button></form> : <form className="auth-panel" onSubmit={submitAge}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><p className="eyebrow">{ui.challengeTitle}</p><Field label={`${ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`} name="documentFront" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")} /><Field label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`} name="documentBack" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")} />{activeAgeCase?.evidenceKinds?.includes("VIDEO") ? <p className="live-recorder__ready">✓ {ui.videoReady}</p> : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}<button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button></form>}</Modal>}
 
@@ -747,12 +903,20 @@ export default function App() {
           <div><dt>{ui.renewalLabel}</dt><dd>{ui.renewalValue}</dd></div>
           <div><dt>{ui.accessLabel}</dt><dd>{ui.accessValue}</dd></div>
         </dl>
+        <div className="billing-fields">
+          <p className="eyebrow">{language === "de" ? "RECHNUNGSADRESSE" : "BILLING ADDRESS"}</p>
+          <Field label={language === "de" ? "Vollständiger Name" : "Full name"} value={billing.name} onChange={(event) => setBilling({ ...billing, name: event.target.value })} autoComplete="name" required />
+          <Field label={language === "de" ? "Straße und Hausnummer" : "Street and number"} value={billing.street} onChange={(event) => setBilling({ ...billing, street: event.target.value })} autoComplete="street-address" required />
+          <div className="billing-fields__row"><Field label={language === "de" ? "Postleitzahl" : "Postal code"} value={billing.postalCode} onChange={(event) => setBilling({ ...billing, postalCode: event.target.value })} autoComplete="postal-code" required /><Field label={language === "de" ? "Ort" : "City"} value={billing.city} onChange={(event) => setBilling({ ...billing, city: event.target.value })} autoComplete="address-level2" required /></div>
+          <Field label={language === "de" ? "Ländercode (z. B. DE)" : "Country code (e.g. DE)"} value={billing.countryCode} onChange={(event) => setBilling({ ...billing, countryCode: event.target.value.toUpperCase().slice(0, 2) })} autoComplete="country" pattern="[A-Za-z]{2}" required />
+          <p className="upload-note">{language === "de" ? "An diese Angaben wird die Rechnung ausgestellt und per E-Mail versendet. Nicht bezahlte Aufträge werden nach 48 Stunden automatisch storniert." : "The invoice is issued to these details and sent by email. Unpaid orders are cancelled automatically after 48 hours."}</p>
+        </div>
         <div className="payment-total"><span>{ui.totalDue}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
         <label className="checkout-confirmation">
           <input type="checkbox" checked={checkoutAccepted} onChange={(event) => setCheckoutAccepted(event.target.checked)} />
           <span>{ui.confirmationText}</span>
         </label>
-        <button className="primary-action" type="button" disabled={!checkoutAccepted || busy} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
+        <button className="primary-action" type="button" disabled={!checkoutAccepted || busy || !billing.name.trim() || !billing.street.trim() || !billing.postalCode.trim() || !billing.city.trim() || !/^[A-Z]{2}$/.test(billing.countryCode)} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
       </div>}
       {!sepaOrder && checkoutStep === "pay" && <div className="payment-start">
         <div className="payment-total"><span>{selectedProduct.displayName} · {durationLabel(selectedProduct, language)}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
