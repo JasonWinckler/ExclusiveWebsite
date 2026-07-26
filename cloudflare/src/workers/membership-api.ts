@@ -419,7 +419,7 @@ export function isValidIban(value: string): boolean {
   return remainder === 1;
 }
 
-interface SepaInstructions {
+export interface SepaInstructions {
   beneficiary: string;
   iban: string;
   bic: string | null;
@@ -447,10 +447,10 @@ export function createSepaTransferPurpose(randomPart: string): string {
   return `Exclusive Content - ID #${identifier}`;
 }
 
-function epcQrPayload(
+export function epcQrPayload(
   instructions: SepaInstructions,
   amountMinor: number,
-  reference: string,
+  transferPurpose: string,
 ): string {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 1 || amountMinor > 99_999_999_999) {
     throw new ApiError(500, "INVALID_SEPA_AMOUNT");
@@ -466,8 +466,8 @@ function epcQrPayload(
     instructions.iban,
     `EUR${amount}`,
     "",
-    reference,
     "",
+    transferPurpose,
     "",
   ].join("\n");
 }
