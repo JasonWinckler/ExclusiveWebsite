@@ -162,6 +162,7 @@ export const cancelPaymentOrder = (orderId, reason) => apiRequest(
   { method: "DELETE", json: { reason }, idempotent: true },
 );
 export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/premium-telegram");
+export const getVipWhatsappPerk = () => apiRequest("/v1/perks/vip-whatsapp");
 export const registerCurrentDevice = (displayName = navigator.userAgent.slice(0, 80)) => apiRequest(
   "/v1/devices/register",
   { method: "POST", json: { deviceToken: getDeviceToken(), displayName }, idempotent: true },
