@@ -34,6 +34,15 @@ function trustedIso(value: string | undefined): string | null {
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
+function safeFetchError(error: unknown): { errorName: string; errorMessage: string } {
+  const errorName = error instanceof Error ? error.name : "UnknownError";
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const errorMessage = rawMessage
+    .replace(/[A-Za-z0-9._~-]{32,}/g, "[redacted]")
+    .slice(0, 256);
+  return { errorName, errorMessage };
+}
+
 export async function authenticateUser(
   request: Request,
   env: BaseEnv,
@@ -56,7 +65,11 @@ export async function authenticateUser(
       },
       redirect: "error",
     });
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "appwrite_identity_fetch_failed",
+      ...safeFetchError(error),
+    }));
     throw new ApiError(503, "IDENTITY_PROVIDER_UNAVAILABLE");
   }
 
@@ -64,6 +77,11 @@ export async function authenticateUser(
     throw new ApiError(401, "INVALID_OR_EXPIRED_IDENTITY");
   }
   if (!response.ok) {
+    console.error(JSON.stringify({
+      event: "appwrite_identity_upstream_rejected",
+      status: response.status,
+      statusText: response.statusText.slice(0, 64),
+    }));
     throw new ApiError(503, "IDENTITY_PROVIDER_UNAVAILABLE");
   }
 
