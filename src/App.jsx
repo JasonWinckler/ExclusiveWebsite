@@ -38,9 +38,25 @@ const copy = {
     buy: "Zugang wählen",
     trial: "Einmaliges Schnupperangebot",
     catalogUnavailable: "Der Produktkatalog ist derzeit nicht erreichbar. Es kann kein Zahlungsauftrag erzeugt werden.",
-    paymentTitle: "SEPA-Zahlung",
-    paymentIntro: "Der Zahlungsauftrag erzeugt einen eindeutigen Verwendungszweck im Format „Exclusive Content - ID #…“. Der Zugang wird erst nach dem exakten Abgleich des Zahlungseingangs aktiviert.",
-    createOrder: "SEPA-Zahlungsdaten erzeugen",
+    paymentTitle: "Bestellung & SEPA-Zahlung",
+    paymentIntro: "Prüfe und bestätige zuerst deine Bestellung. Erst mit „PAY WITH SEPA“ wird der Zahlungsauftrag in der Datenbank angelegt und der persönliche QR-Code erzeugt.",
+    checkoutReviewTitle: "Bestellübersicht",
+    checkoutReviewText: "Noch wurde kein Zahlungsauftrag angelegt und keine Zahlung ausgelöst.",
+    productLabel: "Mitgliedschaft",
+    durationCheckout: "Laufzeit",
+    billingAccount: "Abrechnungskonto",
+    paymentKind: "Zahlungsart",
+    paymentKindValue: "Einmalige SEPA-Überweisung",
+    renewalLabel: "Verlängerung",
+    renewalValue: "Keine automatische Verlängerung",
+    accessLabel: "Freischaltung",
+    accessValue: "Nach bestätigtem Zahlungseingang",
+    totalDue: "Heute zu zahlen",
+    confirmationText: "Ich bestätige Tarif, Laufzeit und Gesamtbetrag und möchte im nächsten Schritt die SEPA-Zahlungsdaten anfordern.",
+    confirmOrder: "Bestellung bestätigen",
+    backToSummary: "Zurück zur Bestellübersicht",
+    payWithSepa: "PAY WITH SEPA",
+    databaseOrderNote: "Mit diesem Button wird der eindeutige Zahlungsauftrag in Cloudflare D1 gespeichert. Die Website führt selbst keine Banküberweisung aus.",
     qrView: "QR-Code",
     detailsView: "Zahlungsdaten",
     scanQr: "Scanne den QR-Code mit deiner Banking-App und prüfe die vorausgefüllten Daten vor der Freigabe.",
@@ -106,9 +122,25 @@ const copy = {
     buy: "Choose access",
     trial: "One-time trial offer",
     catalogUnavailable: "The product catalog is unavailable. A payment order cannot be created.",
-    paymentTitle: "SEPA payment",
-    paymentIntro: "The payment order creates a unique remittance value in the format “Exclusive Content - ID #…”. Access is activated only after exact incoming-payment matching.",
-    createOrder: "Create SEPA payment details",
+    paymentTitle: "Order & SEPA payment",
+    paymentIntro: "Review and confirm the order first. Only “PAY WITH SEPA” creates the payment order in the database and generates the personal QR code.",
+    checkoutReviewTitle: "Order summary",
+    checkoutReviewText: "No payment order has been created and no payment has been initiated yet.",
+    productLabel: "Membership",
+    durationCheckout: "Term",
+    billingAccount: "Billing account",
+    paymentKind: "Payment method",
+    paymentKindValue: "One-time SEPA credit transfer",
+    renewalLabel: "Renewal",
+    renewalValue: "No automatic renewal",
+    accessLabel: "Activation",
+    accessValue: "After confirmed receipt of payment",
+    totalDue: "Due now",
+    confirmationText: "I confirm the plan, term and total amount and want to request the SEPA payment details in the next step.",
+    confirmOrder: "Confirm order",
+    backToSummary: "Back to order summary",
+    payWithSepa: "PAY WITH SEPA",
+    databaseOrderNote: "This button stores the unique payment order in Cloudflare D1. The website itself does not execute a bank transfer.",
     qrView: "QR code",
     detailsView: "Payment details",
     scanQr: "Scan the QR code with your banking app and verify the pre-filled details before approving it.",
@@ -438,6 +470,8 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sepaOrder, setSepaOrder] = useState(null);
+  const [checkoutStep, setCheckoutStep] = useState("review");
+  const [checkoutAccepted, setCheckoutAccepted] = useState(false);
   const [paymentView, setPaymentView] = useState("qr");
   const [gallery, setGallery] = useState([]);
   const [contentPreview, setContentPreview] = useState(null);
@@ -611,6 +645,8 @@ export default function App() {
     }
     setSelectedProduct(product);
     setSepaOrder(null);
+    setCheckoutStep("review");
+    setCheckoutAccepted(false);
     setPaymentView("qr");
     setModal("payment");
   };
@@ -695,7 +731,43 @@ export default function App() {
 
     {modal === "age" && <Modal title={ui.ageTitle} eyebrow={t.stepVerify} onClose={() => setModal("account")} t={t}><p className="modal-intro">{ui.ageText}</p>{notice && <p className="form-notice" role="status">{notice}</p>}{!activeAgeCase?.caseId ? <form className="auth-panel" onSubmit={beginAgeVerification}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><label className="consent-check"><input name="consent" type="checkbox" required /><span>{ui.consentText}</span></label><button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button></form> : <form className="auth-panel" onSubmit={submitAge}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><p className="eyebrow">{ui.challengeTitle}</p><Field label={`${ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`} name="documentFront" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")} /><Field label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`} name="documentBack" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")} />{activeAgeCase?.evidenceKinds?.includes("VIDEO") ? <p className="live-recorder__ready">✓ {ui.videoReady}</p> : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}<button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button></form>}</Modal>}
 
-    {modal === "payment" && selectedProduct && <Modal title={ui.paymentTitle} eyebrow={selectedProduct.displayName} onClose={() => setModal(null)} t={t}><p className="modal-intro">{ui.paymentIntro}</p>{notice && <p className="form-notice" role="status">{notice}</p>}{!sepaOrder ? <div className="payment-start"><div className="payment-total"><span>{durationLabel(selectedProduct, language)}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div><button className="primary-action" type="button" disabled={busy} onClick={startPayment}>{busy ? ui.loading : ui.createOrder}</button></div> : <div className="sepa-order"><div className="auth-tabs"><button type="button" className={paymentView === "qr" ? "is-active" : ""} onClick={() => setPaymentView("qr")}>{ui.qrView}</button><button type="button" className={paymentView === "details" ? "is-active" : ""} onClick={() => setPaymentView("details")}>{ui.detailsView}</button></div>{paymentView === "qr" ? <div className="qr-panel"><QrImage payload={sepaOrder.qr.payload} alt="EPC SEPA QR" /><p>{ui.scanQr}</p></div> : <dl className="payment-details"><div><dt>{ui.beneficiary}</dt><dd>{sepaOrder.beneficiary}</dd></div><div><dt>{ui.iban}</dt><dd>{sepaOrder.iban}</dd></div>{sepaOrder.bic && <div><dt>{ui.bic}</dt><dd>{sepaOrder.bic}</dd></div>}<div><dt>{ui.amount}</dt><dd>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: sepaOrder.currency }).format(sepaOrder.amountMinor / 100)}</dd></div><div><dt>{ui.reference}</dt><dd className="payment-reference">{sepaOrder.reference}</dd></div><div><dt>{ui.due}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(sepaOrder.paymentDueAt))}</dd></div></dl>}<p className="upload-note">{ui.paymentPending}</p></div>}</Modal>}
+    {modal === "payment" && selectedProduct && <Modal title={ui.paymentTitle} eyebrow={selectedProduct.displayName} onClose={() => setModal(null)} t={t}>
+      <p className="modal-intro">{ui.paymentIntro}</p>
+      {notice && <p className="form-notice" role="status">{notice}</p>}
+      {!sepaOrder && checkoutStep === "review" && <div className="checkout-summary">
+        <div>
+          <p className="eyebrow">{ui.checkoutReviewTitle}</p>
+          <p className="checkout-step-note">{ui.checkoutReviewText}</p>
+        </div>
+        <dl className="checkout-facts">
+          <div><dt>{ui.productLabel}</dt><dd>{selectedProduct.displayName}</dd></div>
+          <div><dt>{ui.durationCheckout}</dt><dd>{durationLabel(selectedProduct, language)}</dd></div>
+          <div><dt>{ui.billingAccount}</dt><dd>{user?.email}</dd></div>
+          <div><dt>{ui.paymentKind}</dt><dd>{ui.paymentKindValue}</dd></div>
+          <div><dt>{ui.renewalLabel}</dt><dd>{ui.renewalValue}</dd></div>
+          <div><dt>{ui.accessLabel}</dt><dd>{ui.accessValue}</dd></div>
+        </dl>
+        <div className="payment-total"><span>{ui.totalDue}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
+        <label className="checkout-confirmation">
+          <input type="checkbox" checked={checkoutAccepted} onChange={(event) => setCheckoutAccepted(event.target.checked)} />
+          <span>{ui.confirmationText}</span>
+        </label>
+        <button className="primary-action" type="button" disabled={!checkoutAccepted || busy} onClick={() => setCheckoutStep("pay")}>{ui.confirmOrder}</button>
+      </div>}
+      {!sepaOrder && checkoutStep === "pay" && <div className="payment-start">
+        <div className="payment-total"><span>{selectedProduct.displayName} · {durationLabel(selectedProduct, language)}</span><strong>{formatCurrency(selectedProduct, language)}</strong></div>
+        <p className="checkout-step-note">{ui.databaseOrderNote}</p>
+        <div className="checkout-actions">
+          <button className="secondary-action" type="button" disabled={busy} onClick={() => setCheckoutStep("review")}>{ui.backToSummary}</button>
+          <button className="primary-action" type="button" disabled={busy} onClick={startPayment}>{busy ? ui.loading : ui.payWithSepa}</button>
+        </div>
+      </div>}
+      {sepaOrder && <div className="sepa-order">
+        <div className="auth-tabs"><button type="button" className={paymentView === "qr" ? "is-active" : ""} onClick={() => setPaymentView("qr")}>{ui.qrView}</button><button type="button" className={paymentView === "details" ? "is-active" : ""} onClick={() => setPaymentView("details")}>{ui.detailsView}</button></div>
+        {paymentView === "qr" ? <div className="qr-panel"><QrImage payload={sepaOrder.qr.payload} alt="EPC SEPA QR" /><p>{ui.scanQr}</p></div> : <dl className="payment-details"><div><dt>{ui.beneficiary}</dt><dd>{sepaOrder.beneficiary}</dd></div><div><dt>{ui.iban}</dt><dd>{sepaOrder.iban}</dd></div>{sepaOrder.bic && <div><dt>{ui.bic}</dt><dd>{sepaOrder.bic}</dd></div>}<div><dt>{ui.amount}</dt><dd>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: sepaOrder.currency }).format(sepaOrder.amountMinor / 100)}</dd></div><div><dt>{ui.reference}</dt><dd className="payment-reference">{sepaOrder.reference}</dd></div><div><dt>{ui.due}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(sepaOrder.paymentDueAt))}</dd></div></dl>}
+        <p className="upload-note">{ui.paymentPending}</p>
+      </div>}
+    </Modal>}
 
     {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => setContentPreview(null)}>← {ui.gallery}</button><h3>{contentPreview.title}</h3>{contentPreview.type.startsWith("video/") ? <video src={contentPreview.url} controls playsInline /> : <img src={contentPreview.url} alt={contentPreview.title} />}</div> : gallery.length ? <div className="gallery-grid">{gallery.map((item) => <article className={item.accessible ? "" : "is-locked"} key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className={item.accessible ? "primary-action" : "secondary-action"} type="button" disabled={!item.accessible || busy} onClick={() => openContent(item)}>{item.accessible ? ui.openContent : ui.lockedTier}</button></article>)}</div> : <p>{ui.noContent}</p>}</Modal>}
   </>;
