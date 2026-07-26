@@ -968,6 +968,43 @@ async function cancelUserPaymentOrder(
   return { orderId, status: "CANCELLED", existing: false };
 }
 
+async function premiumTelegramPerk(
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const now = isoNow();
+  const [profile, premiumEntitlement] = await Promise.all([
+    getUserProfile(env.DB, userId),
+    env.DB.prepare(`
+      SELECT id, expires_at FROM entitlements
+      WHERE appwrite_user_id = ? AND tier = 'EXCLUSIVE_PREMIUM'
+        AND status = 'ACTIVE' AND starts_at <= ? AND expires_at > ?
+      ORDER BY expires_at DESC LIMIT 1
+    `).bind(userId, now, now).first<{ id: string; expires_at: string }>(),
+  ]);
+  if (!profile || profile.account_status !== "ACTIVE" || profile.age_status !== "APPROVED") {
+    throw new ApiError(403, "PREMIUM_PERK_NOT_AVAILABLE");
+  }
+  if (!premiumEntitlement) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
+  if (!env.PREMIUM_TELEGRAM_INVITE_URL) {
+    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
+  }
+  let inviteUrl: URL;
+  try {
+    inviteUrl = new URL(env.PREMIUM_TELEGRAM_INVITE_URL);
+  } catch {
+    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
+  }
+  if (inviteUrl.protocol !== "https:" || inviteUrl.hostname !== "t.me") {
+    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
+  }
+  return {
+    available: true,
+    inviteUrl: inviteUrl.toString(),
+    entitlementExpiresAt: premiumEntitlement.expires_at,
+  };
+}
+
 async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>> {
   const rows = await env.DB.prepare(`
     SELECT p.id, p.sku, p.display_name, p.tier, p.currency, p.amount_minor,
@@ -1414,6 +1451,8 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     result = await createSepaOrder(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/payments/orders") {
     result = await listUserPaymentOrders(env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/premium-telegram") {
+    result = await premiumTelegramPerk(env, identity.userId);
   } else if (request.method === "DELETE" && paymentOrderPath) {
     result = await cancelUserPaymentOrder(request, env, identity.userId, paymentOrderPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") {
