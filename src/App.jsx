@@ -5,8 +5,11 @@ import {
   completeEmailVerification,
   completePasswordReset,
   createAgeVerificationCase,
+  createContentComment,
   createSepaOrder,
+  deleteContentComment,
   fetchContentItem,
+  getContentComments,
   getContentItems,
   getCurrentUser,
   getMembershipStatus,
@@ -497,6 +500,8 @@ export default function App() {
   const [paymentView, setPaymentView] = useState("qr");
   const [gallery, setGallery] = useState([]);
   const [contentPreview, setContentPreview] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentAccess, setCommentAccess] = useState({ allowComments: false, canComment: false });
   const [liveVideo, setLiveVideo] = useState(null);
   const [ageSession, setAgeSession] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -757,9 +762,23 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      const response = await fetchContentItem(item.slug);
+      const [response, commentResult] = await Promise.all([
+        fetchContentItem(item.slug),
+        getContentComments(item.slug).catch(() => ({ comments: [], allowComments: false, canComment: false })),
+      ]);
       const blob = await response.blob();
-      setContentPreview({ url: URL.createObjectURL(blob), type: item.contentType, title: item.title });
+      setContentPreview({
+        url: URL.createObjectURL(blob),
+        type: item.contentType,
+        title: item.title,
+        bodyText: item.bodyText || "",
+        slug: item.slug,
+      });
+      setComments(commentResult.comments || []);
+      setCommentAccess({
+        allowComments: Boolean(commentResult.allowComments),
+        canComment: Boolean(commentResult.canComment),
+      });
     } catch (error) {
       setNotice(messageFor(error, t));
     } finally {
@@ -770,6 +789,44 @@ export default function App() {
   const viewContent = async (item) => {
     setModal("gallery");
     await openContent(item);
+  };
+
+  const submitComment = async (event) => {
+    event.preventDefault();
+    if (!contentPreview?.slug) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const body = String(data.get("comment") || "").trim();
+    if (!body) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await createContentComment(contentPreview.slug, body);
+      const next = await getContentComments(contentPreview.slug);
+      setComments(next.comments || []);
+      setCommentAccess({ allowComments: Boolean(next.allowComments), canComment: Boolean(next.canComment) });
+      form.reset();
+    } catch (error) {
+      setNotice(messageFor(error, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeComment = async (commentId) => {
+    if (!window.confirm(language === "de" ? "Diesen Kommentar löschen?" : "Delete this comment?")) return;
+    setBusy(true);
+    try {
+      await deleteContentComment(commentId);
+      if (contentPreview?.slug) {
+        const next = await getContentComments(contentPreview.slug);
+        setComments(next.comments || []);
+      }
+    } catch (error) {
+      setNotice(messageFor(error, t));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const cancelOrder = async (order) => {
@@ -978,6 +1035,6 @@ export default function App() {
       </div>}
     </Modal>}
 
-    {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => setContentPreview(null)}>← {ui.gallery}</button><h3>{contentPreview.title}</h3>{contentPreview.type.startsWith("video/") ? <video src={contentPreview.url} controls playsInline /> : <img src={contentPreview.url} alt={contentPreview.title} />}</div> : gallery.length ? <div className="gallery-grid">{gallery.map((item) => <article className={item.accessible ? "" : "is-locked"} key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className={item.accessible ? "primary-action" : "secondary-action"} type="button" disabled={!item.accessible || busy} onClick={() => openContent(item)}>{item.accessible ? ui.openContent : ui.lockedTier}</button></article>)}</div> : <p>{ui.noContent}</p>}</Modal>}
+    {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => { setContentPreview(null); setComments([]); }}>← {ui.gallery}</button><h3>{contentPreview.title}</h3>{contentPreview.bodyText && <p className="post-body">{contentPreview.bodyText}</p>}{contentPreview.type.startsWith("video/") ? <video src={contentPreview.url} controls playsInline /> : <img src={contentPreview.url} alt={contentPreview.title} />}<section className="comments-panel" aria-labelledby="comments-title"><div className="comments-panel__head"><div><p className="eyebrow">{language === "de" ? "PRIVATE COMMUNITY" : "PRIVATE COMMUNITY"}</p><h3 id="comments-title">{language === "de" ? "Kommentare" : "Comments"} <span>{comments.length}</span></h3></div>{entitlement?.active && <span className="status-chip is-active">{entitlement.tier.replace("EXCLUSIVE_", "")}</span>}</div>{comments.length ? <div className="comment-list">{comments.map((comment) => <article className={comment.own ? "comment-card is-own" : "comment-card"} key={comment.id}><div><strong>{comment.displayName || user?.name || "Member"}</strong><time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p>{comment.own && <button className="text-button" type="button" onClick={() => removeComment(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}</article>)}</div> : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}{commentAccess.canComment ? <form className="comment-composer" onSubmit={submitComment}><label><span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span><textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} /></label><div><small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small><button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button></div></form> : commentAccess.allowComments && <div className="paid-comment-teaser"><strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong><p>{language === "de" ? "Aktive Mitglieder können unter Beiträgen kommentieren." : "Active paid members can join the conversation."}</p><a className="secondary-action" href="#pricing" onClick={() => { setModal(null); setContentPreview(null); }}>{language === "de" ? "Membership entdecken" : "Explore membership"}</a></div>}</section></div> : gallery.length ? <div className="gallery-grid">{gallery.map((item) => <article className={item.accessible ? "" : "is-locked"} key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className={item.accessible ? "primary-action" : "secondary-action"} type="button" disabled={!item.accessible || busy} onClick={() => openContent(item)}>{item.accessible ? ui.openContent : ui.lockedTier}</button></article>)}</div> : <p>{ui.noContent}</p>}</Modal>}
   </>;
 }
