@@ -180,6 +180,18 @@ export const adminDecideAgeCase = (caseId, decision, reason, checklist = []) => 
   `/v1/age-verification/cases/${encodeURIComponent(caseId)}/decision`,
   { admin: true, method: "POST", json: { decision, reason, checklist }, idempotent: true },
 );
+export const adminListPaymentOrders = () => apiRequest("/v1/payments/orders", {
+  admin: true,
+});
+export const adminActivatePaymentOrder = (orderId, reason) => apiRequest(
+  `/v1/payments/orders/${encodeURIComponent(orderId)}/activate`,
+  {
+    admin: true,
+    method: "POST",
+    json: { reason, confirmedPaymentReceived: true },
+    idempotent: true,
+  },
+);
 export const adminImportN26Csv = (file) => apiRequest("/v1/payments/n26-csv-import", {
   admin: true, method: "POST", raw: file, contentType: "text/csv", idempotent: true,
 });
