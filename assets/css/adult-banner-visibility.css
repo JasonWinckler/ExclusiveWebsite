@@ -1,0 +1,14 @@
+.adult-site .hero-media__shade {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(14, 0, 5, 0.03),
+      rgba(14, 0, 5, 0.48) 70%,
+      rgba(14, 0, 5, 0.78)
+    ),
+    radial-gradient(
+      circle at 50% 70%,
+      rgba(255, 72, 20, 0.2),
+      transparent 42%
+    );
+}
