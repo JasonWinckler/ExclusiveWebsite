@@ -1033,22 +1033,20 @@ async function vipWhatsappPerk(
   userId: string,
 ): Promise<Record<string, unknown>> {
   const now = isoNow();
-  const [profile, vipThirtyDayEntitlement] = await Promise.all([
+  const [profile, vipEntitlement] = await Promise.all([
     getUserProfile(env.DB, userId),
     env.DB.prepare(`
-      SELECT e.id, e.expires_at
-      FROM entitlements e
-      INNER JOIN products p ON p.id = e.product_id
-      WHERE e.appwrite_user_id = ? AND e.tier = 'EXCLUSIVE_VIP'
-        AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
-        AND p.sku = 'exclusive-vip-30d'
-      ORDER BY e.expires_at DESC LIMIT 1
+      SELECT id, expires_at
+      FROM entitlements
+      WHERE appwrite_user_id = ? AND tier = 'EXCLUSIVE_VIP'
+        AND status = 'ACTIVE' AND starts_at <= ? AND expires_at > ?
+      ORDER BY expires_at DESC LIMIT 1
     `).bind(userId, now, now).first<{ id: string; expires_at: string }>(),
   ]);
   if (!profile || profile.account_status !== "ACTIVE" || profile.age_status !== "APPROVED") {
     throw new ApiError(403, "VIP_WHATSAPP_PERK_NOT_AVAILABLE");
   }
-  if (!vipThirtyDayEntitlement) throw new ApiError(403, "ACTIVE_VIP_30_DAY_REQUIRED");
+  if (!vipEntitlement) throw new ApiError(403, "ACTIVE_VIP_REQUIRED");
   if (!env.VIP_WHATSAPP_NUMBER) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
   const digits = env.VIP_WHATSAPP_NUMBER.replace(/\D/g, "");
   if (!/^[1-9]\d{7,14}$/.test(digits)) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
@@ -1056,7 +1054,7 @@ async function vipWhatsappPerk(
     available: true,
     phoneNumber: env.VIP_WHATSAPP_NUMBER,
     whatsappUrl: `https://wa.me/${digits}`,
-    entitlementExpiresAt: vipThirtyDayEntitlement.expires_at,
+    entitlementExpiresAt: vipEntitlement.expires_at,
   };
 }
 
