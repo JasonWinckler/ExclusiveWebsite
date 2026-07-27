@@ -1,5 +1,6 @@
 import { authenticateUser } from "../shared/auth";
 import {
+  getAccessContext,
   getActiveDeviceCount,
   getActiveEntitlement,
   getContentItem,
@@ -73,60 +74,84 @@ function exactObjectKeys(
 }
 
 async function statusResponse(env: MembershipEnv, userId: string): Promise<Record<string, unknown>> {
-  const [profile, entitlement, activeDeviceCount, ageCase, evidence] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    getActiveEntitlement(env.DB, userId),
-    getActiveDeviceCount(env.DB, userId),
-    env.DB.prepare(`
+  const now = isoNow();
+  const row = await env.DB.prepare(`
+    WITH active_entitlement AS (
+      SELECT tier, expires_at
+      FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+        AND starts_at <= ? AND expires_at > ?
+      ORDER BY CASE tier
+        WHEN 'EXCLUSIVE_VIP' THEN 3
+        WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+        ELSE 1
+      END DESC, expires_at DESC
+      LIMIT 1
+    ),
+    latest_age_case AS (
       SELECT id, manual_review_status, upload_expires_at,
         instructions_version, liveness_challenge_json
       FROM age_verification_cases
       WHERE appwrite_user_id = ? AND status = 'PENDING'
-      ORDER BY created_at DESC LIMIT 1
-    `).bind(userId).first<{
-      id: string;
-      manual_review_status: string;
-      upload_expires_at: string;
-      instructions_version: string;
-      liveness_challenge_json: string;
-    }>(),
-    env.DB.prepare(`
-      SELECT evidence_kind FROM age_verification_uploads
-      WHERE appwrite_user_id = ? AND deleted_at IS NULL
-        AND age_case_id = (
-          SELECT id FROM age_verification_cases
-          WHERE appwrite_user_id = ? AND status = 'PENDING'
-          ORDER BY created_at DESC LIMIT 1
-        )
-      ORDER BY evidence_kind
-    `).bind(userId, userId).all<{ evidence_kind: AgeEvidenceKind }>(),
-  ]);
-  if (!profile) throw new ApiError(503, "PROFILE_PROJECTION_UNAVAILABLE");
+      ORDER BY created_at DESC
+      LIMIT 1
+    )
+    SELECT
+      p.account_status, p.email_verified, p.age_status,
+      e.tier AS entitlement_tier, e.expires_at AS entitlement_expires_at,
+      (SELECT COUNT(*) FROM registered_devices d
+        WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
+      a.id AS age_case_id, a.manual_review_status, a.upload_expires_at,
+      a.instructions_version, a.liveness_challenge_json,
+      (SELECT GROUP_CONCAT(u.evidence_kind, ',')
+        FROM age_verification_uploads u
+        WHERE u.age_case_id = a.id AND u.deleted_at IS NULL) AS evidence_kinds
+    FROM user_profiles p
+    LEFT JOIN active_entitlement e ON 1 = 1
+    LEFT JOIN latest_age_case a ON 1 = 1
+    WHERE p.appwrite_user_id = ?
+  `).bind(userId, now, now, userId, userId).first<{
+    account_status: string;
+    email_verified: number;
+    age_status: string;
+    entitlement_tier: string | null;
+    entitlement_expires_at: string | null;
+    active_device_count: number;
+    age_case_id: string | null;
+    manual_review_status: string | null;
+    upload_expires_at: string | null;
+    instructions_version: string | null;
+    liveness_challenge_json: string | null;
+    evidence_kinds: string | null;
+  }>();
+  if (!row) throw new ApiError(503, "PROFILE_PROJECTION_UNAVAILABLE");
+  const evidenceKinds = (row.evidence_kinds ?? "")
+    .split(",")
+    .filter((value): value is AgeEvidenceKind =>
+      value === "DOCUMENT_FRONT" || value === "DOCUMENT_BACK" || value === "VIDEO");
   return {
     account: {
-      status: profile.account_status,
-      emailVerified: profile.email_verified === 1,
-      restricted: profile.account_status === "RESTRICTED",
-      deletionPending: profile.account_status === "DELETION_PENDING",
+      status: row.account_status,
+      emailVerified: row.email_verified === 1,
+      restricted: row.account_status === "RESTRICTED",
+      deletionPending: row.account_status === "DELETION_PENDING",
     },
     ageVerification: {
-      status: profile.age_status,
-      caseId: ageCase?.id ?? null,
-      reviewStatus: ageCase?.manual_review_status ?? null,
-      uploadExpiresAt: ageCase?.upload_expires_at ?? null,
-      instructionsVersion: ageCase?.instructions_version ?? null,
-      livenessChallenge: ageCase ? parseChallenge(ageCase.liveness_challenge_json) : [],
-      evidenceKinds: evidence.results.map((row) => row.evidence_kind),
+      status: row.age_status,
+      caseId: row.age_case_id,
+      reviewStatus: row.manual_review_status,
+      uploadExpiresAt: row.upload_expires_at,
+      instructionsVersion: row.instructions_version,
+      livenessChallenge: row.liveness_challenge_json
+        ? parseChallenge(row.liveness_challenge_json)
+        : [],
+      evidenceKinds,
     },
-    entitlement: entitlement
-      ? {
-          active: true,
-          tier: entitlement.tier,
-          expiresAt: entitlement.expires_at,
-        }
+    entitlement: row.entitlement_tier && row.entitlement_expires_at
+      ? { active: true, tier: row.entitlement_tier, expiresAt: row.entitlement_expires_at }
       : { active: false, tier: null, expiresAt: null },
     devices: {
-      active: activeDeviceCount,
+      active: Number(row.active_device_count),
       limit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
     },
   };
@@ -1193,7 +1218,7 @@ async function registerDevice(
   const existing = await getRegisteredDevice(env.DB, userId, tokenHash);
   const now = isoNow();
   if (existing?.status === "ACTIVE") {
-    await touchRegisteredDevice(env.DB, existing.id, now);
+    await touchRegisteredDevice(env.DB, existing.id, existing.last_seen_at, now);
     return { status: "ACTIVE", deviceId: existing.id, existing: true };
   }
   if (existing?.status === "REVOKED") throw new ApiError(409, "DEVICE_CREDENTIAL_REVOKED");
@@ -1260,11 +1285,8 @@ async function listContent(
 ): Promise<Record<string, unknown>> {
   const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(deviceToken);
-  const [profile, entitlement, device, activeDeviceCount, content] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    getActiveEntitlement(env.DB, userId),
-    getRegisteredDevice(env.DB, userId, tokenHash),
-    getActiveDeviceCount(env.DB, userId),
+  const [access, content] = await Promise.all([
+    getAccessContext(env.DB, userId, tokenHash),
     env.DB.prepare(`
       SELECT c.slug, c.title, c.body_text, c.allow_comments,
         c.required_tier, c.jurisdiction_policy, u.content_type, u.size_bytes,
@@ -1287,6 +1309,7 @@ async function listContent(
       comment_count: number;
     }>(),
   ]);
+  const { profile, entitlement, device, activeDeviceCount } = access;
   const baseDecision = authorizeProtectedContent({
     profile,
     entitlement,
@@ -1298,7 +1321,7 @@ async function listContent(
     jurisdictionAllowed: true,
   });
   if (!baseDecision.allowed) throw new ApiError(403, baseDecision.code);
-  await touchRegisteredDevice(env.DB, device!.id);
+  await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
   return {
     items: content.results.map((item) => {
       const decision = authorizeProtectedContent({
@@ -1490,13 +1513,11 @@ async function authorizeContent(
   if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
   const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(deviceToken);
-  const [profile, entitlement, content, device, activeDeviceCount] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    getActiveEntitlement(env.DB, userId),
+  const [access, content] = await Promise.all([
+    getAccessContext(env.DB, userId, tokenHash),
     getContentItem(env.DB, slug),
-    getRegisteredDevice(env.DB, userId, tokenHash),
-    getActiveDeviceCount(env.DB, userId),
   ]);
+  const { profile, entitlement, device, activeDeviceCount } = access;
   if (!content) throw new ApiError(404, "CONTENT_NOT_FOUND");
   const decision = authorizeProtectedContent({
     profile,
@@ -1509,7 +1530,7 @@ async function authorizeContent(
     jurisdictionAllowed: jurisdictionAllowed(content.jurisdiction_policy, profile?.jurisdiction_code ?? null),
   });
   if (!decision.allowed) throw new ApiError(403, decision.code);
-  await touchRegisteredDevice(env.DB, device!.id);
+  await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
 
   if (env.PROTECTED_CONTENT_MODE !== "private-r2-v1" || !content.storage_key) {
     throw new ApiError(503, "PROTECTED_CONTENT_DISABLED");
