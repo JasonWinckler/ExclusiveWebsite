@@ -157,12 +157,12 @@ export interface ContentItemRow {
   content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
   required_tier: "FREE" | EntitlementTier;
   jurisdiction_policy: string | null;
-  storage_key: string | null;
 }
 
 export interface RegisteredDeviceRow {
   id: string;
   status: "ACTIVE" | "REVOKED";
+  last_seen_at: string;
 }
 
 export type AgeEvidenceKind = "DOCUMENT_FRONT" | "DOCUMENT_BACK" | "VIDEO";
