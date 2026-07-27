@@ -1,3 +1,15 @@
+.adult-site .hero-media img {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  object-position: center;
+  transform: translate(-50%, -50%);
+}
+
 .adult-site .hero-media__shade {
   background:
     linear-gradient(
