@@ -1278,16 +1278,20 @@ async function uploadContentMedia(
     };
   }
   const item = await env.DB.prepare(`
-    SELECT id, slug, content_status, required_tier, storage_key FROM content_items WHERE id = ?
+    SELECT c.id, c.slug, c.content_status, c.required_tier,
+      u.id AS active_upload_id
+    FROM content_items c
+    LEFT JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
+    WHERE c.id = ?
   `).bind(contentId).first<{
     id: string;
     slug: string;
     content_status: string;
     required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
-    storage_key: string | null;
+    active_upload_id: string | null;
   }>();
   if (!item) throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
-  if (item.storage_key) throw new ApiError(409, "CONTENT_MEDIA_ALREADY_UPLOADED");
+  if (item.active_upload_id) throw new ApiError(409, "CONTENT_MEDIA_ALREADY_UPLOADED");
   if (item.content_status !== "REVIEW" && item.content_status !== "DISABLED") {
     throw new ApiError(409, "CONTENT_ITEM_NOT_UPLOADABLE");
   }
@@ -1351,10 +1355,10 @@ async function uploadContentMedia(
         now,
       ),
       env.DB.prepare(`
-        UPDATE content_items SET storage_key = ?, content_status = 'ACTIVE',
+        UPDATE content_items SET content_status = 'ACTIVE',
           published_at = ?, version = version + 1, updated_at = ?
-        WHERE id = ? AND storage_key IS NULL
-      `).bind(objectKey, now, now, contentId),
+        WHERE id = ? AND content_status IN ('REVIEW', 'DISABLED')
+      `).bind(now, now, contentId),
       auditStatement(env.DB, {
         administratorUserId,
         action: "CONTENT_MEDIA_UPLOADED",
