@@ -538,7 +538,7 @@ function MembershipSelector({ products, language, ui, onChoose }) {
         aria-label={language === "de" ? "Laufzeit wählen" : "Choose membership term"}
         style={{ "--slider-progress": `${progress}%` }}
       />
-      <div className="membership-slider__labels">
+      <div className="membership-slider__labels" style={{ "--term-count": products.length }}>
         {products.map((product, index) => <button
           type="button"
           className={index === selectedIndex ? "is-active" : ""}
