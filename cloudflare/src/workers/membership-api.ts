@@ -27,7 +27,13 @@ import {
 import { authorizeProtectedContent, deletionBlockers } from "../shared/policy";
 import { sendTransactionalEmail } from "../shared/identity-service";
 import { sha256Hex, validateDeviceToken } from "../shared/security";
-import type { AgeEvidenceKind, MembershipEnv, PaymentStatus } from "../shared/types";
+import type {
+  AgeEvidenceKind,
+  EntitlementRow,
+  MembershipEnv,
+  PaymentStatus,
+  UserProfileRow,
+} from "../shared/types";
 
 const AGE_INSTRUCTIONS_VERSION = "manual-age-v3";
 
@@ -1379,38 +1385,97 @@ async function commentContext(
   slug: string,
 ): Promise<CommentContext> {
   if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
-  const [profile, entitlement, content] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    getActiveEntitlement(env.DB, userId),
-    env.DB.prepare(`
-      SELECT id, content_status, required_tier, jurisdiction_policy, allow_comments
-      FROM content_items WHERE slug = ?
-    `).bind(slug).first<{
-      id: string;
-      content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
-      required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
-      jurisdiction_policy: string | null;
-      allow_comments: number;
-    }>(),
-  ]);
-  if (!content) throw new ApiError(404, "CONTENT_NOT_FOUND");
+  const now = isoNow();
+  const row = await env.DB.prepare(`
+    WITH active_entitlement AS (
+      SELECT id, tier, status, starts_at, expires_at
+      FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+        AND starts_at <= ? AND expires_at > ?
+      ORDER BY CASE tier
+        WHEN 'EXCLUSIVE_VIP' THEN 3
+        WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+        ELSE 1
+      END DESC, expires_at DESC
+      LIMIT 1
+    )
+    SELECT
+      p.appwrite_user_id, p.email, p.display_name, p.email_verified,
+      p.account_status, p.age_status, p.jurisdiction_code, p.last_active_at,
+      p.last_appwrite_access_at, p.administrative_hold, p.legal_retention_until,
+      p.deletion_job_hold, p.version,
+      c.id AS content_id, c.content_status, c.required_tier,
+      c.jurisdiction_policy, c.allow_comments,
+      e.id AS entitlement_id, e.tier AS entitlement_tier,
+      e.status AS entitlement_status, e.starts_at AS entitlement_starts_at,
+      e.expires_at AS entitlement_expires_at
+    FROM user_profiles p
+    JOIN content_items c ON c.slug = ?
+    LEFT JOIN active_entitlement e ON 1 = 1
+    WHERE p.appwrite_user_id = ?
+  `).bind(userId, now, now, slug, userId).first<{
+    appwrite_user_id: string;
+    email: string;
+    display_name: string;
+    email_verified: number;
+    account_status: UserProfileRow["account_status"];
+    age_status: UserProfileRow["age_status"];
+    jurisdiction_code: string | null;
+    last_active_at: string | null;
+    last_appwrite_access_at: string | null;
+    administrative_hold: number;
+    legal_retention_until: string | null;
+    deletion_job_hold: number;
+    version: number;
+    content_id: string;
+    content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
+    required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
+    jurisdiction_policy: string | null;
+    allow_comments: number;
+    entitlement_id: string | null;
+    entitlement_tier: EntitlementRow["tier"] | null;
+    entitlement_status: EntitlementRow["status"] | null;
+    entitlement_starts_at: string | null;
+    entitlement_expires_at: string | null;
+  }>();
+  if (!row) throw new ApiError(404, "CONTENT_NOT_FOUND");
+  const profile: UserProfileRow = {
+    appwrite_user_id: row.appwrite_user_id,
+    email: row.email,
+    display_name: row.display_name,
+    email_verified: row.email_verified,
+    account_status: row.account_status,
+    age_status: row.age_status,
+    jurisdiction_code: row.jurisdiction_code,
+    last_active_at: row.last_active_at,
+    last_appwrite_access_at: row.last_appwrite_access_at,
+    administrative_hold: row.administrative_hold,
+    legal_retention_until: row.legal_retention_until,
+    deletion_job_hold: row.deletion_job_hold,
+    version: row.version,
+  };
+  const entitlement: EntitlementRow | null = row.entitlement_id && row.entitlement_tier &&
+    row.entitlement_status && row.entitlement_starts_at && row.entitlement_expires_at ? {
+      id: row.entitlement_id,
+      tier: row.entitlement_tier,
+      status: row.entitlement_status,
+      starts_at: row.entitlement_starts_at,
+      expires_at: row.entitlement_expires_at,
+    } : null;
   const decision = authorizeProtectedContent({
     profile,
     entitlement,
-    requiredTier: content.required_tier,
-    contentStatus: content.content_status,
+    requiredTier: row.required_tier,
+    contentStatus: row.content_status,
     activeDeviceCount: 0,
     deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
     currentDeviceActive: true,
-    jurisdictionAllowed: jurisdictionAllowed(
-      content.jurisdiction_policy,
-      profile?.jurisdiction_code ?? null,
-    ),
+    jurisdictionAllowed: jurisdictionAllowed(row.jurisdiction_policy, row.jurisdiction_code),
   });
   if (!decision.allowed) throw new ApiError(403, decision.code);
   return {
-    contentId: content.id,
-    allowComments: content.allow_comments === 1,
+    contentId: row.content_id,
+    allowComments: row.allow_comments === 1,
     entitlementActive: Boolean(entitlement),
   };
 }
