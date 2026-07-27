@@ -352,7 +352,7 @@ async function processDeletionJobs(
   inactiveDays: number,
 ): Promise<void> {
   const jobs = await env.DB.prepare(`
-    SELECT id, appwrite_user_id, inactivity_cutoff_at, status, version
+    SELECT id, appwrite_user_id, inactivity_cutoff_at, status, version, request_source
     FROM deletion_jobs
     WHERE status IN ('DELETION_PENDING', 'BLOCKED', 'FAILED') AND scheduled_at <= ?
     ORDER BY scheduled_at ASC LIMIT ?
@@ -362,15 +362,24 @@ async function processDeletionJobs(
     inactivity_cutoff_at: string;
     status: string;
     version: number;
+    request_source: "AUTOMATIC" | "USER_ERASURE" | "ADMIN_ERASURE";
   }>();
   const inactiveBefore = new Date(Date.parse(now) - inactiveDays * 86_400_000).toISOString();
   for (const job of jobs.results) {
-    const blockers = await loadDeletionBlockers(
+    const policyBlockers = await loadDeletionBlockers(
       env,
       job.appwrite_user_id,
       inactiveBefore,
       now,
     );
+    const blockers = job.request_source === "AUTOMATIC"
+      ? policyBlockers
+      : policyBlockers.filter((blocker) => [
+          "ADMINISTRATIVE_HOLD",
+          "DELETION_JOB_HOLD",
+          "ALREADY_DELETED",
+          "PROFILE_NOT_FOUND",
+        ].includes(blocker));
     if (blockers.length) {
       await env.DB.prepare(`
         UPDATE deletion_jobs SET status = 'BLOCKED', retention_checks_json = ?,
@@ -457,12 +466,15 @@ async function processDeletionJobs(
           id, administrator_appwrite_user_id, action, target_type, target_id,
           previous_state_json, new_state_json, reason, correlation_id, created_at
         ) VALUES (?, 'system:maintenance-jobs', 'ACCOUNT_DELETED', 'USER', ?,
-          ?, ?, 'INACTIVE_ACCOUNT_POLICY', ?, ?)
+          ?, ?, ?, ?, ?)
       `).bind(
         crypto.randomUUID(),
         job.appwrite_user_id,
         JSON.stringify({ accountStatus: "DELETION_PENDING" }),
         JSON.stringify({ accountStatus: "DELETED" }),
+        job.request_source === "AUTOMATIC"
+          ? "INACTIVE_ACCOUNT_POLICY"
+          : `${job.request_source}_REQUEST`,
         job.id,
         now,
       ),

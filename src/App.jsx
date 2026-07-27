@@ -319,8 +319,46 @@ function Tier({ number, title, text, featured }) {
   return <article className={`tier-card${featured ? " tier-card--featured" : ""}`}><span className="step-number">{number}</span><h3>{title}</h3><p>{text}</p></article>;
 }
 
+function LockIcon() {
+  return <svg className="lock-symbol" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="5" y="10" width="14" height="11" rx="3" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    <circle cx="12" cy="15.5" r="1.2" />
+  </svg>;
+}
+
+function MembershipMark({ tier, className = "" }) {
+  const normalized = String(tier || "").replace("EXCLUSIVE_", "").toLowerCase();
+  const label = normalized === "vip" ? "VIP" : normalized === "premium" ? "Premium" : "Basic";
+  return <span className={`membership-mark membership-mark--${normalized || "basic"} ${className}`.trim()} aria-label={label}>
+    {normalized === "vip"
+      ? <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 10l6 5 6-9 6 9 6-5-3 15H7L4 10Z" /><path d="M8 27h16" /></svg>
+      : normalized === "premium"
+        ? <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l3.2 9.8L29 16l-9.8 3.2L16 29l-3.2-9.8L3 16l9.8-3.2L16 3Z" /></svg>
+        : <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 29 16 16 29 3 16 16 3Z" /><path d="M16 8 24 16 16 24 8 16 16 8Z" /></svg>}
+  </span>;
+}
+
 function LockedCard({ t, wide }) {
-  return <article className="locked-card"><div className={`locked-preview${wide ? " locked-preview--exclusive" : ""}`} aria-hidden="true"><span className="lock-icon">◇</span></div><div><p className="card-kicker">{t.previewLabel}</p><h3>{t.lockedTitle}</h3><p>{t.lockedText}</p></div></article>;
+  return <article className="locked-card"><div className={`locked-preview${wide ? " locked-preview--exclusive" : ""}`} aria-hidden="true"><LockIcon /></div><div><p className="card-kicker">{t.previewLabel}</p><h3>{t.lockedTitle}</h3><p>{t.lockedText}</p></div></article>;
+}
+
+function LockedGalleryShowcase({ language, signedIn, onAction }) {
+  const tiers = ["EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"];
+  return <div className="locked-gallery-showcase">
+    <div className="locked-gallery-showcase__grid" aria-hidden="true">
+      {tiers.map((tier) => <div className={`locked-gallery-tile locked-gallery-tile--${tier.replace("EXCLUSIVE_", "").toLowerCase()}`} key={tier}>
+        <MembershipMark tier={tier} />
+        <LockIcon />
+        <strong>{tier.replace("EXCLUSIVE_", "")}</strong>
+      </div>)}
+    </div>
+    <button className="primary-action locked-gallery-showcase__cta" type="button" onClick={onAction}>
+      {signedIn
+        ? (language === "de" ? "Membership wählen & freischalten" : "Choose Membership & Unlock")
+        : (language === "de" ? "Jetzt registrieren & freischalten" : "Register & Unlock Now")}
+    </button>
+  </div>;
 }
 
 function Modal({ title, eyebrow, onClose, children, t, wide = false }) {
@@ -490,9 +528,8 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
     return 10;
   };
   const showcasePerks = [...perks].sort((left, right) => perkPriority(left) - perkPriority(right));
-  const symbols = { basic: "◇", premium: "✦", vip: "♛" };
   return <article className={`pricing-group pricing-group--${key}`}>
-    <div className="membership-symbol" aria-hidden="true">{symbols[key]}</div>
+    <MembershipMark tier={tier} className="membership-symbol" />
     <div className="pricing-group__head">
       <p className="eyebrow">{key === "vip" ? "SIGNATURE ACCESS" : key === "premium" ? "MOST DESIRED" : "PRIVATE ENTRY"}</p>
       <h3>{ui[key]}</h3>
@@ -715,8 +752,8 @@ function InlineComments({
         </div>
       </form>
       : commentAccess.allowComments && <div className="paid-comment-teaser">
-        <strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong>
-        <p>{language === "de" ? "Aktive Mitglieder können direkt unter Beiträgen kommentieren." : "Active paid members can comment directly below posts."}</p>
+        <strong>{language === "de" ? "Exclusive Member Benefit" : "Exclusive Member Benefit"}</strong>
+        <p>{language === "de" ? "Exclusive Member können direkt unter Beiträgen kommentieren." : "Exclusive Members can comment directly below posts."}</p>
         <a className="secondary-action" href="#pricing">{language === "de" ? "Membership entdecken" : "Explore membership"}</a>
       </div>}
   </section>;
@@ -858,14 +895,22 @@ export default function App() {
       try {
         if (parameters.get("action") === "verify-email" && parameters.get("token")) {
           await completeEmailVerification(parameters.get("token"));
+          await logout().catch(() => null);
+          setUser(null);
+          setMembership(null);
           setNotice(t.emailVerified);
           history.replaceState({}, "", "/");
-          setModal("account");
+          setMode("login");
+          setModal("auth");
         } else if (parameters.get("action") === "verify-email" && parameters.get("userId") && parameters.get("secret")) {
           await completeLegacyEmailVerification(parameters.get("userId"), parameters.get("secret"));
+          await logout().catch(() => null);
+          setUser(null);
+          setMembership(null);
           setNotice(t.emailVerified);
           history.replaceState({}, "", "/");
-          setModal("account");
+          setMode("login");
+          setModal("auth");
         } else if (parameters.get("action") === "recover") {
           setMode("recover");
           setModal("auth");
@@ -1350,7 +1395,7 @@ export default function App() {
 
   return <>
     <div className="ember-field" aria-hidden="true" />
-    <header className="exclusive-header"><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><nav className="main-nav desktop-nav" aria-label={t.navigation}><a href="#experience">{t.navProfile}</a><a href="#membership">{t.navExclusive}</a><a href="#pricing">Membership</a><a href="#access">{t.navAccess}</a></nav><div className="header-actions"><div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div></header>
+    <header className="exclusive-header"><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><nav className="main-nav desktop-nav" aria-label={t.navigation}>{user ? <><a href="#member-gallery">{language === "de" ? "Beiträge" : "Feed"}</a><a href="#pricing">Memberships</a></> : <><a href="#experience">{t.navProfile}</a><a href="#pricing">Memberships</a><a href="#exclusive">{language === "de" ? "Galerien" : "Galleries"}</a></>}</nav><div className="header-actions"><div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div></header>
     <main id="top">
       {user ? <>
         <section className="hero adult-hero member-hero">
@@ -1365,9 +1410,7 @@ export default function App() {
                 : (language === "de" ? "Deine Altersprüfung ist abgeschlossen. Die Free Gallery wartet auf dich." : "Your age review is complete. Your Free Gallery is ready.")
               : (language === "de" ? "Vervollständige deine Altersprüfung, damit dein persönlicher Bereich freigeschaltet werden kann." : "Complete age verification to unlock your personal space.")}</p>
             <div className="member-status-row">
-              <span className={user.emailVerification ? "status-chip is-active" : "status-chip"}>{user.emailVerification ? "✓ " : ""}E-Mail</span>
-              <span className={ageStatus === "APPROVED" ? "status-chip is-active" : "status-chip"}>{ageStatus === "APPROVED" ? "✓ " : ""}{language === "de" ? "18+ bestätigt" : "18+ verified"}</span>
-              <span className={entitlement?.active ? "status-chip is-active" : "status-chip"}>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : (language === "de" ? "Free Access" : "Free access")}</span>
+              <span className={entitlement?.active ? "status-chip is-active membership-status-chip" : "status-chip membership-status-chip"}>{entitlement?.active && <MembershipMark tier={entitlement.tier} />}{entitlement?.active ? `Exclusive ${entitlement.tier.replace("EXCLUSIVE_", "")}` : (language === "de" ? "Free Preview" : "Free Preview")}</span>
             </div>
             <div className="hero-actions">
               {ageStatus === "APPROVED" ? <a className="primary-action" href="#member-gallery">{language === "de" ? "Beiträge entdecken" : "Discover posts"}</a> : <button className="primary-action" type="button" onClick={() => setModal("age")}>{language === "de" ? "Verifizierung fortsetzen" : "Continue verification"}</button>}
@@ -1395,7 +1438,7 @@ export default function App() {
                 onClick={() => selectGallery(group.tier)}
                 key={group.tier}
               >
-                <span>{galleryTierLabel(group.tier, language)}</span>
+                <span>{group.tier !== "FREE" && <MembershipMark tier={group.tier} />}{galleryTierLabel(group.tier, language)}</span>
                 <small>{group.items.length}</small>
               </button>)}
             </div>
@@ -1426,6 +1469,7 @@ export default function App() {
             </div>}
           </> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
         </section>
+        {!entitlement?.active && <section className="section member-unlock-section"><div className="section-heading"><p className="eyebrow">{language === "de" ? "MEHR WARTET AUF DICH" : "MORE AWAITS"}</p><h2>{language === "de" ? "Öffne die nächste Tür" : "Open the next door"}</h2><p>{language === "de" ? "Wähle deinen persönlichen Zugang zu Basic, Premium oder VIP." : "Choose your personal access to Basic, Premium or VIP."}</p></div><LockedGalleryShowcase language={language} signedIn onAction={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })} /></section>}
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       </> : <>
@@ -1433,7 +1477,7 @@ export default function App() {
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
       <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
       <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
-      <section id="exclusive" className="section preview-section"><div className="section-heading"><p className="eyebrow">{t.curatedLabel}</p><h2>{t.exclusiveHeading}</h2><p>{ui.galleryText}</p></div><div className="locked-grid"><LockedCard t={t} /><LockedCard t={t} /><LockedCard t={t} /></div><div className="section-action"><button className="primary-action" type="button" onClick={openGallery}>{ui.openGallery}</button><p>{ui.deviceNote}</p></div></section>
+      <section id="exclusive" className="section preview-section"><div className="section-heading"><p className="eyebrow">{t.curatedLabel}</p><h2>{t.exclusiveHeading}</h2><p>{ui.galleryText}</p></div><LockedGalleryShowcase language={language} signedIn={false} onAction={() => openAuth("register")} /></section>
       <section id="access" className="section access-section"><div><p className="eyebrow">{t.readyLabel}</p><h2>{t.readyTitle}</h2><p>{t.readyText}</p></div><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.openDashboard : t.createAccount}</button><button className="secondary-action" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.viewStatus : t.login}</button></div></section>
       </>}
     </main>
@@ -1558,7 +1602,7 @@ export default function App() {
           </article>) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Bestellungen" : "No orders yet"}</h3><p>{language === "de" ? "Deine zukünftigen Zahlungsaufträge erscheinen hier." : "Your future payment orders will appear here."}</p></div>}
         </div>}
         {dashboardTab === "access" && <div className="access-perks">
-          <article className="perk-access-card"><span>✦</span><div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Access" : "Free access")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
+          <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>Private Telegram Channel</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}

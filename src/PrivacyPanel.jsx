@@ -50,6 +50,7 @@ export default function PrivacyPanel({
   const [requestNote, setRequestNote] = useState("");
   const [deletionReason, setDeletionReason] = useState("");
   const [deletionConfirmed, setDeletionConfirmed] = useState(false);
+  const [deletionPhrase, setDeletionPhrase] = useState("");
   const countries = useMemo(() => countryOptions(language), [language]);
 
   useEffect(() => {
@@ -91,6 +92,10 @@ export default function PrivacyPanel({
   };
   const submitDeletion = async (event) => {
     event.preventDefault();
+    const accepted = de
+      ? deletionPhrase.trim().toLocaleUpperCase("de-DE") === "LÖSCHEN"
+      : deletionPhrase.trim().toUpperCase() === "DELETE";
+    if (!deletionConfirmed || !accepted) return;
     await onDeleteAccount(deletionReason);
   };
 
@@ -249,8 +254,8 @@ export default function PrivacyPanel({
         <span>06</span>
         <div><h4>{de ? "Konto und Daten löschen" : "Delete account and data"}</h4>
           <p>{de
-            ? "Die Löschung wird sicher eingeplant. Laufende Zugänge, offene Prüfungen oder gesetzliche Aufbewahrungspflichten können die endgültige Ausführung verzögern."
-            : "Deletion is scheduled securely. Active access, open reviews or statutory retention duties may delay final execution."}</p></div>
+            ? "Du kannst dein Konto auch mit aktiver Membership löschen. Personenbezogene Kontodaten und Prüfnachweise werden entfernt; gesetzlich erforderliche Transaktionsnachweise bleiben nur im notwendigen Umfang pseudonymisiert erhalten."
+            : "You may delete your account even with an active membership. Personal account data and verification evidence are removed; legally required transaction records remain only to the necessary extent in pseudonymised form."}</p></div>
       </div>
       <label className="field"><span>{de ? "Grund / Hinweis zur Löschung" : "Deletion reason / note"}</span>
         <textarea value={deletionReason} onChange={(event) => setDeletionReason(event.target.value)}
@@ -262,7 +267,13 @@ export default function PrivacyPanel({
           ? "Ich verstehe, dass mein Zugang widerrufen und mein Konto nach Ablauf der anwendbaren Fristen nicht wiederhergestellt werden kann."
           : "I understand that access will be revoked and the account cannot be restored after the applicable process completes."}</span>
       </label>
-      <button className="danger-action" disabled={busy || !deletionConfirmed}>
+      <label className="field"><span>{de ? "Zur Bestätigung LÖSCHEN eingeben" : "Type DELETE to confirm"}</span>
+        <input value={deletionPhrase} onChange={(event) => setDeletionPhrase(event.target.value)}
+          autoComplete="off" required />
+      </label>
+      <button className="danger-action" disabled={busy || !deletionConfirmed || (de
+        ? deletionPhrase.trim().toLocaleUpperCase("de-DE") !== "LÖSCHEN"
+        : deletionPhrase.trim().toUpperCase() !== "DELETE")}>
         {de ? "Löschung meines Kontos beantragen" : "Request account deletion"}
       </button>
     </form>

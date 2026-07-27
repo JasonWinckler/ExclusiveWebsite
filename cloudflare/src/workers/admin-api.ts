@@ -20,6 +20,7 @@ import {
 import {
   syncAppwriteLabel,
   updateAppwriteUserStatus,
+  verifyAppwriteUserEmail,
 } from "../shared/identity-service";
 import { sha256Hex } from "../shared/security";
 import type { AdminEnv, AgeEvidenceRow } from "../shared/types";
@@ -1693,11 +1694,6 @@ async function restrictUser(
         restriction_reason = ?, version = version + 1, updated_at = ?
       WHERE appwrite_user_id = ? AND version = ?
     `).bind(now, reason, now, userId, previous.version),
-    env.DB.prepare(`
-      UPDATE entitlements SET status = 'REVOKED', revoked_at = ?,
-        revocation_reason = 'ACCOUNT_RESTRICTED', version = version + 1, updated_at = ?
-      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-    `).bind(now, now, userId),
     auditStatement(env.DB, {
       administratorUserId,
       action: "ACCOUNT_RESTRICTED",
@@ -1744,12 +1740,18 @@ async function unrestrictUser(
   }
   const now = isoNow();
   const nextStatus = previous.email_verified === 1 ? "ACTIVE" : "EMAIL_PENDING";
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(`
       UPDATE user_profiles SET account_status = ?, restricted_at = NULL,
         restriction_reason = NULL, version = version + 1, updated_at = ?
       WHERE appwrite_user_id = ? AND version = ? AND account_status = 'RESTRICTED'
     `).bind(nextStatus, now, userId, previous.version),
+    env.DB.prepare(`
+      UPDATE entitlements SET status = 'ACTIVE', revoked_at = NULL,
+        revocation_reason = NULL, version = version + 1, updated_at = ?
+      WHERE appwrite_user_id = ? AND status = 'REVOKED'
+        AND revocation_reason = 'ACCOUNT_RESTRICTED' AND expires_at > ?
+    `).bind(now, userId, now),
     auditStatement(env.DB, {
       administratorUserId,
       action: "ACCOUNT_REACTIVATED",
@@ -1763,6 +1765,7 @@ async function unrestrictUser(
     }),
   ]);
   let appwriteStatusSync = "SYNCED";
+  let accessLabelSync = "SYNCED";
   try {
     await updateAppwriteUserStatus(
       env.IDENTITY_PROJECTION,
@@ -1773,7 +1776,98 @@ async function unrestrictUser(
   } catch {
     appwriteStatusSync = "FAILED";
   }
-  return { accountStatus: nextStatus, appwriteStatusSync };
+  const activeEntitlement = await env.DB.prepare(`
+    SELECT tier FROM entitlements
+    WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND expires_at > ?
+    ORDER BY CASE tier
+      WHEN 'EXCLUSIVE_VIP' THEN 3
+      WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+      WHEN 'EXCLUSIVE_BASIC' THEN 1
+      ELSE 0
+    END DESC, expires_at DESC
+    LIMIT 1
+  `).bind(userId, now).first<{ tier: AccessTier }>();
+  try {
+    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      userId,
+      category: "ACCESS",
+      desiredLabel: activeEntitlement ? accessLabelForTier(activeEntitlement.tier) : null,
+    });
+  } catch {
+    accessLabelSync = "FAILED";
+  }
+  return {
+    accountStatus: nextStatus,
+    restoredEntitlements: results[1]?.meta.changes ?? 0,
+    appwriteStatusSync,
+    accessLabelSync,
+  };
+}
+
+async function manuallyVerifyUserEmail(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason", "confirmation"]);
+  const reason = validateReason(body.reason);
+  if (body.confirmation !== "VERIFY_EMAIL") {
+    throw new ApiError(400, "EMAIL_VERIFICATION_CONFIRMATION_REQUIRED");
+  }
+  const previous = await getUserProfile(env.DB, userId);
+  if (!previous) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  if (previous.email_verified === 1) {
+    return {
+      emailVerified: true,
+      accountStatus: previous.account_status,
+      alreadyVerified: true,
+    };
+  }
+
+  await verifyAppwriteUserEmail(
+    env.IDENTITY_PROJECTION,
+    env.LABEL_SYNC_SERVICE_SECRET,
+    userId,
+  );
+  const now = isoNow();
+  const nextStatus = previous.account_status === "EMAIL_PENDING"
+    ? "ACTIVE"
+    : previous.account_status;
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE user_profiles SET email_verified = 1,
+        account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
+        version = version + 1, updated_at = ?
+      WHERE appwrite_user_id = ? AND version = ? AND email_verified = 0
+    `).bind(now, userId, previous.version),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "EMAIL_VERIFICATION_MANUALLY_CONFIRMED",
+      targetType: "USER",
+      targetId: userId,
+      previousState: {
+        emailVerified: false,
+        accountStatus: previous.account_status,
+      },
+      newState: {
+        emailVerified: true,
+        accountStatus: nextStatus,
+      },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    throw new ApiError(409, "PROFILE_VERSION_CONFLICT");
+  }
+  return { emailVerified: true, accountStatus: nextStatus, alreadyVerified: false };
 }
 
 async function scheduleAdminAccountDeletion(
@@ -1787,8 +1881,11 @@ async function scheduleAdminAccountDeletion(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactKeys(body, ["reason"]);
+  exactKeys(body, ["reason", "confirmation"]);
   const reason = validateReason(body.reason);
+  if (body.confirmation !== "DELETE_ACCOUNT") {
+    throw new ApiError(400, "ACCOUNT_DELETION_CONFIRMATION_REQUIRED");
+  }
   const profile = await getUserProfile(env.DB, userId);
   if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
   const idempotencyKey = `admin-account-delete:${administratorUserId}:${requireIdempotencyKey(request)}`;
@@ -1806,8 +1903,9 @@ async function scheduleAdminAccountDeletion(
     env.DB.prepare(`
       INSERT INTO deletion_jobs (
         id, appwrite_user_id, status, reason, idempotency_key,
-        inactivity_cutoff_at, scheduled_at, retention_checks_json, created_at, updated_at
-      ) VALUES (?, ?, 'DELETION_PENDING', ?, ?, ?, ?, ?, ?, ?)
+        inactivity_cutoff_at, scheduled_at, retention_checks_json, request_source,
+        created_at, updated_at
+      ) VALUES (?, ?, 'DELETION_PENDING', ?, ?, ?, ?, ?, 'ADMIN_ERASURE', ?, ?)
     `).bind(
       jobId,
       userId,
@@ -2106,7 +2204,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   }
   let result: Record<string, unknown>;
-  const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict|unrestrict)$/.exec(url.pathname);
+  const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict|unrestrict|verify-email)$/.exec(url.pathname);
   const userDeletePath = /^\/v1\/users\/([^/]+)$/.exec(url.pathname);
   const ageCasePath = /^\/v1\/age-verification\/cases\/([^/]+)$/.exec(url.pathname);
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
@@ -2141,6 +2239,14 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
       result = await restrictUser(request, env, administrator.userId, userId, correlationId);
     } else if (request.method === "POST" && userPath[2] === "unrestrict") {
       result = await unrestrictUser(request, env, administrator.userId, userId, correlationId);
+    } else if (request.method === "POST" && userPath[2] === "verify-email") {
+      result = await manuallyVerifyUserEmail(
+        request,
+        env,
+        administrator.userId,
+        userId,
+        correlationId,
+      );
     } else {
       throw new ApiError(405, "METHOD_NOT_ALLOWED");
     }

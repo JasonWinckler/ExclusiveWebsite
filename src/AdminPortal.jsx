@@ -20,6 +20,7 @@ import {
   adminRestrictUser,
   adminScheduleAccountDeletion,
   adminUnrestrictUser,
+  adminVerifyUserEmail,
   adminUpdateContent,
   adminUploadContent,
   requestPasswordReset,
@@ -438,14 +439,25 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const manageUser = async (profile, action) => {
     const reason = String(userReasons[profile.appwrite_user_id] || "").trim();
     if (action !== "RESET" && reason.length < 3) return;
-    const destructive = action === "DELETE";
-    if (destructive && !window.confirm(language === "de" ? "Kontolöschung verbindlich vormerken?" : "Schedule this account for deletion?")) return;
+    if (action === "VERIFY_EMAIL" && !window.confirm(language === "de"
+      ? "E-Mail-Adresse nach eigener Prüfung manuell bestätigen? Diese Aktion wird protokolliert."
+      : "Manually verify this email address after your own review? This action is audited.")) return;
+    if (action === "DELETE") {
+      const deletionPhrase = window.prompt(language === "de"
+        ? "Diese Löschung wird auch bei aktiver Membership ausgeführt. Zur Bestätigung LÖSCHEN eingeben:"
+        : "This deletion also proceeds with an active membership. Type DELETE to confirm:");
+      const accepted = language === "de"
+        ? deletionPhrase?.trim().toLocaleUpperCase("de-DE") === "LÖSCHEN"
+        : deletionPhrase?.trim().toUpperCase() === "DELETE";
+      if (!accepted) return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
     try {
       if (action === "RESTRICT") await adminRestrictUser(profile.appwrite_user_id, reason);
       else if (action === "UNRESTRICT") await adminUnrestrictUser(profile.appwrite_user_id, reason);
+      else if (action === "VERIFY_EMAIL") await adminVerifyUserEmail(profile.appwrite_user_id, reason);
       else if (action === "DELETE") await adminScheduleAccountDeletion(profile.appwrite_user_id, reason);
       else await requestPasswordReset(profile.email, language);
       setNotice(action === "RESET"
@@ -555,9 +567,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           const reason = userReasons[profile.appwrite_user_id] || "";
           return <article className="admin-user-card" key={profile.appwrite_user_id}>
             <div className="admin-user-card__head"><div><strong>{profile.display_name || "Member"}</strong><span>{profile.email}</span></div><span className="order-status">{profile.account_status}</span></div>
-            <dl className="admin-facts"><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
+            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
             <label className="form-field"><span>{language === "de" ? "Admin-Begründung" : "Admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))} placeholder={language === "de" ? "Für Sperrung, Freigabe oder Löschung" : "For restriction, restore or deletion"} /></label>
-            <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button><button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
+            <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button>{!profile.email_verified && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "VERIFY_EMAIL")}>{language === "de" ? "E-Mail manuell bestätigen" : "Verify email manually"}</button>}<button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
           </article>;
         })}</div>
       </section>}
@@ -590,7 +602,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
             <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" defaultValue={editingItem?.body_text || ""} placeholder={language === "de" ? "Erzähle die Geschichte hinter dem Beitrag, sprich deine Mitglieder direkt an oder kündige etwas Besonderes an…" : "Tell the story behind this post, speak directly to your members, or tease something special…"} /></label>
             <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="midnight-confession" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue={editingItem?.required_tier || "FREE"}>{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
             <label className="media-drop-field"><span>{editingItem ? (language === "de" ? "Medium optional ersetzen" : "Optionally replace media") : t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required={!editingItem} /></label>
-            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Paid Member dürfen diesen Beitrag kommentieren." : "Paid members may comment on this post."}</span></label>
+            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Exclusive Member dürfen diesen Beitrag kommentieren." : "Exclusive Members may comment on this post."}</span></label>
             <div className="composer-publish-row"><small>{editingItem ? (language === "de" ? "Änderungen sind nach dem Speichern sofort aktiv." : "Changes are active immediately after saving.") : (language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload.")}</small><div className="decision-actions">{editingItem && <button className="secondary-action" type="button" disabled={busy} onClick={() => setEditingItem(null)}>{language === "de" ? "Abbrechen" : "Cancel"}</button>}<button className="primary-action" disabled={busy}>{editingItem ? (language === "de" ? "Änderungen speichern" : "Save changes") : t.publish}</button></div></div>
           </form>
         </article>

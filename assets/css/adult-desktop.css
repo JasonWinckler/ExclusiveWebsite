@@ -18,3 +18,50 @@
 .adult-hero .tagline { margin: 18px auto 28px; font-size: 1.04rem; }
 .feature-grid, .tier-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .membership-section { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 28px; align-items: center; }
+
+/* Keep the complete branded banner visible; content starts below it. */
+.adult-hero {
+  display: block;
+  min-height: 0;
+  place-items: initial;
+}
+.adult-hero > .hero-media,
+.adult-hero .hero-media {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 1536 / 652;
+  background: #080002;
+}
+.adult-hero .hero-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 1;
+}
+.adult-hero .hero-media__shade {
+  background: linear-gradient(180deg,transparent 74%,rgba(10,0,3,.52));
+}
+.adult-hero__content {
+  margin-top: clamp(-78px,-6vw,-54px);
+  padding: 0 clamp(28px,6vw,70px) clamp(42px,5vw,60px);
+}
+.adult-hero h1 {
+  max-width: 960px;
+  font-size: clamp(3rem,6.2vw,5.25rem);
+}
+
+@media(max-width: 1020px) {
+  .exclusive-header {
+    width: min(calc(100% - 28px),1180px);
+    border-radius: 26px;
+  }
+  .exclusive-header .main-nav a {
+    padding-inline: 9px;
+    font-size: .8rem;
+  }
+  .pricing-grid { grid-template-columns: 1fr; }
+  .pricing-group:hover { transform: none; }
+}

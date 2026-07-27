@@ -24,9 +24,10 @@ import {
   requestId,
   requireIdempotencyKey,
 } from "../shared/http";
-import { authorizeProtectedContent, deletionBlockers } from "../shared/policy";
+import { authorizeProtectedContent } from "../shared/policy";
 import {
   sendTransactionalEmail,
+  updateAppwriteUserStatus,
   updateAppwriteUserPassword,
   verifyAppwriteUserEmail,
 } from "../shared/identity-service";
@@ -35,7 +36,6 @@ import type {
   AgeEvidenceKind,
   EntitlementRow,
   MembershipEnv,
-  PaymentStatus,
   UserProfileRow,
 } from "../shared/types";
 
@@ -816,7 +816,7 @@ async function claimAuthEmailToken(
   env: MembershipEnv,
   token: string,
   purpose: "VERIFY_EMAIL" | "RESET_PASSWORD",
-): Promise<{ id: string; userId: string }> {
+): Promise<{ id: string; userId: string; alreadyCompleted: boolean }> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(400, "INVALID_AUTH_EMAIL_TOKEN");
   const tokenHash = await sha256Hex(token);
   const now = isoNow();
@@ -826,6 +826,18 @@ async function claimAuthEmailToken(
     WHERE token_sha256 = ? AND purpose = ? AND status = 'PENDING' AND expires_at > ?
   `).bind(now, tokenHash, purpose, now).run();
   if ((result.meta.changes ?? 0) !== 1) {
+    if (purpose === "VERIFY_EMAIL") {
+      const used = await env.DB.prepare(`
+        SELECT t.id, t.appwrite_user_id
+        FROM auth_email_tokens t
+        INNER JOIN user_profiles p ON p.appwrite_user_id = t.appwrite_user_id
+        WHERE t.token_sha256 = ? AND t.purpose = 'VERIFY_EMAIL'
+          AND t.status = 'USED' AND p.email_verified = 1
+      `).bind(tokenHash).first<{ id: string; appwrite_user_id: string }>();
+      if (used) {
+        return { id: used.id, userId: used.appwrite_user_id, alreadyCompleted: true };
+      }
+    }
     throw new ApiError(400, "AUTH_EMAIL_TOKEN_EXPIRED_OR_USED");
   }
   const row = await env.DB.prepare(`
@@ -833,7 +845,7 @@ async function claimAuthEmailToken(
     WHERE token_sha256 = ? AND purpose = ? AND status = 'PROCESSING'
   `).bind(tokenHash, purpose).first<{ id: string; appwrite_user_id: string }>();
   if (!row) throw new ApiError(409, "AUTH_EMAIL_TOKEN_STATE_CONFLICT");
-  return { id: row.id, userId: row.appwrite_user_id };
+  return { id: row.id, userId: row.appwrite_user_id, alreadyCompleted: false };
 }
 
 async function completeAuthEmailToken(
@@ -858,6 +870,7 @@ async function completeAuthEmailToken(
     )
   ) throw new ApiError(400, "INVALID_PASSWORD");
   const claimed = await claimAuthEmailToken(env, body.token, purpose);
+  if (claimed.alreadyCompleted) return { status: "EMAIL_VERIFIED", alreadyVerified: true };
   try {
     if (purpose === "VERIFY_EMAIL") {
       await verifyAppwriteUserEmail(
@@ -2485,15 +2498,15 @@ async function requestDeletion(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactObjectKeys(body, ["reason"]);
+  exactObjectKeys(body, ["reason", "confirmation"]);
   if (typeof body.reason !== "string" || body.reason.trim().length < 3 || body.reason.length > 500) {
     throw new ApiError(400, "DELETION_REASON_REQUIRED");
   }
+  if (body.confirmation !== "DELETE_ACCOUNT") {
+    throw new ApiError(400, "ACCOUNT_DELETION_CONFIRMATION_REQUIRED");
+  }
   const profile = await getUserProfile(env.DB, userId);
   if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
-  const subscriptions = await env.DB.prepare(`
-    SELECT status FROM subscriptions WHERE appwrite_user_id = ?
-  `).bind(userId).all<{ status: PaymentStatus }>();
   const completed = await env.DB.prepare(`
     SELECT 1 AS found FROM deletion_jobs
     WHERE appwrite_user_id = ? AND status = 'COMPLETED' LIMIT 1
@@ -2501,24 +2514,13 @@ async function requestDeletion(
   const now = isoNow();
   const inactiveDays = parsePositiveInt(env.INACTIVE_ACCOUNT_DAYS, 30, 3650);
   const inactiveBefore = new Date(Date.now() - inactiveDays * 86_400_000).toISOString();
-  const trustedActivity = [profile.last_active_at, profile.last_appwrite_access_at]
-    .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1) ?? null;
-  const blockers = deletionBlockers({
-    latestTrustedActivityAt: trustedActivity,
-    inactiveBefore,
-    subscriptionStatuses: subscriptions.results.map((row) => row.status),
-    ageStatus: profile.age_status,
-    administrativeHold: profile.administrative_hold === 1,
-    deletionJobHold: profile.deletion_job_hold === 1,
-    legalRetentionUntil: profile.legal_retention_until,
-    now,
-    deletionCompleted: Boolean(completed),
-  });
-  const executionBlockers = blockers.filter((blocker) => blocker !== "RECENT_ACTIVITY");
-  if (executionBlockers.length) {
-    throw new ApiError(409, `DELETION_BLOCKED_${executionBlockers[0]}`);
+  const blockers = [
+    ...(profile.administrative_hold === 1 ? ["ADMINISTRATIVE_HOLD"] : []),
+    ...(profile.deletion_job_hold === 1 ? ["DELETION_JOB_HOLD"] : []),
+    ...(completed ? ["ALREADY_DELETED"] : []),
+  ];
+  if (blockers.length) {
+    throw new ApiError(409, `DELETION_BLOCKED_${blockers[0]}`);
   }
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
@@ -2526,19 +2528,15 @@ async function requestDeletion(
     WHERE appwrite_user_id = ? AND idempotency_key = ?
   `).bind(userId, idempotencyKey).first<{ status: string; scheduled_at: string }>();
   if (replay) return { status: replay.status, scheduledAt: replay.scheduled_at };
-  const graceDays = parsePositiveInt(env.DELETION_GRACE_DAYS, 7, 90);
-  const graceAt = Date.now() + graceDays * 86_400_000;
-  const inactiveAt = trustedActivity
-    ? Date.parse(trustedActivity) + inactiveDays * 86_400_000
-    : Date.now();
-  const scheduledAt = new Date(Math.max(graceAt, inactiveAt)).toISOString();
+  const scheduledAt = now;
   const requestRegime = profile.privacy_regime ?? "GLOBAL_BASELINE";
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO deletion_jobs (
         id, appwrite_user_id, status, reason, idempotency_key,
-        inactivity_cutoff_at, scheduled_at, retention_checks_json, created_at, updated_at
-      ) VALUES (?, ?, 'DELETION_PENDING', ?, ?, ?, ?, ?, ?, ?)
+        inactivity_cutoff_at, scheduled_at, retention_checks_json, request_source,
+        created_at, updated_at
+      ) VALUES (?, ?, 'DELETION_PENDING', ?, ?, ?, ?, ?, 'USER_ERASURE', ?, ?)
     `).bind(
       crypto.randomUUID(),
       userId,
@@ -2570,7 +2568,18 @@ async function requestDeletion(
         version = version + 1, updated_at = ? WHERE appwrite_user_id = ?
     `).bind(now, userId),
   ]);
-  return { status: "DELETION_PENDING", scheduledAt };
+  let appwriteStatusSync = "SYNCED";
+  try {
+    await updateAppwriteUserStatus(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      false,
+    );
+  } catch {
+    appwriteStatusSync = "FAILED";
+  }
+  return { status: "DELETION_PENDING", scheduledAt, appwriteStatusSync };
 }
 
 async function route(request: Request, env: MembershipEnv): Promise<Response> {
@@ -2608,6 +2617,7 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   const requiresVerified = !(
     (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") ||
     (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request") ||
+    (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") ||
     (request.method === "GET" && requestUrl.pathname === "/v1/privacy") ||
     (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/profile")
   );

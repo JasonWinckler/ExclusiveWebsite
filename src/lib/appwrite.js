@@ -178,7 +178,14 @@ export const completeEmailVerification = (token) => apiRequest(
   "/v1/auth/email-verification/confirm",
   { method: "POST", json: { token }, authenticated: false, idempotent: true },
 );
-export const completeLegacyEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
+export async function completeLegacyEmailVerification(userId, secret) {
+  try {
+    return await account.updateVerification({ userId, secret });
+  } catch (error) {
+    if (error?.type === "user_already_verified") return { alreadyVerified: true };
+    throw error;
+  }
+}
 export const completeLegacyPasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
 export const updateProfileName = (name) => account.updateName({ name });
 
@@ -229,7 +236,7 @@ export const deleteContentComment = (commentId) => apiRequest(
   { method: "DELETE", json: {}, idempotent: true },
 );
 export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deletion", {
-  method: "POST", json: { reason }, idempotent: true,
+  method: "POST", json: { reason, confirmation: "DELETE_ACCOUNT" }, idempotent: true,
 });
 export const getPrivacyOverview = () => apiRequest("/v1/privacy");
 export const updatePrivacyProfile = ({
@@ -268,9 +275,23 @@ export const adminUnrestrictUser = (userId, reason) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}/unrestrict`,
   { admin: true, method: "POST", json: { reason }, idempotent: true },
 );
+export const adminVerifyUserEmail = (userId, reason) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/verify-email`,
+  {
+    admin: true,
+    method: "POST",
+    json: { reason, confirmation: "VERIFY_EMAIL" },
+    idempotent: true,
+  },
+);
 export const adminScheduleAccountDeletion = (userId, reason) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}`,
-  { admin: true, method: "DELETE", json: { reason, confirmed: true }, idempotent: true },
+  {
+    admin: true,
+    method: "DELETE",
+    json: { reason, confirmation: "DELETE_ACCOUNT" },
+    idempotent: true,
+  },
 );
 
 export const adminListAgeCases = () => apiRequest("/v1/age-verification/cases", { admin: true });
