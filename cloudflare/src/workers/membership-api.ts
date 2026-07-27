@@ -1020,19 +1020,27 @@ async function premiumTelegramPerk(
   userId: string,
 ): Promise<Record<string, unknown>> {
   const now = isoNow();
-  const [profile, premiumEntitlement] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    env.DB.prepare(`
-      SELECT id, expires_at FROM entitlements
-      WHERE appwrite_user_id = ? AND tier = 'EXCLUSIVE_PREMIUM'
-        AND status = 'ACTIVE' AND starts_at <= ? AND expires_at > ?
-      ORDER BY expires_at DESC LIMIT 1
-    `).bind(userId, now, now).first<{ id: string; expires_at: string }>(),
-  ]);
-  if (!profile || profile.account_status !== "ACTIVE" || profile.age_status !== "APPROVED") {
+  const access = await env.DB.prepare(`
+    SELECT p.account_status, p.age_status, e.expires_at
+    FROM user_profiles p
+    LEFT JOIN entitlements e
+      ON e.appwrite_user_id = p.appwrite_user_id
+      AND e.tier = 'EXCLUSIVE_PREMIUM'
+      AND e.status = 'ACTIVE'
+      AND e.starts_at <= ?
+      AND e.expires_at > ?
+    WHERE p.appwrite_user_id = ?
+    ORDER BY e.expires_at DESC
+    LIMIT 1
+  `).bind(now, now, userId).first<{
+    account_status: string;
+    age_status: string;
+    expires_at: string | null;
+  }>();
+  if (!access || access.account_status !== "ACTIVE" || access.age_status !== "APPROVED") {
     throw new ApiError(403, "PREMIUM_PERK_NOT_AVAILABLE");
   }
-  if (!premiumEntitlement) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
+  if (!access.expires_at) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
   if (!env.PREMIUM_TELEGRAM_INVITE_URL) {
     throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
   }
@@ -1048,7 +1056,7 @@ async function premiumTelegramPerk(
   return {
     available: true,
     inviteUrl: inviteUrl.toString(),
-    entitlementExpiresAt: premiumEntitlement.expires_at,
+    entitlementExpiresAt: access.expires_at,
   };
 }
 
@@ -1057,20 +1065,27 @@ async function vipWhatsappPerk(
   userId: string,
 ): Promise<Record<string, unknown>> {
   const now = isoNow();
-  const [profile, vipEntitlement] = await Promise.all([
-    getUserProfile(env.DB, userId),
-    env.DB.prepare(`
-      SELECT id, expires_at
-      FROM entitlements
-      WHERE appwrite_user_id = ? AND tier = 'EXCLUSIVE_VIP'
-        AND status = 'ACTIVE' AND starts_at <= ? AND expires_at > ?
-      ORDER BY expires_at DESC LIMIT 1
-    `).bind(userId, now, now).first<{ id: string; expires_at: string }>(),
-  ]);
-  if (!profile || profile.account_status !== "ACTIVE" || profile.age_status !== "APPROVED") {
+  const access = await env.DB.prepare(`
+    SELECT p.account_status, p.age_status, e.expires_at
+    FROM user_profiles p
+    LEFT JOIN entitlements e
+      ON e.appwrite_user_id = p.appwrite_user_id
+      AND e.tier = 'EXCLUSIVE_VIP'
+      AND e.status = 'ACTIVE'
+      AND e.starts_at <= ?
+      AND e.expires_at > ?
+    WHERE p.appwrite_user_id = ?
+    ORDER BY e.expires_at DESC
+    LIMIT 1
+  `).bind(now, now, userId).first<{
+    account_status: string;
+    age_status: string;
+    expires_at: string | null;
+  }>();
+  if (!access || access.account_status !== "ACTIVE" || access.age_status !== "APPROVED") {
     throw new ApiError(403, "VIP_WHATSAPP_PERK_NOT_AVAILABLE");
   }
-  if (!vipEntitlement) throw new ApiError(403, "ACTIVE_VIP_REQUIRED");
+  if (!access.expires_at) throw new ApiError(403, "ACTIVE_VIP_REQUIRED");
   if (!env.VIP_WHATSAPP_NUMBER) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
   const digits = env.VIP_WHATSAPP_NUMBER.replace(/\D/g, "");
   if (!/^[1-9]\d{7,14}$/.test(digits)) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
@@ -1078,7 +1093,7 @@ async function vipWhatsappPerk(
     available: true,
     phoneNumber: env.VIP_WHATSAPP_NUMBER,
     whatsappUrl: `https://wa.me/${digits}`,
-    entitlementExpiresAt: vipEntitlement.expires_at,
+    entitlementExpiresAt: access.expires_at,
   };
 }
 
