@@ -137,6 +137,17 @@ export interface UserProfileRow {
   account_status: "EMAIL_PENDING" | "ACTIVE" | "RESTRICTED" | "DELETION_PENDING" | "DELETED";
   age_status: AgeStatus;
   jurisdiction_code: string | null;
+  country_code?: string | null;
+  region_code?: string | null;
+  privacy_regime?: string | null;
+  privacy_notice_version?: string | null;
+  privacy_notice_acknowledged_at?: string | null;
+  marketing_opt_out?: number;
+  sale_share_opt_out?: number;
+  targeted_ads_opt_out?: number;
+  profiling_opt_out?: number;
+  sensitive_data_limit?: number;
+  privacy_choices_updated_at?: string | null;
   last_active_at: string | null;
   last_appwrite_access_at: string | null;
   administrative_hold: number;

@@ -77,4 +77,25 @@ describe("browser and repository security contract", () => {
     expect(frontend).not.toMatch(/name="video"\s+type="file"/);
     expect(frontend).toContain("prepareIdCopy");
   });
+
+  it("enforces residence-based privacy controls server-side", () => {
+    const migration = read("cloudflare/migrations/0012_privacy_rights.sql");
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const http = read("cloudflare/src/shared/http.ts");
+    const frontendApi = read("src/lib/appwrite.js");
+    expect(migration).toContain("country_code TEXT");
+    expect(migration).toContain("privacy_notice_acknowledged_at TEXT");
+    expect(migration).toContain("CREATE TABLE privacy_requests");
+    expect(migration).toContain("sale_share_opt_out INTEGER NOT NULL DEFAULT 0");
+    expect(membership).toContain('requestUrl.pathname === "/v1/privacy/export"');
+    expect(membership).toContain("PRIVACY_NOTICE_ACKNOWLEDGEMENT_REQUIRED");
+    expect(membership).toContain("body.gpcSignal === true");
+    expect(admin).toContain("PRIVACY_REQUEST_UPDATED");
+    expect(admin).toContain('url.pathname === "/v1/privacy/requests"');
+    expect(http).toContain("GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    expect(http).toContain("Content-Disposition, X-Request-Id");
+    expect(frontendApi).toContain("privacyNoticeAccepted");
+    expect(frontendApi).toContain("fetchPrivacyExport");
+  });
 });

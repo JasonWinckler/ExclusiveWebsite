@@ -69,7 +69,11 @@ export async function upsertUserProjection(
 export async function getUserProfile(db: D1Database, userId: string): Promise<UserProfileRow | null> {
   return db.prepare(`
     SELECT appwrite_user_id, email, display_name, email_verified, account_status,
-      age_status, jurisdiction_code, last_active_at, last_appwrite_access_at,
+      age_status, jurisdiction_code, country_code, region_code, privacy_regime,
+      privacy_notice_version, privacy_notice_acknowledged_at,
+      marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
+      profiling_opt_out, sensitive_data_limit, privacy_choices_updated_at,
+      last_active_at, last_appwrite_access_at,
       administrative_hold, legal_retention_until, deletion_job_hold, version
     FROM user_profiles
     WHERE appwrite_user_id = ?

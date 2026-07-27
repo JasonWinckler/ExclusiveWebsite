@@ -50,6 +50,7 @@ export function corsHeaders(origin: string | null, origins: ReadonlySet<string>)
   const headers = new Headers(SECURITY_HEADERS);
   if (origin && origins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-Request-Id");
     headers.set("Vary", "Origin");
   }
   return headers;
@@ -65,7 +66,7 @@ export function preflight(request: Request, origins: ReadonlySet<string>): Respo
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, Idempotency-Key, X-Device-Token",
   );
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   headers.set("Access-Control-Max-Age", "600");
   return new Response(null, { status: 204, headers });
 }

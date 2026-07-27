@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import AdminPortal from "./AdminPortal";
+import PrivacyPanel from "./PrivacyPanel";
 import {
+  cancelPrivacyRequest,
   completeEmailVerification,
   completeLegacyEmailVerification,
   completeLegacyPasswordReset,
@@ -17,19 +19,31 @@ import {
   getMembershipStatus,
   getPaymentOrders,
   getPremiumTelegramPerk,
+  getPrivacyOverview,
   getProducts,
   getVipWhatsappPerk,
   login,
   logout,
   registerAccount,
   registerCurrentDevice,
+  requestAccountDeletion,
   requestPasswordReset,
   resendVerification,
   submitAgeVerificationCase,
   updateProfileName,
+  updatePrivacyChoices,
+  updatePrivacyProfile,
   uploadAgeEvidence,
   cancelPaymentOrder,
+  createPrivacyRequest,
+  fetchPrivacyExport,
 } from "./lib/appwrite";
+import {
+  countryOptions,
+  hasGlobalPrivacyControl,
+  privacyNoticeVersion,
+  usRegions,
+} from "./lib/privacy";
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
@@ -736,6 +750,10 @@ export default function App() {
   const [ageSession, setAgeSession] = useState(null);
   const [orders, setOrders] = useState([]);
   const [dashboardTab, setDashboardTab] = useState("overview");
+  const [privacy, setPrivacy] = useState(null);
+  const [privacyLoading, setPrivacyLoading] = useState(false);
+  const [registrationCountry, setRegistrationCountry] = useState("DE");
+  const [registrationRegion, setRegistrationRegion] = useState("");
   const [premiumTelegram, setPremiumTelegram] = useState(null);
   const [vipWhatsapp, setVipWhatsapp] = useState(null);
   const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
@@ -746,6 +764,7 @@ export default function App() {
   const mediaGenerationRef = useRef(0);
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
+  const registrationCountries = useMemo(() => countryOptions(language), [language]);
   const isAdmin = Boolean(user?.labels?.includes("admin"));
   const ageRequest = membership?.ageVerification || null;
   const activeAgeCase = ageSession?.caseId ? ageSession : ageRequest;
@@ -769,6 +788,7 @@ export default function App() {
       setOrders([]);
       setPremiumTelegram(null);
       setVipWhatsapp(null);
+      setPrivacy(null);
       return;
     }
     setBilling((previous) => ({ ...previous, name: previous.name || current.name || "" }));
@@ -791,6 +811,21 @@ export default function App() {
       setOrders([]);
       setPremiumTelegram(null);
       setVipWhatsapp(null);
+    }
+  };
+
+  const loadPrivacy = async () => {
+    if (!user || isAdmin) return null;
+    setPrivacyLoading(true);
+    try {
+      const next = await getPrivacyOverview();
+      setPrivacy(next);
+      return next;
+    } catch (error) {
+      setNotice(messageFor(error, t));
+      return null;
+    } finally {
+      setPrivacyLoading(false);
     }
   };
 
@@ -847,6 +882,10 @@ export default function App() {
   useEffect(() => {
     if (isAdmin && location.pathname !== "/admin") history.replaceState({}, "", "/admin");
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (dashboardTab === "privacy" && user && !isAdmin) loadPrivacy();
+  }, [dashboardTab, user?.$id, isAdmin]);
 
   useEffect(() => {
     mediaGenerationRef.current += 1;
@@ -990,7 +1029,15 @@ export default function App() {
   const handleAuth = (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
-    if (mode === "register") run(() => registerAccount({ ...data, locale: language }), t.registrationSent, "account");
+    if (mode === "register") run(() => registerAccount({
+      ...data,
+      countryCode: registrationCountry,
+      regionCode: registrationCountry === "US" ? registrationRegion : null,
+      privacyNoticeVersion,
+      privacyNoticeAccepted: data.privacyNoticeAccepted === "on",
+      gpcSignal: hasGlobalPrivacyControl(),
+      locale: language,
+    }), t.registrationSent, "account");
     else if (mode === "reset") run(() => requestPasswordReset(data.email, language), t.resetSent);
     else if (mode === "recover") {
       const parameters = new URLSearchParams(location.search);
@@ -1198,6 +1245,91 @@ export default function App() {
     );
   };
 
+  const privacyAction = async (work, success) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await work();
+      await Promise.all([refresh(), loadPrivacy()]);
+      setNotice(success);
+      return true;
+    } catch (error) {
+      setNotice(messageFor(error, t));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const savePrivacyLocation = ({ countryCode, regionCode }) => privacyAction(
+    () => updatePrivacyProfile({
+      countryCode,
+      regionCode,
+      noticeAccepted: true,
+      noticeVersion: privacyNoticeVersion,
+      gpcSignal: hasGlobalPrivacyControl(),
+    }),
+    language === "de"
+      ? "Dein Rechtsraum wurde gespeichert."
+      : "Your jurisdiction has been saved.",
+  );
+
+  const savePrivacyChoices = (choices) => privacyAction(
+    () => updatePrivacyChoices(choices),
+    language === "de"
+      ? "Deine Datenschutzentscheidungen wurden gespeichert."
+      : "Your privacy choices have been saved.",
+  );
+
+  const submitPrivacyRequest = (requestType, note) => privacyAction(
+    () => createPrivacyRequest(requestType, note),
+    language === "de"
+      ? "Deine Datenschutzanfrage wurde sicher erfasst."
+      : "Your privacy request has been recorded securely.",
+  );
+
+  const withdrawPrivacyRequest = (requestId) => privacyAction(
+    () => cancelPrivacyRequest(requestId),
+    language === "de"
+      ? "Die Anfrage wurde zurückgezogen."
+      : "The request has been withdrawn.",
+  );
+
+  const deleteAccountFromPrivacyCenter = (reason) => privacyAction(
+    () => requestAccountDeletion(reason),
+    language === "de"
+      ? "Deine Kontolöschung wurde eingeplant. Der Status bleibt hier sichtbar."
+      : "Your account deletion has been scheduled. Its status remains visible here.",
+  );
+
+  const downloadPrivacyData = async () => {
+    setBusy(true);
+    setNotice("");
+    let objectUrl = null;
+    try {
+      const response = await fetchPrivacyExport();
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const disposition = response.headers.get("content-disposition") || "";
+      const fileName = disposition.match(/filename="([^"]+)"/i)?.[1]
+        || `shadows-temptation-data-${new Date().toISOString().slice(0, 10)}.json`;
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setNotice(language === "de"
+        ? "Deine Datenkopie wurde erstellt und heruntergeladen."
+        : "Your data copy has been generated and downloaded.");
+    } catch (error) {
+      setNotice(messageFor(error, t));
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setBusy(false);
+    }
+  };
+
   const handleAdminLogout = async () => {
     setBusy(true);
     try {
@@ -1307,7 +1439,74 @@ export default function App() {
     </main>
     <footer id="legal" className="site-footer legal-footer"><div><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><p>{language === "de" ? "Private Memberships. Persönlich kuratiert. Ausschließlich für verifizierte Erwachsene." : "Private memberships. Personally curated. Exclusively for verified adults."}</p></div><nav><a href="https://www.instagram.com/shadows.temptation_official/" target="_blank" rel="noopener noreferrer">Instagram</a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a></nav></footer>
 
-    {modal === "auth" && <Modal title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset} eyebrow={t.secureAccount} onClose={() => setModal(null)} t={t}><div className="auth-tabs">{["login", "register", "reset"].map((item) => <button type="button" className={mode === item ? "is-active" : ""} onClick={() => { setMode(item); setNotice(""); }} key={item}>{t[item]}</button>)}</div>{notice && <p className="form-notice" role="status">{notice}</p>}<form className="auth-panel" onSubmit={handleAuth}>{mode === "register" && <Field label={t.name} name="name" autoComplete="name" required maxLength="128" />}{mode !== "recover" && <Field label={t.emailLabel} name="email" type="email" autoComplete="email" required />}{mode !== "reset" && <Field label={t.password} name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength="8" required />}<button className="primary-action" disabled={busy}>{busy ? ui.loading : t[`${mode}Submit`]}</button></form></Modal>}
+    {modal === "auth" && <Modal
+      title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset}
+      eyebrow={t.secureAccount}
+      onClose={() => setModal(null)}
+      t={t}
+    >
+      <div className="auth-tabs">
+        {["login", "register", "reset"].map((item) => <button
+          type="button"
+          className={mode === item ? "is-active" : ""}
+          onClick={() => { setMode(item); setNotice(""); }}
+          key={item}
+        >{t[item]}</button>)}
+      </div>
+      {notice && <p className="form-notice" role="status">{notice}</p>}
+      <form className="auth-panel" onSubmit={handleAuth}>
+        {mode === "register" && <Field label={t.name} name="name" autoComplete="name" required maxLength="128" />}
+        {mode !== "recover" && <Field label={t.emailLabel} name="email" type="email" autoComplete="email" required />}
+        {mode !== "reset" && <Field
+          label={t.password}
+          name="password"
+          type="password"
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+          minLength="8"
+          required
+        />}
+        {mode === "register" && <>
+          <label className="field">
+            <span>{language === "de" ? "Land des gewöhnlichen Aufenthalts" : "Country of residence"}</span>
+            <select
+              name="countryCode"
+              value={registrationCountry}
+              onChange={(event) => {
+                setRegistrationCountry(event.target.value);
+                if (event.target.value !== "US") setRegistrationRegion("");
+              }}
+              required
+            >
+              {registrationCountries.map(([code, label]) => <option value={code} key={code}>{label}</option>)}
+            </select>
+          </label>
+          {registrationCountry === "US" && <label className="field">
+            <span>{language === "de" ? "US-Bundesstaat / Territorium" : "U.S. state / territory"}</span>
+            <select
+              name="regionCode"
+              value={registrationRegion}
+              onChange={(event) => setRegistrationRegion(event.target.value)}
+              required
+            >
+              <option value="">{language === "de" ? "Bitte auswählen" : "Select state"}</option>
+              {usRegions.map(([code, label]) => <option value={code} key={code}>{label}</option>)}
+            </select>
+          </label>}
+          <label className="consent-check privacy-registration-notice">
+            <input name="privacyNoticeAccepted" type="checkbox" required />
+            <span>{language === "de"
+              ? <>Ich bestätige meinen Wohnsitz und habe die <a href={registrationCountry === "US" ? "/legal/us/#privacy" : "/legal/eu/#privacy"} target="_blank" rel="noreferrer">Datenschutzerklärung</a> gelesen.</>
+              : <>I confirm my country of residence and have read the <a href={registrationCountry === "US" ? "/legal/us/#privacy" : "/legal/eu/#privacy"} target="_blank" rel="noreferrer">Privacy notice</a>.</>}</span>
+          </label>
+          {hasGlobalPrivacyControl() && <p className="privacy-gpc-note">
+            {language === "de"
+              ? "Global Privacy Control erkannt: Werbe-Weitergabe und gezielte Werbung werden vorsorglich deaktiviert."
+              : "Global Privacy Control detected: ad-sharing and targeted advertising will be opted out automatically."}
+          </p>}
+        </>}
+        <button className="primary-action" disabled={busy}>{busy ? ui.loading : t[`${mode}Submit`]}</button>
+      </form>
+    </Modal>}
 
     {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? entitlement.tier : ageStatus} onClose={() => setModal(null)} t={t} wide>
       {notice && <p className="form-notice" role="status">{notice}</p>}
@@ -1318,6 +1517,7 @@ export default function App() {
             ["profile", language === "de" ? "Meine Daten" : "My data"],
             ["orders", language === "de" ? "Bestellungen" : "Orders"],
             ["access", language === "de" ? "Zugang & Perks" : "Access & perks"],
+            ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
           ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
         </div>
         {dashboardTab === "overview" && <div className="dashboard-overview">
@@ -1327,6 +1527,17 @@ export default function App() {
             <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
             <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
           </div>
+          {profile && !profile.privacyProfileComplete && <button
+            className="privacy-completion-card"
+            type="button"
+            onClick={() => setDashboardTab("privacy")}
+          >
+            <span>!</span>
+            <div><strong>{language === "de" ? "Datenschutzprofil vervollständigen" : "Complete your privacy profile"}</strong>
+              <small>{language === "de"
+                ? "Bitte ergänze dein Aufenthaltsland, damit wir die richtigen Datenschutzrechte anwenden."
+                : "Add your country of residence so we can apply the correct privacy rights."}</small></div>
+          </button>}
           <div className="dashboard-actions">
             {!user.emailVerification && <button className="secondary-action" onClick={() => run(() => resendVerification(language), t.verificationSent)}>{t.resendVerification}</button>}
             <button className="primary-action" disabled={!user.emailVerification || reviewPending || ageStatus === "APPROVED"} onClick={() => { setNotice(""); setModal("age"); }}>{reviewPending ? ui.reviewReady : ageStatus === "APPROVED" ? t.ageAlreadyApproved : t.avsStart}</button>
@@ -1352,6 +1563,18 @@ export default function App() {
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
+        {dashboardTab === "privacy" && <PrivacyPanel
+          language={language}
+          privacy={privacy}
+          loading={privacyLoading}
+          busy={busy}
+          onSaveLocation={savePrivacyLocation}
+          onSaveChoices={savePrivacyChoices}
+          onExport={downloadPrivacyData}
+          onCreateRequest={submitPrivacyRequest}
+          onCancelRequest={withdrawPrivacyRequest}
+          onDeleteAccount={deleteAccountFromPrivacyCenter}
+        />}
         <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={() => run(logout, t.logoutSuccess, "auth")}>{ui.logout}</button></div>
       </div>}
     </Modal>}

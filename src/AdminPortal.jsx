@@ -13,7 +13,9 @@ import {
   adminListContent,
   adminListContentComments,
   adminListPaymentOrders,
+  adminListPrivacyRequests,
   adminListUsers,
+  adminDecidePrivacyRequest,
   adminModerateContentComment,
   adminRestrictUser,
   adminScheduleAccountDeletion,
@@ -190,6 +192,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [users, setUsers] = useState([]);
   const [userReasons, setUserReasons] = useState({});
   const [userSearch, setUserSearch] = useState("");
+  const [privacyRequests, setPrivacyRequests] = useState([]);
+  const [privacyResponses, setPrivacyResponses] = useState({});
+  const [privacyReasons, setPrivacyReasons] = useState({});
   const [paymentReasons, setPaymentReasons] = useState({});
   const [paymentConfirmations, setPaymentConfirmations] = useState({});
   const [busy, setBusy] = useState(false);
@@ -219,11 +224,22 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListUsers();
     setUsers(result.users || []);
   };
+  const loadPrivacyRequests = async () => {
+    const result = await adminListPrivacyRequests();
+    setPrivacyRequests(result.requests || []);
+  };
   const loadAll = async () => {
     setBusy(true);
     setError("");
     try {
-      await Promise.all([loadCases(), loadContent(), loadComments(), loadPayments(), loadUsers()]);
+      await Promise.all([
+        loadCases(),
+        loadContent(),
+        loadComments(),
+        loadPayments(),
+        loadUsers(),
+        loadPrivacyRequests(),
+      ]);
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -444,6 +460,28 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const updatePrivacyRequest = async (item, status) => {
+    const response = String(privacyResponses[item.id] || "").trim();
+    const reason = String(privacyReasons[item.id] || "").trim();
+    if (response.length < 3 || reason.length < 3) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminDecidePrivacyRequest(item.id, status, response, reason);
+      setPrivacyResponses((current) => ({ ...current, [item.id]: "" }));
+      setPrivacyReasons((current) => ({ ...current, [item.id]: "" }));
+      setNotice(language === "de"
+        ? "Die Datenschutzanfrage wurde aktualisiert."
+        : "The privacy request has been updated.");
+      await loadPrivacyRequests();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const managePaymentOrder = async (order, action) => {
     const reason = String(paymentReasons[order.id] || "").trim();
     if (reason.length < 3) return;
@@ -495,6 +533,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         ["overview", language === "de" ? "Übersicht" : "Overview"],
         ["users", language === "de" ? "Nutzer" : "Users"],
         ["age", t.age], ["content", t.content], ["payments", t.payments],
+        ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
       ].map(([key, label]) => <button type="button" className={tab === key ? "is-active" : ""} onClick={() => { setTab(key); setNotice(""); setError(""); }} key={key}>{label}</button>)}</nav>
       {busy && <p className="form-notice" role="status">{t.loading}</p>}
       {notice && <p className="form-notice form-notice--success" role="status">{notice}</p>}
@@ -505,6 +544,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Altersprüfungen" : "Pending age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</span><strong>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("privacy")}>{language === "de" ? "Bearbeiten →" : "Review →"}</button></article>
       </section>}
 
       {tab === "users" && <section className="admin-panel user-management">
@@ -562,6 +602,52 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>
           {comments.length ? <div className="admin-comment-list">{comments.map((comment) => <article className={`admin-comment-card status-${String(comment.status).toLowerCase()}`} key={comment.id}><div className="admin-comment-card__head"><div><strong>{comment.display_name || comment.email || "Member"}</strong><span>{comment.content_title} · {formatDate(comment.created_at, language)}</span></div><span className="order-status">{comment.status}</span></div><p>{comment.body}</p><label className="form-field"><span>{language === "de" ? "Moderationsgrund" : "Moderation reason"}</span><input minLength="3" maxLength="500" value={commentReasons[comment.id] || ""} onChange={(event) => setCommentReasons((current) => ({ ...current, [comment.id]: event.target.value }))} placeholder={language === "de" ? "Interner, nachvollziehbarer Grund" : "Internal moderation reason"} /></label><div className="decision-actions">{comment.status !== "ACTIVE" && <button className="secondary-action" type="button" disabled={busy || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "RESTORE")}>{language === "de" ? "Wiederherstellen" : "Restore"}</button>}{comment.status === "ACTIVE" && <button className="secondary-action" type="button" disabled={busy || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "HIDE")}>{language === "de" ? "Ausblenden" : "Hide"}</button>}<button className="danger-action" type="button" disabled={busy || comment.status === "DELETED" || String(commentReasons[comment.id] || "").trim().length < 3} onClick={() => moderateComment(comment.id, "DELETE")}>{language === "de" ? "Löschen" : "Delete"}</button></div></article>)}</div> : <p>{language === "de" ? "Noch keine Kommentare vorhanden." : "No comments yet."}</p>}
         </article>
+      </section>}
+
+      {tab === "privacy" && <section className="admin-panel privacy-admin-panel">
+        <div className="admin-panel__heading"><div>
+          <p className="eyebrow">PRIVACY OPERATIONS</p>
+          <h2>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</h2>
+          <p className="admin-note">{language === "de"
+            ? "Nutzeranfragen, Rechtsraum und Zieldatum aus D1. Antworten sind für den Nutzer im Privacy Center sichtbar; jede Entscheidung wird revisionsfest protokolliert."
+            : "User requests, jurisdiction and target date from D1. Responses appear in the user's Privacy center and every decision is audited."}</p>
+        </div><span>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</span></div>
+        <div className="privacy-admin-list">
+          {privacyRequests.length ? privacyRequests.map((item) => {
+            const response = privacyResponses[item.id] || "";
+            const reason = privacyReasons[item.id] || "";
+            const open = ["PENDING", "IN_REVIEW"].includes(item.status);
+            const erasure = item.request_type === "ERASURE";
+            return <article className="privacy-admin-card" key={item.id}>
+              <div className="privacy-admin-card__head"><div>
+                <strong>{item.display_name || item.email || item.appwrite_user_id}</strong>
+                <span>{item.email} · {item.country_code || "—"}{item.region_code ? `-${item.region_code}` : ""} · {item.privacy_regime}</span>
+              </div><span className={`order-status order-status--${String(item.status).toLowerCase()}`}>{item.status}</span></div>
+              <dl className="admin-facts">
+                <div><dt>{language === "de" ? "Anfrage" : "Request"}</dt><dd>{item.request_type.replaceAll("_", " ")}</dd></div>
+                <div><dt>{language === "de" ? "Eingang" : "Submitted"}</dt><dd>{formatDate(item.created_at, language)}</dd></div>
+                <div><dt>{language === "de" ? "Zieldatum" : "Target date"}</dt><dd>{formatDate(item.statutory_deadline_at, language)}</dd></div>
+                <div><dt>User ID</dt><dd>{item.appwrite_user_id}</dd></div>
+              </dl>
+              <blockquote>{item.request_note}</blockquote>
+              {item.response_summary && <p className="privacy-admin-response"><strong>{language === "de" ? "Antwort:" : "Response:"}</strong> {item.response_summary}</p>}
+              {open && !erasure && <>
+                <label className="form-field"><span>{language === "de" ? "Antwort an den Nutzer" : "Response to user"}</span>
+                  <textarea minLength="3" maxLength="1000" value={response} onChange={(event) => setPrivacyResponses((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
+                <label className="form-field"><span>{language === "de" ? "Interne Entscheidungsbegründung" : "Internal decision reason"}</span>
+                  <input minLength="3" maxLength="500" value={reason} onChange={(event) => setPrivacyReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
+                <div className="decision-actions">
+                  {item.status === "PENDING" && <button className="secondary-action" type="button" disabled={busy || response.trim().length < 3 || reason.trim().length < 3} onClick={() => updatePrivacyRequest(item, "IN_REVIEW")}>{language === "de" ? "In Bearbeitung setzen" : "Start review"}</button>}
+                  <button className="primary-action" type="button" disabled={busy || response.trim().length < 3 || reason.trim().length < 3} onClick={() => updatePrivacyRequest(item, "COMPLETED")}>{language === "de" ? "Erfüllt abschließen" : "Complete"}</button>
+                  <button className="danger-action" type="button" disabled={busy || response.trim().length < 3 || reason.trim().length < 3} onClick={() => updatePrivacyRequest(item, "DENIED")}>{language === "de" ? "Begründet ablehnen" : "Deny with reason"}</button>
+                </div>
+              </>}
+              {open && erasure && <p className="admin-note">{language === "de"
+                ? "Dieser Antrag ist mit dem sicheren Löschjob verknüpft und wird nach dessen Abschluss automatisch als erfüllt markiert."
+                : "This request is linked to the secure deletion job and completes automatically when that job finishes."}</p>}
+            </article>;
+          }) : <p>{language === "de" ? "Noch keine Datenschutzanfragen." : "No privacy requests yet."}</p>}
+        </div>
       </section>}
 
       {tab === "payments" && <section className="admin-grid">

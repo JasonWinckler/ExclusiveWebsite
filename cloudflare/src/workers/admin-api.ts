@@ -1998,6 +1998,84 @@ async function retryLabelSync(
   return { status: "SYNCED" };
 }
 
+async function listPrivacyRequests(env: AdminEnv): Promise<Record<string, unknown>> {
+  const requests = await env.DB.prepare(`
+    SELECT r.id, r.appwrite_user_id, r.request_type, r.status, r.request_note,
+      r.privacy_regime, r.statutory_deadline_at, r.response_summary,
+      r.decided_at, r.created_at, r.updated_at,
+      u.email, u.display_name, u.country_code, u.region_code, u.account_status
+    FROM privacy_requests r
+    JOIN user_profiles u ON u.appwrite_user_id = r.appwrite_user_id
+    ORDER BY
+      CASE r.status WHEN 'PENDING' THEN 0 WHEN 'IN_REVIEW' THEN 1 ELSE 2 END,
+      r.statutory_deadline_at ASC,
+      r.created_at DESC
+    LIMIT 250
+  `).all();
+  return { requests: requests.results };
+}
+
+async function decidePrivacyRequest(
+  request: Request,
+  env: AdminEnv,
+  privacyRequestId: string,
+  administratorUserId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["status", "response", "reason"]);
+  if (!["IN_REVIEW", "COMPLETED", "DENIED"].includes(String(body.status))) {
+    throw new ApiError(400, "INVALID_PRIVACY_REQUEST_STATUS");
+  }
+  const reason = validateReason(body.reason);
+  if (typeof body.response !== "string" || body.response.trim().length < 3 || body.response.length > 1_000) {
+    throw new ApiError(400, "PRIVACY_RESPONSE_REQUIRED");
+  }
+  const existing = await env.DB.prepare(`
+    SELECT id, appwrite_user_id, request_type, status, response_summary
+    FROM privacy_requests WHERE id = ?
+  `).bind(privacyRequestId).first<{
+    id: string;
+    appwrite_user_id: string;
+    request_type: string;
+    status: string;
+    response_summary: string | null;
+  }>();
+  if (!existing) throw new ApiError(404, "PRIVACY_REQUEST_NOT_FOUND");
+  if (!["PENDING", "IN_REVIEW"].includes(existing.status)) {
+    throw new ApiError(409, "PRIVACY_REQUEST_ALREADY_DECIDED");
+  }
+  const nextStatus = String(body.status);
+  const response = body.response.trim();
+  const now = isoNow();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE privacy_requests SET status = ?, response_summary = ?,
+        decided_at = CASE WHEN ? IN ('COMPLETED', 'DENIED') THEN ? ELSE NULL END,
+        updated_at = ?
+      WHERE id = ? AND status IN ('PENDING', 'IN_REVIEW')
+    `).bind(nextStatus, response, nextStatus, now, now, privacyRequestId),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "PRIVACY_REQUEST_UPDATED",
+      targetType: "PRIVACY_REQUEST",
+      targetId: privacyRequestId,
+      previousState: {
+        status: existing.status,
+        response: existing.response_summary,
+      },
+      newState: { status: nextStatus, response },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+  return { requestId: privacyRequestId, status: nextStatus, response, updatedAt: now };
+}
+
 async function route(request: Request, env: AdminEnv): Promise<Response> {
   const origins = allowedOrigins(env.SITE_ORIGINS);
   if (request.method === "OPTIONS") return preflight(request, origins);
@@ -2038,6 +2116,8 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
   const contentItemPath = /^\/v1\/content\/items\/([^/]+)$/.exec(url.pathname);
   const contentCommentModerationPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})\/moderate$/i
+    .exec(url.pathname);
+  const privacyRequestDecisionPath = /^\/v1\/privacy\/requests\/([0-9a-f-]{36})\/decision$/i
     .exec(url.pathname);
   if (userPath) {
     const userId = validateUserId(decodeURIComponent(userPath[1]!));
@@ -2116,6 +2196,16 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     result = await importN26Csv(request, env, administrator.userId, correlationId);
   } else if (request.method === "GET" && url.pathname === "/v1/content/items") {
     result = await listContentItems(env);
+  } else if (request.method === "GET" && url.pathname === "/v1/privacy/requests") {
+    result = await listPrivacyRequests(env);
+  } else if (request.method === "POST" && privacyRequestDecisionPath) {
+    result = await decidePrivacyRequest(
+      request,
+      env,
+      privacyRequestDecisionPath[1]!,
+      administrator.userId,
+      correlationId,
+    );
   } else if (request.method === "GET" && url.pathname === "/v1/content/comments") {
     result = await listContentComments(env);
   } else if (request.method === "POST" && contentCommentModerationPath) {

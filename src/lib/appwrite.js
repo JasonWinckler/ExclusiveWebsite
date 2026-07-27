@@ -121,9 +121,26 @@ export async function getCurrentUser() {
   }
 }
 
-export async function registerAccount({ name, email, password, locale = "de" }) {
+export async function registerAccount({
+  name,
+  email,
+  password,
+  countryCode,
+  regionCode,
+  privacyNoticeVersion,
+  privacyNoticeAccepted,
+  gpcSignal = false,
+  locale = "de",
+}) {
   const user = await account.create({ userId: ID.unique(), email, password, name });
   await account.createEmailPasswordSession({ email, password });
+  await updatePrivacyProfile({
+    countryCode,
+    regionCode: countryCode === "US" ? regionCode : null,
+    noticeVersion: privacyNoticeVersion,
+    noticeAccepted: privacyNoticeAccepted,
+    gpcSignal,
+  });
   await requestEmailVerification(locale);
   return user;
 }
@@ -214,6 +231,30 @@ export const deleteContentComment = (commentId) => apiRequest(
 export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deletion", {
   method: "POST", json: { reason }, idempotent: true,
 });
+export const getPrivacyOverview = () => apiRequest("/v1/privacy");
+export const updatePrivacyProfile = ({
+  countryCode,
+  regionCode = null,
+  noticeAccepted = true,
+  noticeVersion,
+  gpcSignal = false,
+}) => apiRequest("/v1/privacy/profile", {
+  method: "PATCH",
+  json: { countryCode, regionCode, noticeAccepted, noticeVersion, gpcSignal },
+});
+export const updatePrivacyChoices = (choices) => apiRequest("/v1/privacy/choices", {
+  method: "PATCH", json: choices,
+});
+export const createPrivacyRequest = (requestType, note) => apiRequest("/v1/privacy/requests", {
+  method: "POST", json: { requestType, note }, idempotent: true,
+});
+export const cancelPrivacyRequest = (requestId) => apiRequest(
+  `/v1/privacy/requests/${encodeURIComponent(requestId)}`,
+  { method: "DELETE", json: {}, idempotent: true },
+);
+export const fetchPrivacyExport = () => apiRequest("/v1/privacy/export", {
+  responseType: "response",
+});
 
 export const adminListUsers = () => apiRequest("/v1/users", { admin: true });
 export const adminGetUserStatus = (userId) => apiRequest(
@@ -269,6 +310,11 @@ export const adminImportN26Csv = (file) => apiRequest("/v1/payments/n26-csv-impo
   admin: true, method: "POST", raw: file, contentType: "text/csv", idempotent: true,
 });
 export const adminListContent = () => apiRequest("/v1/content/items", { admin: true });
+export const adminListPrivacyRequests = () => apiRequest("/v1/privacy/requests", { admin: true });
+export const adminDecidePrivacyRequest = (requestId, status, response, reason) => apiRequest(
+  `/v1/privacy/requests/${encodeURIComponent(requestId)}/decision`,
+  { admin: true, method: "POST", json: { status, response, reason }, idempotent: true },
+);
 export const adminListContentComments = () => apiRequest("/v1/content/comments", { admin: true });
 export const adminModerateContentComment = (commentId, action, reason) => apiRequest(
   `/v1/content/comments/${encodeURIComponent(commentId)}/moderate`,

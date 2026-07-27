@@ -40,6 +40,71 @@ import type {
 } from "../shared/types";
 
 const AGE_INSTRUCTIONS_VERSION = "manual-age-v3";
+const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-27";
+const ISO_COUNTRIES = new Set(`
+AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ
+BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ
+CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ
+DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR
+GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY
+HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP
+KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY
+MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ
+NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR
+PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN
+SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW
+TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
+`.trim().split(/\s+/));
+const EEA_COUNTRIES = new Set([
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR",
+  "GR", "HU", "IE", "IS", "IT", "LI", "LT", "LU", "LV", "MT", "NL", "NO",
+  "PL", "PT", "RO", "SE", "SI", "SK",
+]);
+const US_REGIONS = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
+  "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN",
+  "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+  "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
+  "WV", "WI", "WY", "AS", "GU", "MP", "PR", "VI",
+]);
+const PRIVACY_REQUEST_TYPES = new Set([
+  "RESTRICT_PROCESSING",
+  "OBJECT_PROCESSING",
+  "APPEAL",
+]);
+
+function normalizeCountry(value: unknown): string {
+  if (typeof value !== "string") throw new ApiError(400, "COUNTRY_REQUIRED");
+  const country = value.trim().toUpperCase();
+  if (!ISO_COUNTRIES.has(country)) throw new ApiError(400, "INVALID_COUNTRY");
+  return country;
+}
+
+function normalizeRegion(country: string, value: unknown): string | null {
+  if (country !== "US") return null;
+  if (typeof value !== "string") throw new ApiError(400, "US_STATE_REQUIRED");
+  const region = value.trim().toUpperCase();
+  if (!US_REGIONS.has(region)) throw new ApiError(400, "INVALID_US_STATE");
+  return region;
+}
+
+function privacyRegime(country: string, region: string | null): {
+  regime: "EU_GDPR" | "US_STATE_PRIVACY" | "GLOBAL_BASELINE";
+  jurisdiction: string;
+} {
+  if (EEA_COUNTRIES.has(country)) {
+    return { regime: "EU_GDPR", jurisdiction: `EU-EEA-${country}` };
+  }
+  if (country === "US" && region) {
+    return { regime: "US_STATE_PRIVACY", jurisdiction: `US-${region}` };
+  }
+  return { regime: "GLOBAL_BASELINE", jurisdiction: country };
+}
+
+function privacyDeadline(regime: string, now = Date.now()): string {
+  const days = regime === "US_STATE_PRIVACY" ? 45 : 30;
+  return new Date(now + days * 86_400_000).toISOString();
+}
 
 function livenessChallenge(): string[] {
   const movements = ["TURN_HEAD_LEFT", "TURN_HEAD_RIGHT", "LOOK_UP", "BLINK_TWICE"];
@@ -106,7 +171,8 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       LIMIT 1
     )
     SELECT
-      p.account_status, p.email_verified, p.age_status,
+      p.account_status, p.email_verified, p.age_status, p.country_code,
+      p.region_code, p.privacy_regime, p.privacy_notice_acknowledged_at,
       e.tier AS entitlement_tier, e.expires_at AS entitlement_expires_at,
       (SELECT COUNT(*) FROM registered_devices d
         WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
@@ -123,6 +189,10 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     account_status: string;
     email_verified: number;
     age_status: string;
+    country_code: string | null;
+    region_code: string | null;
+    privacy_regime: string | null;
+    privacy_notice_acknowledged_at: string | null;
     entitlement_tier: string | null;
     entitlement_expires_at: string | null;
     active_device_count: number;
@@ -144,6 +214,12 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       emailVerified: row.email_verified === 1,
       restricted: row.account_status === "RESTRICTED",
       deletionPending: row.account_status === "DELETION_PENDING",
+      countryCode: row.country_code,
+      regionCode: row.region_code,
+      privacyRegime: row.privacy_regime,
+      privacyProfileComplete: Boolean(
+        row.country_code && row.privacy_regime && row.privacy_notice_acknowledged_at,
+      ),
     },
     ageVerification: {
       status: row.age_status,
@@ -2015,6 +2091,391 @@ async function authorizeContent(
   return new Response(object.body, { status, headers });
 }
 
+async function privacyOverview(
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const [profileResult, requestsResult] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT country_code, region_code, privacy_regime,
+        privacy_notice_version, privacy_notice_acknowledged_at,
+        marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
+        profiling_opt_out, sensitive_data_limit, privacy_choices_updated_at
+      FROM user_profiles WHERE appwrite_user_id = ?
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT id, request_type, status, request_note, statutory_deadline_at,
+        response_summary, decided_at, created_at, updated_at
+      FROM privacy_requests
+      WHERE appwrite_user_id = ?
+      ORDER BY created_at DESC LIMIT 50
+    `).bind(userId),
+  ]);
+  if (!profileResult || !requestsResult) throw new ApiError(503, "PRIVACY_DATA_UNAVAILABLE");
+  const profile = profileResult.results[0] as {
+    country_code: string | null;
+    region_code: string | null;
+    privacy_regime: string | null;
+    privacy_notice_version: string | null;
+    privacy_notice_acknowledged_at: string | null;
+    marketing_opt_out: number;
+    sale_share_opt_out: number;
+    targeted_ads_opt_out: number;
+    profiling_opt_out: number;
+    sensitive_data_limit: number;
+    privacy_choices_updated_at: string | null;
+  } | undefined;
+  if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  return {
+    noticeVersion: PRIVACY_NOTICE_VERSION,
+    profile: {
+      countryCode: profile.country_code,
+      regionCode: profile.region_code,
+      regime: profile.privacy_regime,
+      noticeVersion: profile.privacy_notice_version,
+      noticeAcknowledgedAt: profile.privacy_notice_acknowledged_at,
+      complete: Boolean(
+        profile.country_code &&
+        profile.privacy_regime &&
+        profile.privacy_notice_acknowledged_at
+      ),
+    },
+    choices: {
+      marketingOptOut: profile.marketing_opt_out === 1,
+      saleShareOptOut: profile.sale_share_opt_out === 1,
+      targetedAdsOptOut: profile.targeted_ads_opt_out === 1,
+      profilingOptOut: profile.profiling_opt_out === 1,
+      sensitiveDataLimit: profile.sensitive_data_limit === 1,
+      updatedAt: profile.privacy_choices_updated_at,
+    },
+    requests: requestsResult.results.map((row) => {
+      const request = row as Record<string, unknown>;
+      return {
+        id: request.id,
+        type: request.request_type,
+        status: request.status,
+        note: request.request_note,
+        deadlineAt: request.statutory_deadline_at,
+        response: request.response_summary,
+        decidedAt: request.decided_at,
+        createdAt: request.created_at,
+        updatedAt: request.updated_at,
+      };
+    }),
+    practices: {
+      sellsPersonalData: false,
+      sharesForCrossContextAdvertising: false,
+      targetedAdvertising: false,
+      solelyAutomatedSignificantDecisions: false,
+    },
+  };
+}
+
+async function updatePrivacyProfile(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, [
+    "countryCode",
+    "regionCode",
+    "noticeAccepted",
+    "noticeVersion",
+    "gpcSignal",
+  ]);
+  const country = normalizeCountry(body.countryCode);
+  const region = normalizeRegion(country, body.regionCode);
+  if (body.noticeAccepted !== true || body.noticeVersion !== PRIVACY_NOTICE_VERSION) {
+    throw new ApiError(400, "PRIVACY_NOTICE_ACKNOWLEDGEMENT_REQUIRED");
+  }
+  if (body.gpcSignal !== undefined && typeof body.gpcSignal !== "boolean") {
+    throw new ApiError(400, "INVALID_GPC_SIGNAL");
+  }
+  const location = privacyRegime(country, region);
+  const now = isoNow();
+  const result = await env.DB.prepare(`
+    UPDATE user_profiles SET
+      country_code = ?,
+      region_code = ?,
+      jurisdiction_code = ?,
+      privacy_regime = ?,
+      privacy_notice_version = ?,
+      privacy_notice_acknowledged_at = ?,
+      sale_share_opt_out = CASE WHEN ? = 1 THEN 1 ELSE sale_share_opt_out END,
+      targeted_ads_opt_out = CASE WHEN ? = 1 THEN 1 ELSE targeted_ads_opt_out END,
+      privacy_choices_updated_at = CASE
+        WHEN ? = 1 THEN ? ELSE privacy_choices_updated_at
+      END,
+      version = version + 1,
+      updated_at = ?
+    WHERE appwrite_user_id = ?
+  `).bind(
+    country,
+    region,
+    location.jurisdiction,
+    location.regime,
+    PRIVACY_NOTICE_VERSION,
+    now,
+    body.gpcSignal === true ? 1 : 0,
+    body.gpcSignal === true ? 1 : 0,
+    body.gpcSignal === true ? 1 : 0,
+    now,
+    now,
+    userId,
+  ).run();
+  if ((result.meta.changes ?? 0) !== 1) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  return {
+    countryCode: country,
+    regionCode: region,
+    regime: location.regime,
+    noticeVersion: PRIVACY_NOTICE_VERSION,
+    noticeAcknowledgedAt: now,
+    gpcApplied: body.gpcSignal === true,
+  };
+}
+
+async function updatePrivacyChoices(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  const keys = [
+    "marketingOptOut",
+    "saleShareOptOut",
+    "targetedAdsOptOut",
+    "profilingOptOut",
+    "sensitiveDataLimit",
+  ] as const;
+  exactObjectKeys(body, keys);
+  if (keys.some((key) => typeof body[key] !== "boolean")) {
+    throw new ApiError(400, "INVALID_PRIVACY_CHOICES");
+  }
+  const now = isoNow();
+  const result = await env.DB.prepare(`
+    UPDATE user_profiles SET
+      marketing_opt_out = ?,
+      sale_share_opt_out = ?,
+      targeted_ads_opt_out = ?,
+      profiling_opt_out = ?,
+      sensitive_data_limit = ?,
+      privacy_choices_updated_at = ?,
+      version = version + 1,
+      updated_at = ?
+    WHERE appwrite_user_id = ? AND country_code IS NOT NULL
+  `).bind(
+    body.marketingOptOut ? 1 : 0,
+    body.saleShareOptOut ? 1 : 0,
+    body.targetedAdsOptOut ? 1 : 0,
+    body.profilingOptOut ? 1 : 0,
+    body.sensitiveDataLimit ? 1 : 0,
+    now,
+    now,
+    userId,
+  ).run();
+  if ((result.meta.changes ?? 0) !== 1) throw new ApiError(409, "PRIVACY_PROFILE_REQUIRED");
+  return { choices: Object.fromEntries(keys.map((key) => [key, body[key]])), updatedAt: now };
+}
+
+async function createPrivacyRequest(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["requestType", "note"]);
+  if (typeof body.requestType !== "string" || !PRIVACY_REQUEST_TYPES.has(body.requestType)) {
+    throw new ApiError(400, "INVALID_PRIVACY_REQUEST_TYPE");
+  }
+  if (typeof body.note !== "string" || body.note.trim().length < 10 || body.note.length > 1_000) {
+    throw new ApiError(400, "PRIVACY_REQUEST_NOTE_REQUIRED");
+  }
+  const profile = await getUserProfile(env.DB, userId);
+  if (!profile?.privacy_regime) throw new ApiError(409, "PRIVACY_PROFILE_REQUIRED");
+  const idempotencyKey = requireIdempotencyKey(request);
+  const replay = await env.DB.prepare(`
+    SELECT id, status, statutory_deadline_at
+    FROM privacy_requests
+    WHERE appwrite_user_id = ? AND idempotency_key = ?
+  `).bind(userId, idempotencyKey).first<{
+    id: string;
+    status: string;
+    statutory_deadline_at: string;
+  }>();
+  if (replay) {
+    return {
+      requestId: replay.id,
+      status: replay.status,
+      deadlineAt: replay.statutory_deadline_at,
+    };
+  }
+  const open = await env.DB.prepare(`
+    SELECT id, status, statutory_deadline_at
+    FROM privacy_requests
+    WHERE appwrite_user_id = ? AND request_type = ?
+      AND status IN ('PENDING', 'IN_REVIEW')
+    LIMIT 1
+  `).bind(userId, body.requestType).first<{
+    id: string;
+    status: string;
+    statutory_deadline_at: string;
+  }>();
+  if (open) {
+    return { requestId: open.id, status: open.status, deadlineAt: open.statutory_deadline_at };
+  }
+  const now = isoNow();
+  const id = crypto.randomUUID();
+  const deadlineAt = privacyDeadline(profile.privacy_regime);
+  await env.DB.prepare(`
+    INSERT INTO privacy_requests (
+      id, appwrite_user_id, request_type, status, request_note, idempotency_key,
+      privacy_regime, statutory_deadline_at, created_at, updated_at
+    ) VALUES (?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id,
+    userId,
+    body.requestType,
+    body.note.trim(),
+    idempotencyKey,
+    profile.privacy_regime,
+    deadlineAt,
+    now,
+    now,
+  ).run();
+  return { requestId: id, status: "PENDING", deadlineAt };
+}
+
+async function cancelPrivacyRequest(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  privacyRequestId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, []);
+  const now = isoNow();
+  const result = await env.DB.prepare(`
+    UPDATE privacy_requests SET status = 'CANCELLED', updated_at = ?
+    WHERE id = ? AND appwrite_user_id = ? AND status = 'PENDING'
+  `).bind(now, privacyRequestId, userId).run();
+  if ((result.meta.changes ?? 0) !== 1) throw new ApiError(409, "PRIVACY_REQUEST_NOT_CANCELLABLE");
+  return { requestId: privacyRequestId, status: "CANCELLED" };
+}
+
+async function exportPrivacyData(
+  env: MembershipEnv,
+  userId: string,
+  origin: string | null,
+  origins: ReadonlySet<string>,
+  correlationId: string,
+): Promise<Response> {
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT email, display_name, email_verified, account_status, age_status,
+        country_code, region_code, jurisdiction_code, privacy_regime,
+        privacy_notice_version, privacy_notice_acknowledged_at,
+        marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
+        profiling_opt_out, sensitive_data_limit, privacy_choices_updated_at,
+        created_at, updated_at
+      FROM user_profiles WHERE appwrite_user_id = ?
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT s.id, p.sku, p.display_name AS product_name, p.tier,
+        s.payment_method, s.transfer_reference, s.amount_minor, s.currency,
+        s.status, s.payment_due_at, s.current_period_start, s.current_period_end,
+        s.settled_at, s.cancelled_at, s.cancellation_source,
+        s.billing_name, s.billing_street, s.billing_postal_code, s.billing_city,
+        s.billing_country_code, s.created_at, s.updated_at,
+        i.invoice_number, i.status AS invoice_status, i.issued_at, i.due_at,
+        i.paid_at, i.cancelled_at AS invoice_cancelled_at
+      FROM subscriptions s
+      JOIN products p ON p.id = s.product_id
+      LEFT JOIN invoices i ON i.subscription_id = s.id
+      WHERE s.appwrite_user_id = ?
+      ORDER BY s.created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT tier, status, starts_at, expires_at, revoked_at, revocation_reason,
+        created_at, updated_at
+      FROM entitlements WHERE appwrite_user_id = ? ORDER BY created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT status, threshold, review_method, manual_review_status,
+        instructions_version, consented_at, submitted_at, decided_at,
+        upload_expires_at, expires_at, retention_until, evidence_deleted_at,
+        created_at, updated_at
+      FROM age_verification_cases
+      WHERE appwrite_user_id = ? ORDER BY created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT display_name, status, first_seen_at, last_seen_at, revoked_at,
+        created_at, updated_at
+      FROM registered_devices
+      WHERE appwrite_user_id = ? ORDER BY created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT c.body, c.status, c.created_at, c.updated_at, c.deleted_at,
+        i.slug AS post_slug, i.title AS post_title
+      FROM content_comments c
+      JOIN content_items i ON i.id = c.content_item_id
+      WHERE c.appwrite_user_id = ? ORDER BY c.created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT request_type, status, request_note, privacy_regime,
+        statutory_deadline_at, response_summary, decided_at, created_at, updated_at
+      FROM privacy_requests
+      WHERE appwrite_user_id = ? ORDER BY created_at DESC
+    `).bind(userId),
+    env.DB.prepare(`
+      SELECT b.amount_minor, b.currency, b.creditor_reference,
+        b.remittance_information, b.booked_at, b.match_status
+      FROM bank_transactions b
+      JOIN subscriptions s ON s.id = b.matched_subscription_id
+      WHERE s.appwrite_user_id = ? ORDER BY b.booked_at DESC
+    `).bind(userId),
+  ]);
+  const headers = corsHeaders(origin, origins);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set(
+    "Content-Disposition",
+    `attachment; filename="shadows-temptation-data-${new Date().toISOString().slice(0, 10)}.json"`,
+  );
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Request-Id", correlationId);
+  const payload = {
+    format: "shadows-temptation-personal-data-export-v1",
+    generatedAt: isoNow(),
+    accountId: userId,
+    profile: results[0]!.results[0] ?? null,
+    ordersAndInvoices: results[1]!.results,
+    accessEntitlements: results[2]!.results,
+    ageVerificationHistory: results[3]!.results,
+    registeredDevices: results[4]!.results,
+    comments: results[5]!.results,
+    privacyRequests: results[6]!.results,
+    matchedPayments: results[7]!.results,
+    notes: [
+      "Age-verification media is not included in this export.",
+      "Evidence media is deleted after approval; legally required transaction records may be retained.",
+      "Security secrets, token hashes, internal fraud signals and data about other people are excluded.",
+    ],
+  };
+  return new Response(JSON.stringify(payload, null, 2), { status: 200, headers });
+}
+
 async function requestDeletion(
   request: Request,
   env: MembershipEnv,
@@ -2071,6 +2532,7 @@ async function requestDeletion(
     ? Date.parse(trustedActivity) + inactiveDays * 86_400_000
     : Date.now();
   const scheduledAt = new Date(Math.max(graceAt, inactiveAt)).toISOString();
+  const requestRegime = profile.privacy_regime ?? "GLOBAL_BASELINE";
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO deletion_jobs (
@@ -2085,6 +2547,21 @@ async function requestDeletion(
       inactiveBefore,
       scheduledAt,
       JSON.stringify({ blockers, requestedAt: now }),
+      now,
+      now,
+    ),
+    env.DB.prepare(`
+      INSERT OR IGNORE INTO privacy_requests (
+        id, appwrite_user_id, request_type, status, request_note, idempotency_key,
+        privacy_regime, statutory_deadline_at, created_at, updated_at
+      ) VALUES (?, ?, 'ERASURE', 'IN_REVIEW', ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      userId,
+      body.reason.trim(),
+      `erasure:${idempotencyKey}`,
+      requestRegime,
+      privacyDeadline(requestRegime),
       now,
       now,
     ),
@@ -2130,7 +2607,9 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   }
   const requiresVerified = !(
     (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") ||
-    (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request")
+    (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request") ||
+    (request.method === "GET" && requestUrl.pathname === "/v1/privacy") ||
+    (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/profile")
   );
   const identity = await authenticateUser(request, env, {
     requireVerifiedEmail: requiresVerified,
@@ -2145,6 +2624,8 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   const contentCommentsPath = /^\/v1\/content\/([a-z0-9-]{1,128})\/comments$/
     .exec(requestUrl.pathname);
   const contentCommentPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})$/i
+    .exec(requestUrl.pathname);
+  const privacyRequestPath = /^\/v1\/privacy\/requests\/([0-9a-f-]{36})$/i
     .exec(requestUrl.pathname);
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
@@ -2181,6 +2662,23 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     result = await cancelUserPaymentOrder(request, env, identity.userId, paymentOrderPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") {
     result = await requestDeletion(request, env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/privacy") {
+    result = await privacyOverview(env, identity.userId);
+  } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/profile") {
+    result = await updatePrivacyProfile(request, env, identity.userId);
+  } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/choices") {
+    result = await updatePrivacyChoices(request, env, identity.userId);
+  } else if (request.method === "POST" && requestUrl.pathname === "/v1/privacy/requests") {
+    result = await createPrivacyRequest(request, env, identity.userId);
+  } else if (request.method === "DELETE" && privacyRequestPath) {
+    result = await cancelPrivacyRequest(
+      request,
+      env,
+      identity.userId,
+      privacyRequestPath[1]!,
+    );
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/privacy/export") {
+    return exportPrivacyData(env, identity.userId, origin, origins, correlationId);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/devices/register") {
     result = await registerDevice(request, env, identity.userId);
   } else if (request.method === "DELETE" && requestUrl.pathname === "/v1/devices/current") {

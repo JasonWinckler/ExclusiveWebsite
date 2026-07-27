@@ -439,6 +439,20 @@ async function processDeletionJobs(
         WHERE id = ? AND status = 'EXECUTING'
       `).bind(now, now, job.id),
       env.DB.prepare(`
+        UPDATE privacy_requests SET
+          status = CASE WHEN request_type = 'ERASURE' THEN 'COMPLETED' ELSE 'CANCELLED' END,
+          request_note = CASE
+            WHEN request_type = 'ERASURE' THEN 'Account erasure request'
+            ELSE 'Closed during account erasure'
+          END,
+          response_summary = CASE
+            WHEN request_type = 'ERASURE' THEN 'Account data erased or anonymised; legally required records retained.'
+            ELSE 'Request closed because the account was erased.'
+          END,
+          decided_at = ?, updated_at = ?
+        WHERE appwrite_user_id = ? AND status IN ('PENDING', 'IN_REVIEW')
+      `).bind(now, now, job.appwrite_user_id),
+      env.DB.prepare(`
         INSERT INTO admin_audit_events (
           id, administrator_appwrite_user_id, action, target_type, target_id,
           previous_state_json, new_state_json, reason, correlation_id, created_at
