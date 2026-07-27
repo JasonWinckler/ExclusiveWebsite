@@ -4,6 +4,7 @@ import {
   adminArchivePaymentOrder,
   adminCancelPaymentOrder,
   adminCreateContent,
+  adminDeleteContent,
   adminDecideAgeCase,
   adminFetchAgeEvidence,
   adminGetAgeCase,
@@ -17,6 +18,7 @@ import {
   adminRestrictUser,
   adminScheduleAccountDeletion,
   adminUnrestrictUser,
+  adminUpdateContent,
   adminUploadContent,
   requestPasswordReset,
 } from "./lib/appwrite";
@@ -181,6 +183,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [cases, setCases] = useState([]);
   const [selectedCase, setSelectedCase] = useState(null);
   const [items, setItems] = useState([]);
+  const [editingItem, setEditingItem] = useState(null);
   const [comments, setComments] = useState([]);
   const [commentReasons, setCommentReasons] = useState({});
   const [orders, setOrders] = useState([]);
@@ -294,22 +297,63 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const form = event.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
-    if (!(file instanceof File) || !file.size) return;
+    if (!editingItem && (!(file instanceof File) || !file.size)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const item = await adminCreateContent({
-        slug: String(data.get("slug") || ""),
+      const payload = {
         title: String(data.get("title") || ""),
         tier: String(data.get("tier") || ""),
         bodyText: String(data.get("bodyText") || ""),
         allowComments: data.get("allowComments") === "on",
-      });
-      await adminUploadContent(item.id, file);
+      };
+      const item = editingItem
+        ? await adminUpdateContent(editingItem.id, payload)
+        : await adminCreateContent({
+          slug: String(data.get("slug") || ""),
+          ...payload,
+        });
+      if (file instanceof File && file.size) await adminUploadContent(item.id, file);
       form.reset();
-      setNotice(t.published);
+      setEditingItem(null);
+      setNotice(editingItem
+        ? (language === "de" ? "Der Beitrag wurde aktualisiert." : "The post was updated.")
+        : t.published);
       await loadContent();
+    } catch (requestError) {
+      setError(requestError?.code || t.genericError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editContent = (item) => {
+    setEditingItem(item);
+    setNotice("");
+    setError("");
+    requestAnimationFrame(() => {
+      document.querySelector(".post-composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const deleteContent = async (item) => {
+    const reason = window.prompt(
+      language === "de" ? "Interner Löschgrund (mindestens 3 Zeichen):" : "Internal deletion reason (at least 3 characters):",
+      language === "de" ? "Vom Creator entfernt" : "Removed by creator",
+    );
+    if (!reason || reason.trim().length < 3) return;
+    if (!window.confirm(language === "de"
+      ? "Beitrag und zugehöriges Medium wirklich löschen?"
+      : "Delete this post and its media?")) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminDeleteContent(item.id, reason.trim());
+      if (editingItem?.id === item.id) setEditingItem(null);
+      setNotice(language === "de" ? "Der Beitrag wurde gelöscht." : "The post was deleted.");
+      await Promise.all([loadContent(), loadComments()]);
     } catch (requestError) {
       setError(requestError?.code || t.genericError);
     } finally {
@@ -387,7 +431,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       if (action === "RESTRICT") await adminRestrictUser(profile.appwrite_user_id, reason);
       else if (action === "UNRESTRICT") await adminUnrestrictUser(profile.appwrite_user_id, reason);
       else if (action === "DELETE") await adminScheduleAccountDeletion(profile.appwrite_user_id, reason);
-      else await requestPasswordReset(profile.email);
+      else await requestPasswordReset(profile.email, language);
       setNotice(action === "RESET"
         ? (language === "de" ? "E-Mail zum Zurücksetzen des Passworts wurde angefordert." : "Password reset email was requested.")
         : (language === "de" ? "Nutzerstatus wurde aktualisiert." : "User status was updated."));
@@ -497,20 +541,22 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       {tab === "content" && <section className="admin-grid admin-content-studio">
         <article className="admin-panel post-composer">
           <p className="eyebrow">{language === "de" ? "CREATOR STUDIO" : "CREATOR STUDIO"}</p>
-          <h2>{t.uploadTitle}</h2>
-          <p className="admin-note">{language === "de" ? "Erstelle einen vollständigen Beitrag aus Titel, persönlichem Text, Medium und Zugriffslevel. Erfolgreiche Uploads werden sofort veröffentlicht." : "Create a complete post with a title, personal text, media and access level. Successful uploads publish immediately."}</p>
-          <form className="admin-form post-composer__form" onSubmit={uploadContent}>
-            <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" placeholder={language === "de" ? "Gib dem Moment einen Titel…" : "Give the moment a title…"} required /></label>
-            <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" placeholder={language === "de" ? "Erzähle die Geschichte hinter dem Beitrag, sprich deine Mitglieder direkt an oder kündige etwas Besonderes an…" : "Tell the story behind this post, speak directly to your members, or tease something special…"} /></label>
-            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" placeholder="midnight-confession" required /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue="FREE">{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
-            <label className="media-drop-field"><span>{t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required /></label>
-            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked /><span>{language === "de" ? "Paid Member dürfen diesen Beitrag kommentieren." : "Paid members may comment on this post."}</span></label>
-            <div className="composer-publish-row"><small>{language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload."}</small><button className="primary-action" disabled={busy}>{t.publish}</button></div>
+          <h2>{editingItem ? (language === "de" ? "Beitrag bearbeiten" : "Edit post") : t.uploadTitle}</h2>
+          <p className="admin-note">{editingItem
+            ? (language === "de" ? "Passe Text, Zugriffslevel oder Kommentare an. Eine neue Mediendatei ersetzt das bisherige Medium." : "Update copy, access or comments. Choosing new media replaces the existing file.")
+            : (language === "de" ? "Erstelle einen vollständigen Beitrag aus Titel, persönlichem Text, Medium und Zugriffslevel. Erfolgreiche Uploads werden sofort veröffentlicht." : "Create a complete post with a title, personal text, media and access level. Successful uploads publish immediately.")}</p>
+          <form className="admin-form post-composer__form" onSubmit={uploadContent} key={editingItem?.id || "new-post"}>
+            <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" defaultValue={editingItem?.title || ""} placeholder={language === "de" ? "Gib dem Moment einen Titel…" : "Give the moment a title…"} required /></label>
+            <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" defaultValue={editingItem?.body_text || ""} placeholder={language === "de" ? "Erzähle die Geschichte hinter dem Beitrag, sprich deine Mitglieder direkt an oder kündige etwas Besonderes an…" : "Tell the story behind this post, speak directly to your members, or tease something special…"} /></label>
+            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="midnight-confession" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue={editingItem?.required_tier || "FREE"}>{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
+            <label className="media-drop-field"><span>{editingItem ? (language === "de" ? "Medium optional ersetzen" : "Optionally replace media") : t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required={!editingItem} /></label>
+            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Paid Member dürfen diesen Beitrag kommentieren." : "Paid members may comment on this post."}</span></label>
+            <div className="composer-publish-row"><small>{editingItem ? (language === "de" ? "Änderungen sind nach dem Speichern sofort aktiv." : "Changes are active immediately after saving.") : (language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload.")}</small><div className="decision-actions">{editingItem && <button className="secondary-action" type="button" disabled={busy} onClick={() => setEditingItem(null)}>{language === "de" ? "Abbrechen" : "Cancel"}</button>}<button className="primary-action" disabled={busy}>{editingItem ? (language === "de" ? "Änderungen speichern" : "Save changes") : t.publish}</button></div></div>
           </form>
         </article>
         <article className="admin-panel">
           <h2>{t.currentContent}</h2>
-          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small></div></div>)}</div> : <p>{t.noContent}</p>}
+          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
         </article>
         <article className="admin-panel admin-panel--wide comment-moderation">
           <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>

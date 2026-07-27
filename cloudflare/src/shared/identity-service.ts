@@ -61,6 +61,23 @@ export function updateAppwriteUserStatus(
   return callIdentityService(service, secret, "/update-user-status", { userId, status });
 }
 
+export function verifyAppwriteUserEmail(
+  service: Service,
+  secret: string,
+  userId: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/verify-user-email", { userId });
+}
+
+export function updateAppwriteUserPassword(
+  service: Service,
+  secret: string,
+  userId: string,
+  password: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/update-user-password", { userId, password });
+}
+
 export function sendTransactionalEmail(
   service: Service,
   secret: string,

@@ -49,6 +49,7 @@
     "AGE_VIDEO_MAX_BYTES": "25000000",
     "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
     "SEPA_ORDER_EXPIRY_HOURS": "48",
+    "AUTH_EMAIL_MODE": "APPWRITE",
     "INVOICE_SELLER_NAME": "Shadow's Temptation · Jason Winckler",
     "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
     "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com"
@@ -91,9 +92,10 @@
         "AGE_VIDEO_MAX_BYTES": "25000000",
         "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
         "SEPA_ORDER_EXPIRY_HOURS": "48",
-    "INVOICE_SELLER_NAME": "Shadow's Temptation · Jason Winckler",
-    "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
-    "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com"
+        "AUTH_EMAIL_MODE": "APPWRITE",
+        "INVOICE_SELLER_NAME": "Shadow's Temptation · Jason Winckler",
+        "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
+        "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com"
       }
     }
   }

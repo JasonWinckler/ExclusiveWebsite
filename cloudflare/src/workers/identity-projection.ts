@@ -94,6 +94,8 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
   const path = new URL(request.url).pathname;
   const labelServicePath = path === "/sync-labels" ||
     path === "/update-user-status" ||
+    path === "/verify-user-email" ||
+    path === "/update-user-password" ||
     path === "/send-transactional-email";
   const expectedSecret = labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
@@ -120,6 +122,27 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       method: "PATCH",
       body: JSON.stringify({ status: body.status }),
     });
+    return jsonResponse({ ok: true });
+  }
+  if (path === "/verify-user-email") {
+    await appwriteRequest(env, `/users/${encodedUserId}/verification`, {
+      method: "PATCH",
+      body: JSON.stringify({ emailVerification: true }),
+    });
+    return jsonResponse({ ok: true });
+  }
+  if (path === "/update-user-password") {
+    if (
+      typeof body.password !== "string" ||
+      body.password.length < 8 ||
+      body.password.length > 256 ||
+      /[\u0000-\u001f\u007f]/.test(body.password)
+    ) throw new ApiError(400, "INVALID_PASSWORD");
+    await appwriteRequest(env, `/users/${encodedUserId}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ password: body.password }),
+    });
+    await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
     return jsonResponse({ ok: true });
   }
   if (path === "/send-transactional-email") {

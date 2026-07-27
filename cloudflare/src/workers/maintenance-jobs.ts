@@ -71,24 +71,62 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
       ),
     ]);
   }
-  const expiredOrders = await env.DB.prepare(`
-    SELECT id FROM subscriptions
-    WHERE status = 'PENDING' AND payment_due_at <= ? LIMIT ?
-  `).bind(now, batchSize).all<{ id: string }>();
-  for (const order of expiredOrders.results) {
-    await env.DB.batch([
-      env.DB.prepare(`
-        UPDATE subscriptions SET status = 'CANCELLED', cancelled_at = ?,
-          cancellation_source = 'SYSTEM', cancellation_reason = 'PAYMENT_NOT_RECEIVED_WITHIN_48_HOURS',
-          version = version + 1, updated_at = ?
-        WHERE id = ? AND status = 'PENDING'
-      `).bind(now, now, order.id),
-      env.DB.prepare(`
-        UPDATE invoices SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
-        WHERE subscription_id = ? AND status = 'OPEN'
-      `).bind(now, now, order.id),
-    ]);
-  }
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE invoices SET status = 'CANCELLED', cancelled_at = ?, updated_at = ?
+      WHERE status = 'OPEN' AND subscription_id IN (
+        SELECT id FROM subscriptions
+        WHERE status = 'PENDING' AND payment_due_at <= ?
+        ORDER BY payment_due_at ASC LIMIT ?
+      )
+    `).bind(now, now, now, batchSize),
+    env.DB.prepare(`
+      UPDATE subscriptions SET status = 'CANCELLED', cancelled_at = ?,
+        cancellation_source = 'SYSTEM',
+        cancellation_reason = 'PAYMENT_NOT_RECEIVED_WITHIN_48_HOURS',
+        version = version + 1, updated_at = ?
+      WHERE id IN (
+        SELECT id FROM subscriptions
+        WHERE status = 'PENDING' AND payment_due_at <= ?
+        ORDER BY payment_due_at ASC LIMIT ?
+      )
+    `).bind(now, now, now, batchSize),
+  ]);
+  const cancelledHistoryCutoff = new Date(Date.parse(now) - 2 * 86_400_000).toISOString();
+  await env.DB.prepare(`
+    UPDATE subscriptions
+    SET archived_at = ?, archive_reason = 'AUTOMATIC_CANCELLED_ORDER_HISTORY_CLEANUP',
+      version = version + 1, updated_at = ?
+    WHERE id IN (
+      SELECT id FROM subscriptions
+      WHERE status = 'CANCELLED' AND archived_at IS NULL
+        AND cancelled_at IS NOT NULL AND cancelled_at <= ?
+      ORDER BY cancelled_at ASC
+      LIMIT ?
+    )
+  `).bind(now, now, cancelledHistoryCutoff, batchSize).run();
+  const staleAuthProcessingCutoff = new Date(Date.parse(now) - 10 * 60_000).toISOString();
+  const authTokenHistoryCutoff = new Date(Date.parse(now) - 2 * 86_400_000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE auth_email_tokens
+      SET status = CASE WHEN expires_at > ? THEN 'PENDING' ELSE 'EXPIRED' END,
+        updated_at = ?
+      WHERE status = 'PROCESSING' AND updated_at <= ?
+    `).bind(now, now, staleAuthProcessingCutoff),
+    env.DB.prepare(`
+      UPDATE auth_email_tokens SET status = 'EXPIRED', updated_at = ?
+      WHERE status = 'PENDING' AND expires_at <= ?
+    `).bind(now, now),
+    env.DB.prepare(`
+      DELETE FROM auth_email_tokens
+      WHERE id IN (
+        SELECT id FROM auth_email_tokens
+        WHERE status IN ('USED', 'EXPIRED', 'REVOKED') AND updated_at <= ?
+        ORDER BY updated_at ASC LIMIT ?
+      )
+    `).bind(authTokenHistoryCutoff, batchSize),
+  ]);
   const expiringEntitlements = await env.DB.prepare(`
     SELECT id, appwrite_user_id FROM entitlements
     WHERE status = 'ACTIVE' AND expires_at <= ? LIMIT ?
@@ -243,6 +281,31 @@ async function cleanupRetainedEvidence(
     if (!await deleteEvidenceForCase(env, ageCase.id, now)) {
       logEvent("error", "age_evidence_cleanup_failed", {
         requestId: ageCase.id,
+      });
+    }
+  }
+}
+
+async function cleanupRetiredContentMedia(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<void> {
+  const uploads = await env.DB.prepare(`
+    SELECT id, r2_object_key FROM content_uploads
+    WHERE status IN ('REPLACED', 'DELETED') AND deleted_at IS NULL
+    ORDER BY updated_at ASC LIMIT ?
+  `).bind(batchSize).all<{ id: string; r2_object_key: string }>();
+  for (const upload of uploads.results) {
+    try {
+      await env.CONTENT_MEDIA.delete(upload.r2_object_key);
+      await env.DB.prepare(`
+        UPDATE content_uploads SET deleted_at = ?, updated_at = ?
+        WHERE id = ? AND status IN ('REPLACED', 'DELETED') AND deleted_at IS NULL
+      `).bind(now, now, upload.id).run();
+    } catch {
+      logEvent("error", "content_media_cleanup_failed", {
+        requestId: upload.id,
       });
     }
   }
@@ -458,6 +521,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
   try {
     await expireRecords(env, now, batchSize);
     await cleanupRetainedEvidence(env, now, batchSize);
+    await cleanupRetiredContentMedia(env, now, batchSize);
     await retryLabelSync(env, now, batchSize);
     await discoverInactiveAccounts(
       env,

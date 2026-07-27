@@ -25,7 +25,11 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import { authorizeProtectedContent, deletionBlockers } from "../shared/policy";
-import { sendTransactionalEmail } from "../shared/identity-service";
+import {
+  sendTransactionalEmail,
+  updateAppwriteUserPassword,
+  verifyAppwriteUserEmail,
+} from "../shared/identity-service";
 import { sha256Hex, validateDeviceToken } from "../shared/security";
 import type {
   AgeEvidenceKind,
@@ -499,6 +503,330 @@ function escapeHtml(value: string): string {
     '"': "&quot;",
     "'": "&#39;",
   })[character]!);
+}
+
+function authLocale(value: unknown): "de" | "en" {
+  return value === "en" ? "en" : "de";
+}
+
+function randomUrlToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const value of bytes) binary += String.fromCharCode(value);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function authEmailHtml(input: {
+  locale: "de" | "en";
+  purpose: "VERIFY_EMAIL" | "RESET_PASSWORD";
+  displayName: string;
+  actionUrl: string;
+  expiresAt: string;
+}): string {
+  const isGerman = input.locale === "de";
+  const verification = input.purpose === "VERIFY_EMAIL";
+  const title = verification
+    ? (isGerman ? "Bestätige deine E-Mail" : "Confirm your email")
+    : (isGerman ? "Setze dein Passwort zurück" : "Reset your password");
+  const intro = verification
+    ? (isGerman
+      ? "Ein letzter Schritt öffnet den Weg zu deinem privaten Bereich."
+      : "One final step opens the way to your private space.")
+    : (isGerman
+      ? "Du hast einen sicheren Link zum Zurücksetzen deines Passworts angefordert."
+      : "You requested a secure link to reset your password.");
+  const action = verification
+    ? (isGerman ? "E-Mail jetzt bestätigen" : "Confirm email now")
+    : (isGerman ? "Neues Passwort festlegen" : "Choose a new password");
+  const expiry = new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Berlin",
+  }).format(new Date(input.expiresAt));
+  const security = isGerman
+    ? `Der Link ist einmalig und bis ${expiry} gültig. Falls du diese Nachricht nicht angefordert hast, kannst du sie ignorieren.`
+    : `This single-use link is valid until ${expiry}. If you did not request this message, you can ignore it.`;
+  return `<!doctype html><html><body style="margin:0;background:#120306;color:#f8eee7;font-family:Arial,sans-serif">
+  <div style="max-width:680px;margin:0 auto;padding:32px 20px">
+    <div style="background:linear-gradient(145deg,#2a0710,#150407);border:1px solid #7f2438;border-radius:22px;overflow:hidden">
+      <div style="padding:30px 34px;border-bottom:1px solid #5a1b2a">
+        <div style="color:#d7ad62;font-size:12px;letter-spacing:3px;text-transform:uppercase">Shadow's Temptation · Private Membership</div>
+        <h1 style="margin:12px 0 8px;font-family:Georgia,serif;font-size:32px;color:#fff7ed">${escapeHtml(title)}</h1>
+        <p style="margin:0;color:#d9c9c2;line-height:1.65">${escapeHtml(intro)}</p>
+      </div>
+      <div style="padding:30px 34px">
+        <p style="margin:0 0 22px;line-height:1.65">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.displayName || (isGerman ? "Member" : "member"))},</p>
+        <p style="margin:0 0 26px;text-align:center">
+          <a href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:15px 24px;border-radius:999px;background:linear-gradient(135deg,#e55422,#8d1022);color:#fff7ed;text-decoration:none;font-weight:bold">${escapeHtml(action)}</a>
+        </p>
+        <p style="padding:16px 18px;border:1px solid #4a1521;border-radius:12px;color:#bdaaa4;background:#0c0204;font-size:13px;line-height:1.6">${escapeHtml(security)}</p>
+        <p style="margin:22px 0 0;color:#aa9993;font-size:12px;line-height:1.6">${isGerman ? "Funktioniert der Button nicht? Öffne diesen Link:" : "If the button does not work, open this link:"}<br><a href="${escapeHtml(input.actionUrl)}" style="color:#d7ad62;word-break:break-all">${escapeHtml(input.actionUrl)}</a></p>
+      </div>
+      <div style="padding:20px 34px;background:#0d0204;color:#998984;font-size:12px;line-height:1.6">
+        Shadow's Temptation · Jason Winckler · Rheine, Deutschland<br>
+        <a href="https://exclusive.jason-shadow.com/" style="color:#d7ad62">exclusive.jason-shadow.com</a> ·
+        <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#d7ad62">${isGerman ? "Datenschutz" : "Privacy"}</a>
+      </div>
+    </div>
+  </div></body></html>`;
+}
+
+async function issueAuthEmailToken(
+  env: MembershipEnv,
+  input: {
+    userId: string;
+    displayName: string;
+    purpose: "VERIFY_EMAIL" | "RESET_PASSWORD";
+    locale: "de" | "en";
+    idempotencyKey: string;
+  },
+): Promise<Record<string, unknown>> {
+  const replay = await env.DB.prepare(`
+    SELECT id, expires_at, email_status FROM auth_email_tokens
+    WHERE idempotency_key = ? AND appwrite_user_id = ? AND purpose = ?
+  `).bind(input.idempotencyKey, input.userId, input.purpose).first<{
+    id: string;
+    expires_at: string;
+    email_status: string;
+  }>();
+  if (replay) {
+    return {
+      accepted: true,
+      expiresAt: replay.expires_at,
+      emailStatus: replay.email_status,
+      existing: true,
+    };
+  }
+  const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  const throttle = await env.DB.prepare(`
+    SELECT COUNT(*) AS sent_count, MAX(created_at) AS latest_created_at
+    FROM auth_email_tokens
+    WHERE appwrite_user_id = ? AND purpose = ? AND created_at >= ?
+  `).bind(input.userId, input.purpose, oneHourAgo).first<{
+    sent_count: number;
+    latest_created_at: string | null;
+  }>();
+  if (
+    Number(throttle?.sent_count ?? 0) >= 5 ||
+    (throttle?.latest_created_at &&
+      Date.parse(throttle.latest_created_at) > Date.now() - 60_000)
+  ) throw new ApiError(429, "AUTH_EMAIL_RATE_LIMITED");
+
+  const token = randomUrlToken();
+  const tokenHash = await sha256Hex(token);
+  const tokenId = crypto.randomUUID();
+  const messageId = crypto.randomUUID();
+  const now = isoNow();
+  const lifetimeMinutes = input.purpose === "VERIFY_EMAIL" ? 1_440 : 60;
+  const expiresAt = new Date(Date.parse(now) + lifetimeMinutes * 60_000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE auth_email_tokens SET status = 'REVOKED', updated_at = ?
+      WHERE appwrite_user_id = ? AND purpose = ? AND status = 'PENDING'
+    `).bind(now, input.userId, input.purpose),
+    env.DB.prepare(`
+      INSERT INTO auth_email_tokens (
+        id, appwrite_user_id, purpose, token_sha256, status, expires_at,
+        email_message_id, email_status, idempotency_key, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, 'PENDING', ?, ?, ?)
+    `).bind(
+      tokenId,
+      input.userId,
+      input.purpose,
+      tokenHash,
+      expiresAt,
+      messageId,
+      input.idempotencyKey,
+      now,
+      now,
+    ),
+  ]);
+  const action = input.purpose === "VERIFY_EMAIL" ? "verify-email" : "recover";
+  const actionUrl = `https://exclusive.jason-shadow.com/?action=${action}&token=${encodeURIComponent(token)}`;
+  const subject = input.purpose === "VERIFY_EMAIL"
+    ? (input.locale === "de" ? "Bestätige deinen Zugang · Shadow's Temptation" : "Confirm your access · Shadow's Temptation")
+    : (input.locale === "de" ? "Passwort sicher zurücksetzen · Shadow's Temptation" : "Secure password reset · Shadow's Temptation");
+  try {
+    await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      userId: input.userId,
+      messageId,
+      subject,
+      html: authEmailHtml({
+        locale: input.locale,
+        purpose: input.purpose,
+        displayName: input.displayName,
+        actionUrl,
+        expiresAt,
+      }),
+    });
+    await env.DB.prepare(`
+      UPDATE auth_email_tokens SET email_status = 'SENT', updated_at = ? WHERE id = ?
+    `).bind(isoNow(), tokenId).run();
+    return { accepted: true, expiresAt, emailStatus: "SENT", existing: false };
+  } catch {
+    await env.DB.prepare(`
+      UPDATE auth_email_tokens SET email_status = 'FAILED', updated_at = ? WHERE id = ?
+    `).bind(isoNow(), tokenId).run();
+    throw new ApiError(503, "AUTH_EMAIL_DELIVERY_FAILED");
+  }
+}
+
+async function requestEmailVerification(
+  request: Request,
+  env: MembershipEnv,
+  identity: { userId: string; displayName: string; emailVerified: boolean },
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["locale"]);
+  if (identity.emailVerified) return { accepted: true, alreadyVerified: true };
+  return issueAuthEmailToken(env, {
+    userId: identity.userId,
+    displayName: identity.displayName,
+    purpose: "VERIFY_EMAIL",
+    locale: authLocale(body.locale),
+    idempotencyKey: requireIdempotencyKey(request),
+  });
+}
+
+async function requestPasswordResetEmail(
+  request: Request,
+  env: MembershipEnv,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["email", "locale"]);
+  if (
+    typeof body.email !== "string" ||
+    body.email.length > 320 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())
+  ) throw new ApiError(400, "INVALID_EMAIL");
+  const idempotencyKey = requireIdempotencyKey(request);
+  const profile = await env.DB.prepare(`
+    SELECT appwrite_user_id, display_name FROM user_profiles
+    WHERE email = ? COLLATE NOCASE AND account_status <> 'DELETED'
+    LIMIT 1
+  `).bind(body.email.trim()).first<{
+    appwrite_user_id: string;
+    display_name: string;
+  }>();
+  if (!profile) {
+    await sha256Hex(`unknown-reset:${body.email.trim().toLowerCase()}`);
+    return { accepted: true };
+  }
+  try {
+    await issueAuthEmailToken(env, {
+      userId: profile.appwrite_user_id,
+      displayName: profile.display_name,
+      purpose: "RESET_PASSWORD",
+      locale: authLocale(body.locale),
+      idempotencyKey,
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 429) throw error;
+    logEvent("error", "password_reset_email_failed", {
+      requestId: requestId(request),
+      code: error instanceof ApiError ? error.code : "INTERNAL_ERROR",
+    });
+  }
+  return { accepted: true };
+}
+
+async function claimAuthEmailToken(
+  env: MembershipEnv,
+  token: string,
+  purpose: "VERIFY_EMAIL" | "RESET_PASSWORD",
+): Promise<{ id: string; userId: string }> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(400, "INVALID_AUTH_EMAIL_TOKEN");
+  const tokenHash = await sha256Hex(token);
+  const now = isoNow();
+  const result = await env.DB.prepare(`
+    UPDATE auth_email_tokens
+    SET status = 'PROCESSING', updated_at = ?
+    WHERE token_sha256 = ? AND purpose = ? AND status = 'PENDING' AND expires_at > ?
+  `).bind(now, tokenHash, purpose, now).run();
+  if ((result.meta.changes ?? 0) !== 1) {
+    throw new ApiError(400, "AUTH_EMAIL_TOKEN_EXPIRED_OR_USED");
+  }
+  const row = await env.DB.prepare(`
+    SELECT id, appwrite_user_id FROM auth_email_tokens
+    WHERE token_sha256 = ? AND purpose = ? AND status = 'PROCESSING'
+  `).bind(tokenHash, purpose).first<{ id: string; appwrite_user_id: string }>();
+  if (!row) throw new ApiError(409, "AUTH_EMAIL_TOKEN_STATE_CONFLICT");
+  return { id: row.id, userId: row.appwrite_user_id };
+}
+
+async function completeAuthEmailToken(
+  request: Request,
+  env: MembershipEnv,
+  purpose: "VERIFY_EMAIL" | "RESET_PASSWORD",
+): Promise<Record<string, unknown>> {
+  requireIdempotencyKey(request);
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, purpose === "VERIFY_EMAIL" ? ["token"] : ["token", "password"]);
+  if (typeof body.token !== "string") throw new ApiError(400, "INVALID_AUTH_EMAIL_TOKEN");
+  if (
+    purpose === "RESET_PASSWORD" &&
+    (
+      typeof body.password !== "string" ||
+      body.password.length < 8 ||
+      body.password.length > 256 ||
+      /[\u0000-\u001f\u007f]/.test(body.password)
+    )
+  ) throw new ApiError(400, "INVALID_PASSWORD");
+  const claimed = await claimAuthEmailToken(env, body.token, purpose);
+  try {
+    if (purpose === "VERIFY_EMAIL") {
+      await verifyAppwriteUserEmail(
+        env.IDENTITY_PROJECTION,
+        env.LABEL_SYNC_SERVICE_SECRET,
+        claimed.userId,
+      );
+    } else {
+      await updateAppwriteUserPassword(
+        env.IDENTITY_PROJECTION,
+        env.LABEL_SYNC_SERVICE_SECRET,
+        claimed.userId,
+        body.password as string,
+      );
+    }
+  } catch (error) {
+    const now = isoNow();
+    await env.DB.prepare(`
+      UPDATE auth_email_tokens
+      SET status = CASE WHEN expires_at > ? THEN 'PENDING' ELSE 'EXPIRED' END,
+        updated_at = ? WHERE id = ? AND status = 'PROCESSING'
+    `).bind(now, now, claimed.id).run();
+    throw error;
+  }
+  const completedAt = isoNow();
+  const statements = [
+    env.DB.prepare(`
+      UPDATE auth_email_tokens SET status = 'USED', used_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'PROCESSING'
+    `).bind(completedAt, completedAt, claimed.id),
+    env.DB.prepare(`
+      UPDATE auth_email_tokens SET status = 'REVOKED', updated_at = ?
+      WHERE appwrite_user_id = ? AND purpose = ? AND status = 'PENDING'
+    `).bind(completedAt, claimed.userId, purpose),
+  ];
+  if (purpose === "VERIFY_EMAIL") {
+    statements.push(env.DB.prepare(`
+      UPDATE user_profiles SET email_verified = 1,
+        account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
+        version = version + 1, updated_at = ?
+      WHERE appwrite_user_id = ?
+    `).bind(completedAt, claimed.userId));
+  }
+  await env.DB.batch(statements);
+  return { status: purpose === "VERIFY_EMAIL" ? "EMAIL_VERIFIED" : "PASSWORD_UPDATED" };
 }
 
 function invoiceNumber(orderId: string, issuedAt: string): string {
@@ -1308,7 +1636,7 @@ async function listContent(
   const [access, content] = await Promise.all([
     getAccessContext(env.DB, userId, tokenHash),
     env.DB.prepare(`
-      SELECT c.slug, c.title, c.body_text, c.allow_comments,
+      SELECT c.slug, c.title, c.body_text, c.allow_comments, c.published_at,
         c.required_tier, c.jurisdiction_policy, u.content_type, u.size_bytes,
         (SELECT COUNT(*) FROM content_comments comments
           WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
@@ -1322,6 +1650,7 @@ async function listContent(
       title: string;
       body_text: string;
       allow_comments: number;
+      published_at: string | null;
       required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
       jurisdiction_policy: string | null;
       content_type: string;
@@ -1361,6 +1690,7 @@ async function listContent(
         slug: item.slug,
         title: item.title,
         bodyText: item.body_text,
+        publishedAt: item.published_at,
         tier: item.required_tier,
         contentType: item.content_type,
         sizeBytes: item.size_bytes,
@@ -1380,11 +1710,14 @@ interface CommentContext {
 }
 
 async function commentContext(
+  request: Request,
   env: MembershipEnv,
   userId: string,
   slug: string,
 ): Promise<CommentContext> {
   if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
+  const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const tokenHash = await sha256Hex(deviceToken);
   const now = isoNow();
   const row = await env.DB.prepare(`
     WITH active_entitlement AS (
@@ -1398,6 +1731,17 @@ async function commentContext(
         ELSE 1
       END DESC, expires_at DESC
       LIMIT 1
+    ),
+    current_device AS (
+      SELECT id, status, last_seen_at
+      FROM registered_devices
+      WHERE appwrite_user_id = ? AND device_token_hash = ?
+      LIMIT 1
+    ),
+    device_count AS (
+      SELECT COUNT(*) AS active_count
+      FROM registered_devices
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
     )
     SELECT
       p.appwrite_user_id, p.email, p.display_name, p.email_verified,
@@ -1408,12 +1752,16 @@ async function commentContext(
       c.jurisdiction_policy, c.allow_comments,
       e.id AS entitlement_id, e.tier AS entitlement_tier,
       e.status AS entitlement_status, e.starts_at AS entitlement_starts_at,
-      e.expires_at AS entitlement_expires_at
+      e.expires_at AS entitlement_expires_at,
+      d.id AS device_id, d.status AS device_status, d.last_seen_at AS device_last_seen_at,
+      dc.active_count
     FROM user_profiles p
     JOIN content_items c ON c.slug = ?
     LEFT JOIN active_entitlement e ON 1 = 1
+    LEFT JOIN current_device d ON 1 = 1
+    LEFT JOIN device_count dc ON 1 = 1
     WHERE p.appwrite_user_id = ?
-  `).bind(userId, now, now, slug, userId).first<{
+  `).bind(userId, now, now, userId, tokenHash, userId, slug, userId).first<{
     appwrite_user_id: string;
     email: string;
     display_name: string;
@@ -1437,6 +1785,10 @@ async function commentContext(
     entitlement_status: EntitlementRow["status"] | null;
     entitlement_starts_at: string | null;
     entitlement_expires_at: string | null;
+    device_id: string | null;
+    device_status: "ACTIVE" | "REVOKED" | null;
+    device_last_seen_at: string | null;
+    active_count: number | null;
   }>();
   if (!row) throw new ApiError(404, "CONTENT_NOT_FOUND");
   const profile: UserProfileRow = {
@@ -1467,12 +1819,13 @@ async function commentContext(
     entitlement,
     requiredTier: row.required_tier,
     contentStatus: row.content_status,
-    activeDeviceCount: 0,
+    activeDeviceCount: Number(row.active_count ?? 0),
     deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
-    currentDeviceActive: true,
+    currentDeviceActive: row.device_status === "ACTIVE",
     jurisdictionAllowed: jurisdictionAllowed(row.jurisdiction_policy, row.jurisdiction_code),
   });
   if (!decision.allowed) throw new ApiError(403, decision.code);
+  await touchRegisteredDevice(env.DB, row.device_id!, row.device_last_seen_at);
   return {
     contentId: row.content_id,
     allowComments: row.allow_comments === 1,
@@ -1481,11 +1834,12 @@ async function commentContext(
 }
 
 async function listContentComments(
+  request: Request,
   env: MembershipEnv,
   userId: string,
   slug: string,
 ): Promise<Record<string, unknown>> {
-  const context = await commentContext(env, userId, slug);
+  const context = await commentContext(request, env, userId, slug);
   const comments = await env.DB.prepare(`
     SELECT comments.id, comments.appwrite_user_id, comments.body, comments.created_at,
       profiles.display_name, profiles.account_status
@@ -1524,7 +1878,7 @@ async function createContentComment(
   userId: string,
   slug: string,
 ): Promise<Record<string, unknown>> {
-  const context = await commentContext(env, userId, slug);
+  const context = await commentContext(request, env, userId, slug);
   if (!context.allowComments) throw new ApiError(403, "COMMENTS_DISABLED");
   if (!context.entitlementActive) throw new ApiError(403, "PAID_MEMBERSHIP_REQUIRED");
   const body = await readJsonBody<unknown>(
@@ -1759,8 +2113,24 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     const result = await listProducts(env);
     return jsonResponse(result, { origin, origins, requestId: correlationId });
   }
+  if (request.method === "POST" && requestUrl.pathname === "/v1/auth/password-reset/request") {
+    if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
+      throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
+    }
+    const result = await requestPasswordResetEmail(request, env);
+    return jsonResponse(result, { origin, origins, requestId: correlationId });
+  }
+  if (request.method === "POST" && requestUrl.pathname === "/v1/auth/password-reset/confirm") {
+    const result = await completeAuthEmailToken(request, env, "RESET_PASSWORD");
+    return jsonResponse(result, { origin, origins, requestId: correlationId });
+  }
+  if (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/confirm") {
+    const result = await completeAuthEmailToken(request, env, "VERIFY_EMAIL");
+    return jsonResponse(result, { origin, origins, requestId: correlationId });
+  }
   const requiresVerified = !(
-    request.method === "GET" && requestUrl.pathname === "/v1/membership/status"
+    (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") ||
+    (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request")
   );
   const identity = await authenticateUser(request, env, {
     requireVerifiedEmail: requiresVerified,
@@ -1779,6 +2149,11 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
     result = await statusResponse(env, identity.userId);
+  } else if (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request") {
+    if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
+      throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
+    }
+    result = await requestEmailVerification(request, env, identity);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/entitlements/status") {
     const status = await statusResponse(env, identity.userId);
     result = status.entitlement as Record<string, unknown>;
@@ -1813,7 +2188,7 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/content") {
     result = await listContent(request, env, identity.userId);
   } else if (request.method === "GET" && contentCommentsPath) {
-    result = await listContentComments(env, identity.userId, contentCommentsPath[1]!);
+    result = await listContentComments(request, env, identity.userId, contentCommentsPath[1]!);
   } else if (request.method === "POST" && contentCommentsPath) {
     result = await createContentComment(request, env, identity.userId, contentCommentsPath[1]!);
   } else if (request.method === "DELETE" && contentCommentPath) {

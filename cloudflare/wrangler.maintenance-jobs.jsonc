@@ -22,7 +22,8 @@
       "binding": "VERIFICATION_UPLOADS",
       "bucket_name": "exclusive-age-evidence",
       "jurisdiction": "eu"
-    }
+    },
+    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" }
   ],
   "services": [{
     "binding": "IDENTITY_PROJECTION",
@@ -45,7 +46,8 @@
         "migrations_dir": "migrations"
       }],
       "r2_buckets": [
-        { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" }
+        { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" },
+        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" }
       ],
       "services": [{
         "binding": "IDENTITY_PROJECTION",

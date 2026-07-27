@@ -73,6 +73,7 @@ export interface MembershipEnv extends BaseEnv {
   SEPA_BIC?: string;
   SEPA_ORDER_EXPIRY_DAYS?: string;
   SEPA_ORDER_EXPIRY_HOURS?: string;
+  AUTH_EMAIL_MODE?: string;
   INVOICE_SELLER_NAME?: string;
   INVOICE_SELLER_ADDRESS?: string;
   INVOICE_SELLER_EMAIL?: string;
@@ -121,6 +122,7 @@ export interface MaintenanceEnv {
   LABEL_SYNC_SERVICE_SECRET: string;
   ACCOUNT_LIFECYCLE_SERVICE_SECRET: string;
   VERIFICATION_UPLOADS: R2Bucket;
+  CONTENT_MEDIA: R2Bucket;
   INACTIVE_ACCOUNT_DAYS?: string;
   DELETION_GRACE_DAYS?: string;
   MAINTENANCE_BATCH_SIZE?: string;

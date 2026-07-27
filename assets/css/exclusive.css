@@ -4,6 +4,11 @@
   padding-top: clamp(28px, 6vh, 72px);
 }
 
+.profile-card {
+  /* Chromium can composite descendant PNGs as black beneath backdrop blur. */
+  backdrop-filter: none;
+}
+
 .banner-wrap {
   position: relative;
   aspect-ratio: 1536 / 652;

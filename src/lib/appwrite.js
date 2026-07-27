@@ -20,6 +20,7 @@ const client = new Client()
   .setEndpoint(appwriteConfig.endpoint)
   .setProject(appwriteConfig.projectId);
 const account = new Account(client);
+const callbackUrl = (action) => `${window.location.origin}/?action=${encodeURIComponent(action)}`;
 const deviceStorageKey = "jason-shadow-device-token-v1";
 export const ageInstructionsVersion = "manual-age-v3";
 
@@ -31,8 +32,6 @@ export class CloudflareApiError extends Error {
     this.status = status;
   }
 }
-
-const callbackUrl = (action) => `${window.location.origin}/?action=${encodeURIComponent(action)}`;
 
 function requireApiUrl(value, code) {
   if (!value) throw new CloudflareApiError(code, 503);
@@ -122,19 +121,48 @@ export async function getCurrentUser() {
   }
 }
 
-export async function registerAccount({ name, email, password }) {
+export async function registerAccount({ name, email, password, locale = "de" }) {
   const user = await account.create({ userId: ID.unique(), email, password, name });
   await account.createEmailPasswordSession({ email, password });
-  await account.createVerification({ url: callbackUrl("verify-email") });
+  await requestEmailVerification(locale);
   return user;
 }
 
 export const login = (email, password) => account.createEmailPasswordSession({ email, password });
 export const logout = () => account.deleteSession({ sessionId: "current" });
-export const resendVerification = () => account.createVerification({ url: callbackUrl("verify-email") });
-export const requestPasswordReset = (email) => account.createRecovery({ email, url: callbackUrl("recover") });
-export const completePasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
-export const completeEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
+export async function requestEmailVerification(locale = "de") {
+  try {
+    return await apiRequest(
+      "/v1/auth/email-verification/request",
+      { method: "POST", json: { locale }, idempotent: true },
+    );
+  } catch (error) {
+    if (!(error instanceof CloudflareApiError) || error.code !== "CUSTOM_AUTH_EMAIL_DISABLED") throw error;
+    return account.createVerification({ url: callbackUrl("verify-email") });
+  }
+}
+export const resendVerification = requestEmailVerification;
+export async function requestPasswordReset(email, locale = "de") {
+  try {
+    return await apiRequest(
+      "/v1/auth/password-reset/request",
+      { method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
+    );
+  } catch (error) {
+    if (!(error instanceof CloudflareApiError) || error.code !== "CUSTOM_AUTH_EMAIL_DISABLED") throw error;
+    return account.createRecovery({ email, url: callbackUrl("recover") });
+  }
+}
+export const completePasswordReset = (token, password) => apiRequest(
+  "/v1/auth/password-reset/confirm",
+  { method: "POST", json: { token, password }, authenticated: false, idempotent: true },
+);
+export const completeEmailVerification = (token) => apiRequest(
+  "/v1/auth/email-verification/confirm",
+  { method: "POST", json: { token }, authenticated: false, idempotent: true },
+);
+export const completeLegacyEmailVerification = (userId, secret) => account.updateVerification({ userId, secret });
+export const completeLegacyPasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
 export const updateProfileName = (name) => account.updateName({ name });
 
 export const getProducts = () => apiRequest("/v1/products", { authenticated: false });
@@ -173,10 +201,11 @@ export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURICom
 });
 export const getContentComments = (slug) => apiRequest(
   `/v1/content/${encodeURIComponent(slug)}/comments`,
+  { device: true },
 );
 export const createContentComment = (slug, body) => apiRequest(
   `/v1/content/${encodeURIComponent(slug)}/comments`,
-  { method: "POST", json: { body }, idempotent: true },
+  { method: "POST", json: { body }, idempotent: true, device: true },
 );
 export const deleteContentComment = (commentId) => apiRequest(
   `/v1/content/comments/${encodeURIComponent(commentId)}`,
@@ -248,6 +277,14 @@ export const adminModerateContentComment = (commentId, action, reason) => apiReq
 export const adminCreateContent = ({ slug, title, tier, bodyText, allowComments }) => apiRequest("/v1/content/items", {
   admin: true, method: "POST", json: { slug, title, tier, bodyText, allowComments }, idempotent: true,
 });
+export const adminUpdateContent = (contentId, { title, tier, bodyText, allowComments }) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}`,
+  { admin: true, method: "PATCH", json: { title, tier, bodyText, allowComments }, idempotent: true },
+);
+export const adminDeleteContent = (contentId, reason) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}`,
+  { admin: true, method: "DELETE", json: { reason }, idempotent: true },
+);
 export const adminUploadContent = (contentId, file) => apiRequest(
   `/v1/content/items/${encodeURIComponent(contentId)}/media`,
   { admin: true, method: "PUT", raw: file, contentType: file.type, idempotent: true },

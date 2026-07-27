@@ -3,6 +3,8 @@ import QRCode from "qrcode";
 import AdminPortal from "./AdminPortal";
 import {
   completeEmailVerification,
+  completeLegacyEmailVerification,
+  completeLegacyPasswordReset,
   completePasswordReset,
   createAgeVerificationCase,
   createContentComment,
@@ -31,6 +33,8 @@ import {
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
+const sensitiveMediaKey = "jason-shadow-sensitive-media-blur-v1";
+const initialSensitiveMediaBlur = () => localStorage.getItem(sensitiveMediaKey) === "true";
 
 const copy = {
   de: {
@@ -561,6 +565,96 @@ function MembershipSelector({ products, language, ui, onChoose }) {
   </div>;
 }
 
+function VisibilityIcon({ blurred }) {
+  return blurred
+    ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9 4.5 9 8a8.6 8.6 0 0 1-2.1 4.6M6.2 6.3C4.1 7.7 3 10 3 12c0 3.5 3.7 8 9 8 1.3 0 2.5-.3 3.6-.8"/></svg>
+    : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c0-3.5 3.7-8 9-8s9 4.5 9 8-3.7 8-9 8-9-4.5-9-8Z"/><circle cx="12" cy="12" r="3"/></svg>;
+}
+
+function SensitiveMediaToggle({ blurred, language, onToggle }) {
+  const label = blurred
+    ? (language === "de" ? "Sensible Medien anzeigen" : "Show sensitive media")
+    : (language === "de" ? "Sensible Medien ausblenden" : "Blur sensitive media");
+  return <button
+    className={blurred ? "sensitive-media-toggle is-blurred" : "sensitive-media-toggle"}
+    type="button"
+    aria-pressed={blurred}
+    aria-label={label}
+    title={label}
+    onClick={onToggle}
+  >
+    <span className="sensitive-media-toggle__age">18+</span>
+    <VisibilityIcon blurred={blurred} />
+    <span>{blurred
+      ? (language === "de" ? "Ausgeblendet" : "Blurred")
+      : (language === "de" ? "Sichtbar" : "Visible")}</span>
+  </button>;
+}
+
+function formatPostDate(value, language) {
+  if (!value) return language === "de" ? "Neu veröffentlicht" : "New release";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return language === "de" ? "Neu veröffentlicht" : "New release";
+  return new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function tierLabel(tier) {
+  return tier === "FREE" ? "FREE PREVIEW" : String(tier || "").replace("EXCLUSIVE_", "");
+}
+
+function CreatorPost({
+  item,
+  media,
+  blurred,
+  language,
+  onOpen,
+  busy = false,
+  compact = false,
+  detail = false,
+}) {
+  const accessible = item.accessible !== false;
+  const mediaClass = blurred ? "creator-post__media is-sensitive-blurred" : "creator-post__media";
+  return <article className={`creator-post${compact ? " creator-post--compact" : ""}${accessible ? "" : " is-locked"}`}>
+    <header className="creator-post__header">
+      <img src="/linktree/uploads/profile.png" alt="" />
+      <div>
+        <strong>Jason Shadow</strong>
+        <span>{formatPostDate(item.publishedAt, language)}</span>
+      </div>
+      <span className="creator-post__tier">{tierLabel(item.tier)}</span>
+    </header>
+    <div className="creator-post__copy">
+      <h3>{item.title}</h3>
+      {item.bodyText && <p>{item.bodyText}</p>}
+    </div>
+    <div className={mediaClass}>
+      {!accessible
+        ? <div className="creator-post__locked"><span>18+</span><strong>{language === "de" ? "Mit passender Membership freischalten" : "Unlock with the matching membership"}</strong></div>
+        : media?.error
+          ? <div className="creator-post__locked"><span>!</span><strong>{language === "de" ? "Medium konnte nicht geladen werden" : "Media could not be loaded"}</strong></div>
+          : media?.url
+            ? item.contentType.startsWith("video/")
+              ? <video src={media.url} controls playsInline preload="metadata" />
+              : <img src={media.url} alt={item.title} loading={compact ? "eager" : "lazy"} />
+            : <div className="creator-post__loading" aria-label={language === "de" ? "Medium wird geladen" : "Loading media"}><span /></div>}
+      {accessible && blurred && <div className="creator-post__blur-label"><span>18+</span>{language === "de" ? "Sensibler Inhalt ausgeblendet" : "Sensitive content blurred"}</div>}
+    </div>
+    <footer className="creator-post__footer">
+      <span>{item.allowComments
+        ? `${item.commentCount || 0} ${language === "de" ? "Kommentare" : "comments"}`
+        : (language === "de" ? "Privater Beitrag" : "Private post")}</span>
+      {!detail && <button className={accessible ? "text-button" : "secondary-action"} type="button" disabled={!accessible || busy} onClick={() => onOpen(item)}>
+        {accessible
+          ? (language === "de" ? "Beitrag öffnen" : "Open post")
+          : (language === "de" ? "Gesperrt" : "Locked")} {accessible && "→"}
+      </button>}
+    </footer>
+  </article>;
+}
+
 export default function App() {
   const [language, setLanguage] = useState(initialLanguage);
   const [user, setUser] = useState(null);
@@ -579,6 +673,8 @@ export default function App() {
   const [paymentView, setPaymentView] = useState("qr");
   const [gallery, setGallery] = useState([]);
   const [contentPreview, setContentPreview] = useState(null);
+  const [mediaBySlug, setMediaBySlug] = useState({});
+  const [blurSensitiveMedia, setBlurSensitiveMedia] = useState(initialSensitiveMediaBlur);
   const [comments, setComments] = useState([]);
   const [commentAccess, setCommentAccess] = useState({ allowComments: false, canComment: false });
   const [liveVideo, setLiveVideo] = useState(null);
@@ -590,6 +686,9 @@ export default function App() {
   const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
   const [tierSelection, setTierSelection] = useState([]);
   const initialized = useRef(false);
+  const mediaBySlugRef = useRef({});
+  const mediaRequestsRef = useRef(new Map());
+  const mediaGenerationRef = useRef(0);
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
   const isAdmin = Boolean(user?.labels?.includes("admin"));
@@ -639,6 +738,10 @@ export default function App() {
   }, [language, t]);
 
   useEffect(() => {
+    localStorage.setItem(sensitiveMediaKey, String(blurSensitiveMedia));
+  }, [blurSensitiveMedia]);
+
+  useEffect(() => {
     getProducts().then((result) => {
       const tierPerks = result.tierPerks || {};
       setProducts((result.products || []).map((product) => ({
@@ -655,8 +758,13 @@ export default function App() {
     const parameters = new URLSearchParams(location.search);
     (async () => {
       try {
-        if (parameters.get("action") === "verify-email" && parameters.get("userId") && parameters.get("secret")) {
-          await completeEmailVerification(parameters.get("userId"), parameters.get("secret"));
+        if (parameters.get("action") === "verify-email" && parameters.get("token")) {
+          await completeEmailVerification(parameters.get("token"));
+          setNotice(t.emailVerified);
+          history.replaceState({}, "", "/");
+          setModal("account");
+        } else if (parameters.get("action") === "verify-email" && parameters.get("userId") && parameters.get("secret")) {
+          await completeLegacyEmailVerification(parameters.get("userId"), parameters.get("secret"));
           setNotice(t.emailVerified);
           history.replaceState({}, "", "/");
           setModal("account");
@@ -677,9 +785,22 @@ export default function App() {
     if (isAdmin && location.pathname !== "/admin") history.replaceState({}, "", "/admin");
   }, [isAdmin]);
 
+  useEffect(() => {
+    mediaGenerationRef.current += 1;
+    if (user) return;
+    Object.values(mediaBySlugRef.current).forEach((media) => {
+      if (media?.url) URL.revokeObjectURL(media.url);
+    });
+    mediaBySlugRef.current = {};
+    mediaRequestsRef.current.clear();
+    setMediaBySlug({});
+  }, [user?.$id]);
+
   useEffect(() => () => {
-    if (contentPreview?.url) URL.revokeObjectURL(contentPreview.url);
-  }, [contentPreview]);
+    Object.values(mediaBySlugRef.current).forEach((media) => {
+      if (media?.url) URL.revokeObjectURL(media.url);
+    });
+  }, []);
 
   useEffect(() => {
     if (!user || ageStatus !== "APPROVED") {
@@ -698,6 +819,54 @@ export default function App() {
     })();
     return () => { current = false; };
   }, [user?.$id, ageStatus, entitlement?.tier, entitlement?.expiresAt]);
+
+  const loadProtectedMedia = async (item, retry = false) => {
+    const cached = mediaBySlugRef.current[item.slug];
+    if (cached && (!cached.error || !retry)) return cached;
+    if (retry && cached?.error) {
+      const next = { ...mediaBySlugRef.current };
+      delete next[item.slug];
+      mediaBySlugRef.current = next;
+      setMediaBySlug(next);
+    }
+    const pending = mediaRequestsRef.current.get(item.slug);
+    if (pending) return pending;
+    const generation = mediaGenerationRef.current;
+    const request = (async () => {
+      try {
+        const response = await fetchContentItem(item.slug);
+        const blob = await response.blob();
+        const media = {
+          url: URL.createObjectURL(blob),
+          type: response.headers.get("content-type") || item.contentType,
+        };
+        if (generation !== mediaGenerationRef.current) {
+          URL.revokeObjectURL(media.url);
+          return null;
+        }
+        mediaBySlugRef.current = { ...mediaBySlugRef.current, [item.slug]: media };
+        setMediaBySlug(mediaBySlugRef.current);
+        return media;
+      } catch (error) {
+        if (generation === mediaGenerationRef.current) {
+          mediaBySlugRef.current = { ...mediaBySlugRef.current, [item.slug]: { error: true, type: item.contentType } };
+          setMediaBySlug(mediaBySlugRef.current);
+        }
+        throw error;
+      } finally {
+        mediaRequestsRef.current.delete(item.slug);
+      }
+    })();
+    mediaRequestsRef.current.set(item.slug, request);
+    return request;
+  };
+
+  useEffect(() => {
+    if (!user || ageStatus !== "APPROVED") return;
+    gallery.slice(0, 6).filter((item) => item.accessible !== false).forEach((item) => {
+      if (!mediaBySlugRef.current[item.slug]) loadProtectedMedia(item).catch(() => {});
+    });
+  }, [gallery, user?.$id, ageStatus]);
 
   const openAuth = (nextMode) => {
     setMode(nextMode);
@@ -723,11 +892,17 @@ export default function App() {
   const handleAuth = (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
-    if (mode === "register") run(() => registerAccount(data), t.registrationSent, "account");
-    else if (mode === "reset") run(() => requestPasswordReset(data.email), t.resetSent);
+    if (mode === "register") run(() => registerAccount({ ...data, locale: language }), t.registrationSent, "account");
+    else if (mode === "reset") run(() => requestPasswordReset(data.email, language), t.resetSent);
     else if (mode === "recover") {
       const parameters = new URLSearchParams(location.search);
-      run(() => completePasswordReset(parameters.get("userId"), parameters.get("secret"), data.password), t.passwordChanged, "auth");
+      run(
+        () => parameters.get("token")
+          ? completePasswordReset(parameters.get("token"), data.password)
+          : completeLegacyPasswordReset(parameters.get("userId"), parameters.get("secret"), data.password),
+        t.passwordChanged,
+        "auth",
+      );
     } else run(() => login(data.email, data.password), t.loginSuccess, "account");
   };
 
@@ -850,17 +1025,14 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      const [response, commentResult] = await Promise.all([
-        fetchContentItem(item.slug),
+      const [media, commentResult] = await Promise.all([
+        loadProtectedMedia(item, true),
         getContentComments(item.slug).catch(() => ({ comments: [], allowComments: false, canComment: false })),
       ]);
-      const blob = await response.blob();
       setContentPreview({
-        url: URL.createObjectURL(blob),
-        type: item.contentType,
-        title: item.title,
-        bodyText: item.bodyText || "",
-        slug: item.slug,
+        ...item,
+        url: media.url,
+        type: media.type || item.contentType,
       });
       setComments(commentResult.comments || []);
       setCommentAccess({
@@ -985,12 +1157,15 @@ export default function App() {
           </div>
         </section>
         <section className="section member-gallery-section" id="member-gallery">
-          <div className="section-heading">
-            <p className="eyebrow">{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : "FREE"}</p>
-            <h2>{language === "de" ? "Neu für dich" : "New for you"}</h2>
-            <p>{language === "de" ? "Deine freigeschalteten Veröffentlichungen – ohne Umwege." : "Your unlocked releases, ready to explore."}</p>
+          <div className="member-gallery-heading">
+            <div className="section-heading">
+              <p className="eyebrow">{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : "FREE"}</p>
+              <h2>{language === "de" ? "Neu für dich" : "New for you"}</h2>
+              <p>{language === "de" ? "Deine freigeschalteten Veröffentlichungen – ohne Umwege." : "Your unlocked releases, ready to explore."}</p>
+            </div>
+            {ageStatus === "APPROVED" && <SensitiveMediaToggle blurred={blurSensitiveMedia} language={language} onToggle={() => setBlurSensitiveMedia((value) => !value)} />}
           </div>
-          {gallery.length ? <div className="member-content-grid">{gallery.slice(0, 6).map((item) => <article className="member-content-card" key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className="primary-action" type="button" onClick={() => viewContent(item)}>{ui.openContent}</button></article>)}</div> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
+          {gallery.length ? <div className="creator-feed">{gallery.slice(0, 6).map((item) => <CreatorPost item={item} media={mediaBySlug[item.slug]} blurred={blurSensitiveMedia} language={language} onOpen={viewContent} busy={busy} key={item.slug} />)}</div> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
         </section>
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
@@ -1026,7 +1201,7 @@ export default function App() {
             <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
           </div>
           <div className="dashboard-actions">
-            {!user.emailVerification && <button className="secondary-action" onClick={() => run(resendVerification, t.verificationSent)}>{t.resendVerification}</button>}
+            {!user.emailVerification && <button className="secondary-action" onClick={() => run(() => resendVerification(language), t.verificationSent)}>{t.resendVerification}</button>}
             <button className="primary-action" disabled={!user.emailVerification || reviewPending || ageStatus === "APPROVED"} onClick={() => { setNotice(""); setModal("age"); }}>{reviewPending ? ui.reviewReady : ageStatus === "APPROVED" ? t.ageAlreadyApproved : t.avsStart}</button>
             {ageStatus === "APPROVED" && <button className="secondary-action" type="button" onClick={openGallery}>{ui.openGallery}</button>}
           </div>
@@ -1118,6 +1293,6 @@ export default function App() {
       </div>}
     </Modal>}
 
-    {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => { setContentPreview(null); setComments([]); }}>← {ui.gallery}</button><h3>{contentPreview.title}</h3>{contentPreview.bodyText && <p className="post-body">{contentPreview.bodyText}</p>}{contentPreview.type.startsWith("video/") ? <video src={contentPreview.url} controls playsInline /> : <img src={contentPreview.url} alt={contentPreview.title} />}<section className="comments-panel" aria-labelledby="comments-title"><div className="comments-panel__head"><div><p className="eyebrow">{language === "de" ? "PRIVATE COMMUNITY" : "PRIVATE COMMUNITY"}</p><h3 id="comments-title">{language === "de" ? "Kommentare" : "Comments"} <span>{comments.length}</span></h3></div>{entitlement?.active && <span className="status-chip is-active">{entitlement.tier.replace("EXCLUSIVE_", "")}</span>}</div>{comments.length ? <div className="comment-list">{comments.map((comment) => <article className={comment.own ? "comment-card is-own" : "comment-card"} key={comment.id}><div><strong>{comment.displayName || user?.name || "Member"}</strong><time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p>{comment.own && <button className="text-button" type="button" onClick={() => removeComment(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}</article>)}</div> : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}{commentAccess.canComment ? <form className="comment-composer" onSubmit={submitComment}><label><span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span><textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} /></label><div><small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small><button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button></div></form> : commentAccess.allowComments && <div className="paid-comment-teaser"><strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong><p>{language === "de" ? "Aktive Mitglieder können unter Beiträgen kommentieren." : "Active paid members can join the conversation."}</p><a className="secondary-action" href="#pricing" onClick={() => { setModal(null); setContentPreview(null); }}>{language === "de" ? "Membership entdecken" : "Explore membership"}</a></div>}</section></div> : gallery.length ? <div className="gallery-grid">{gallery.map((item) => <article className={item.accessible ? "" : "is-locked"} key={item.slug}><div className="gallery-placeholder">{item.contentType.startsWith("video/") ? "▶" : "◇"}</div><p className="eyebrow">{item.tier}</p><h3>{item.title}</h3><button className={item.accessible ? "primary-action" : "secondary-action"} type="button" disabled={!item.accessible || busy} onClick={() => openContent(item)}>{item.accessible ? ui.openContent : ui.lockedTier}</button></article>)}</div> : <p>{ui.noContent}</p>}</Modal>}
+    {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide><div className="gallery-visibility-toolbar"><SensitiveMediaToggle blurred={blurSensitiveMedia} language={language} onToggle={() => setBlurSensitiveMedia((value) => !value)} /></div>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => { setContentPreview(null); setComments([]); }}>← {ui.gallery}</button><CreatorPost item={contentPreview} media={{ url: contentPreview.url, type: contentPreview.type }} blurred={blurSensitiveMedia} language={language} onOpen={() => {}} /><section className="comments-panel" aria-labelledby="comments-title"><div className="comments-panel__head"><div><p className="eyebrow">{language === "de" ? "PRIVATE COMMUNITY" : "PRIVATE COMMUNITY"}</p><h3 id="comments-title">{language === "de" ? "Kommentare" : "Comments"} <span>{comments.length}</span></h3></div>{entitlement?.active && <span className="status-chip is-active">{entitlement.tier.replace("EXCLUSIVE_", "")}</span>}</div>{comments.length ? <div className="comment-list">{comments.map((comment) => <article className={comment.own ? "comment-card is-own" : "comment-card"} key={comment.id}><div><strong>{comment.displayName || user?.name || "Member"}</strong><time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p>{comment.own && <button className="text-button" type="button" onClick={() => removeComment(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}</article>)}</div> : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}{commentAccess.canComment ? <form className="comment-composer" onSubmit={submitComment}><label><span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span><textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} /></label><div><small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small><button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button></div></form> : commentAccess.allowComments && <div className="paid-comment-teaser"><strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong><p>{language === "de" ? "Aktive Mitglieder können unter Beiträgen kommentieren." : "Active paid members can join the conversation."}</p><a className="secondary-action" href="#pricing" onClick={() => { setModal(null); setContentPreview(null); }}>{language === "de" ? "Membership entdecken" : "Explore membership"}</a></div>}</section></div> : gallery.length ? <div className="creator-feed creator-feed--modal">{gallery.map((item) => <CreatorPost item={item} media={mediaBySlug[item.slug]} blurred={blurSensitiveMedia} language={language} onOpen={openContent} busy={busy} compact key={item.slug} />)}</div> : <p>{ui.noContent}</p>}</Modal>}
   </>;
 }

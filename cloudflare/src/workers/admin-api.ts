@@ -561,6 +561,7 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
     JOIN products p ON p.id = s.product_id
     JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
     LEFT JOIN invoices i ON i.subscription_id = s.id
+    WHERE s.archived_at IS NULL
     ORDER BY
       CASE s.status
         WHEN 'PENDING' THEN 1 WHEN 'PROCESSING' THEN 2 WHEN 'PAID' THEN 3
@@ -904,32 +905,52 @@ async function importN26Csv(
     const occurrence = (occurrences.get(payloadHash) ?? 0) + 1;
     occurrences.set(payloadHash, occurrence);
     const externalTransactionId = `n26:${payloadHash}:${occurrence}`;
-    const existing = await env.DB.prepare(`
-      SELECT id FROM bank_transactions WHERE external_transaction_id = ?
-    `).bind(externalTransactionId).first<{ id: string }>();
-    if (existing) {
+    const transferPurpose = extractSepaTransferPurpose(row);
+    const lookup = await env.DB.prepare(`
+      SELECT bt.id AS existing_transaction_id,
+        s.id AS subscription_id, s.appwrite_user_id, s.status,
+        s.amount_minor, s.currency, p.id AS product_id, p.tier,
+        p.duration_unit, p.duration_value,
+        (
+          SELECT MAX(e.expires_at) FROM entitlements e
+          WHERE e.appwrite_user_id = s.appwrite_user_id AND e.status = 'ACTIVE'
+        ) AS active_expires_at
+      FROM (SELECT 1) seed
+      LEFT JOIN bank_transactions bt ON bt.external_transaction_id = ?
+      LEFT JOIN subscriptions s ON s.transfer_reference = ?
+      LEFT JOIN products p ON p.id = s.product_id
+      LIMIT 1
+    `).bind(externalTransactionId, transferPurpose || "").first<{
+      existing_transaction_id: string | null;
+      subscription_id: string | null;
+      appwrite_user_id: string | null;
+      status: string | null;
+      amount_minor: number | null;
+      currency: string | null;
+      product_id: string | null;
+      tier: "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP" | null;
+      duration_unit: "DAYS" | "MONTHS" | null;
+      duration_value: number | null;
+      active_expires_at: string | null;
+    }>();
+    if (lookup?.existing_transaction_id) {
       summary.duplicates += 1;
       continue;
     }
-    const transferPurpose = extractSepaTransferPurpose(row);
-    const subscription = transferPurpose
-      ? await env.DB.prepare(`
-        SELECT s.id, s.appwrite_user_id, s.status, s.amount_minor, s.currency,
-          p.id AS product_id, p.tier, p.duration_unit, p.duration_value
-        FROM subscriptions s
-        JOIN products p ON p.id = s.product_id
-        WHERE s.transfer_reference = ?
-      `).bind(transferPurpose).first<{
-        id: string;
-        appwrite_user_id: string;
-        status: string;
-        amount_minor: number;
-        currency: string;
-        product_id: string;
-        tier: "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
-        duration_unit: "DAYS" | "MONTHS";
-        duration_value: number;
-      }>()
+    const subscription = lookup?.subscription_id && lookup.appwrite_user_id &&
+      lookup.status && lookup.amount_minor != null && lookup.currency &&
+      lookup.product_id && lookup.tier && lookup.duration_unit && lookup.duration_value != null
+      ? {
+        id: lookup.subscription_id,
+        appwrite_user_id: lookup.appwrite_user_id,
+        status: lookup.status,
+        amount_minor: lookup.amount_minor,
+        currency: lookup.currency,
+        product_id: lookup.product_id,
+        tier: lookup.tier,
+        duration_unit: lookup.duration_unit,
+        duration_value: lookup.duration_value,
+      }
       : null;
     const exactMatch = subscription?.status === "PENDING" &&
       subscription.amount_minor === amountMinor && subscription.currency === "EUR";
@@ -965,13 +986,10 @@ async function importN26Csv(
       continue;
     }
 
-    const active = await env.DB.prepare(`
-      SELECT MAX(expires_at) AS expires_at FROM entitlements
-      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-    `).bind(subscription.appwrite_user_id).first<{ expires_at: string | null }>();
     const settledAt = isoNow();
-    const startsAt = active?.expires_at && Date.parse(active.expires_at) > Date.parse(settledAt)
-      ? active.expires_at
+    const startsAt = lookup?.active_expires_at &&
+      Date.parse(lookup.active_expires_at) > Date.parse(settledAt)
+      ? lookup.active_expires_at
       : settledAt;
     const expiresAt = entitlementExpiry(
       startsAt,
@@ -1100,6 +1118,7 @@ async function listContentItems(env: AdminEnv): Promise<Record<string, unknown>>
     FROM content_items c
     LEFT JOIN content_uploads u
       ON u.content_item_id = c.id AND u.status = 'ACTIVE'
+    WHERE c.content_status <> 'RETIRED'
     ORDER BY c.created_at DESC LIMIT 200
   `).all();
   return { items: items.results };
@@ -1115,6 +1134,7 @@ async function listContentComments(env: AdminEnv): Promise<Record<string, unknow
     JOIN content_items content ON content.id = comments.content_item_id
     LEFT JOIN user_profiles profiles
       ON profiles.appwrite_user_id = comments.appwrite_user_id
+    WHERE content.content_status <> 'RETIRED'
     ORDER BY comments.created_at DESC
     LIMIT 500
   `).all();
@@ -1251,6 +1271,168 @@ async function createContentItem(
   };
 }
 
+async function updateContentItem(
+  request: Request,
+  env: AdminEnv,
+  contentId: string,
+  administratorUserId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(contentId)) throw new ApiError(400, "INVALID_CONTENT_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["title", "tier", "bodyText", "allowComments"]);
+  if (
+    typeof body.title !== "string" || body.title.trim().length < 1 || body.title.length > 160 ||
+    /[\u0000-\u001f\u007f]/.test(body.title)
+  ) throw new ApiError(400, "INVALID_CONTENT_TITLE");
+  if (
+    body.tier !== "FREE" && body.tier !== "EXCLUSIVE_BASIC" &&
+    body.tier !== "EXCLUSIVE_PREMIUM" && body.tier !== "EXCLUSIVE_VIP"
+  ) throw new ApiError(400, "INVALID_CONTENT_TIER");
+  if (
+    typeof body.bodyText !== "string" || body.bodyText.length > 10_000 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(body.bodyText)
+  ) throw new ApiError(400, "INVALID_CONTENT_BODY");
+  if (typeof body.allowComments !== "boolean") {
+    throw new ApiError(400, "INVALID_COMMENT_SETTING");
+  }
+  const existing = await env.DB.prepare(`
+    SELECT id, slug, title, body_text, allow_comments, content_status, required_tier
+    FROM content_items WHERE id = ?
+  `).bind(contentId).first<{
+    id: string;
+    slug: string;
+    title: string;
+    body_text: string;
+    allow_comments: number;
+    content_status: string;
+    required_tier: string;
+  }>();
+  if (!existing || existing.content_status === "RETIRED") {
+    throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
+  }
+  requireIdempotencyKey(request);
+  const title = body.title.trim();
+  const postBody = body.bodyText.trim();
+  const now = isoNow();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE content_items
+      SET title = ?, body_text = ?, allow_comments = ?, required_tier = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND content_status <> 'RETIRED'
+    `).bind(title, postBody, body.allowComments ? 1 : 0, body.tier, now, contentId),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "CONTENT_ITEM_UPDATED",
+      targetType: "CONTENT_ITEM",
+      targetId: contentId,
+      previousState: {
+        title: existing.title,
+        bodyText: existing.body_text,
+        allowComments: existing.allow_comments === 1,
+        tier: existing.required_tier,
+      },
+      newState: { title, bodyText: postBody, allowComments: body.allowComments, tier: body.tier },
+      reason: "Creator edited published post",
+      correlationId,
+      now,
+    }),
+  ]);
+  return {
+    id: contentId,
+    slug: existing.slug,
+    title,
+    bodyText: postBody,
+    allowComments: body.allowComments,
+    requiredTier: body.tier,
+    contentStatus: existing.content_status,
+  };
+}
+
+async function deleteContentItem(
+  request: Request,
+  env: AdminEnv,
+  contentId: string,
+  administratorUserId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(contentId)) throw new ApiError(400, "INVALID_CONTENT_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["reason"]);
+  if (typeof body.reason !== "string" || body.reason.trim().length < 3 || body.reason.length > 500) {
+    throw new ApiError(400, "CONTENT_DELETE_REASON_REQUIRED");
+  }
+  requireIdempotencyKey(request);
+  const existing = await env.DB.prepare(`
+    SELECT c.id, c.slug, c.title, c.content_status,
+      u.id AS upload_id, u.r2_object_key
+    FROM content_items c
+    LEFT JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
+    WHERE c.id = ?
+  `).bind(contentId).first<{
+    id: string;
+    slug: string;
+    title: string;
+    content_status: string;
+    upload_id: string | null;
+    r2_object_key: string | null;
+  }>();
+  if (!existing) throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
+  if (existing.content_status === "RETIRED") {
+    return { id: contentId, status: "RETIRED", existing: true };
+  }
+  const now = isoNow();
+  const statements = [
+    env.DB.prepare(`
+      UPDATE content_items SET content_status = 'RETIRED', retired_at = ?,
+        version = version + 1, updated_at = ? WHERE id = ?
+    `).bind(now, now, contentId),
+  ];
+  if (existing.upload_id) {
+    statements.push(env.DB.prepare(`
+      UPDATE content_uploads SET status = 'DELETED', deleted_at = NULL, updated_at = ?
+      WHERE id = ? AND status = 'ACTIVE'
+    `).bind(now, existing.upload_id));
+  }
+  statements.push(auditStatement(env.DB, {
+    administratorUserId,
+    action: "CONTENT_ITEM_RETIRED",
+    targetType: "CONTENT_ITEM",
+    targetId: contentId,
+    previousState: { status: existing.content_status, title: existing.title, hasMedia: Boolean(existing.upload_id) },
+    newState: { status: "RETIRED", mediaDeleted: Boolean(existing.upload_id) },
+    reason: body.reason.trim(),
+    correlationId,
+    now,
+  }));
+  await env.DB.batch(statements);
+  let storageCleanupPending = false;
+  if (existing.r2_object_key) {
+    try {
+      await env.CONTENT_MEDIA.delete(existing.r2_object_key);
+      await env.DB.prepare(`
+        UPDATE content_uploads SET deleted_at = ?, updated_at = ?
+        WHERE id = ? AND status = 'DELETED' AND deleted_at IS NULL
+      `).bind(isoNow(), isoNow(), existing.upload_id).run();
+    } catch {
+      storageCleanupPending = true;
+      logEvent("error", "content_media_delete_failed", {
+        requestId: correlationId,
+        contentId,
+        uploadId: existing.upload_id,
+      });
+    }
+  }
+  return { id: contentId, status: "RETIRED", existing: false, storageCleanupPending };
+}
+
 async function uploadContentMedia(
   request: Request,
   env: AdminEnv,
@@ -1279,7 +1461,8 @@ async function uploadContentMedia(
   }
   const item = await env.DB.prepare(`
     SELECT c.id, c.slug, c.content_status, c.required_tier,
-      u.id AS active_upload_id
+      u.id AS active_upload_id, u.r2_object_key AS active_object_key,
+      u.content_type AS active_content_type, u.size_bytes AS active_size_bytes
     FROM content_items c
     LEFT JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
     WHERE c.id = ?
@@ -1289,10 +1472,16 @@ async function uploadContentMedia(
     content_status: string;
     required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
     active_upload_id: string | null;
+    active_object_key: string | null;
+    active_content_type: string | null;
+    active_size_bytes: number | null;
   }>();
   if (!item) throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
-  if (item.active_upload_id) throw new ApiError(409, "CONTENT_MEDIA_ALREADY_UPLOADED");
-  if (item.content_status !== "REVIEW" && item.content_status !== "DISABLED") {
+  if (
+    item.content_status !== "REVIEW" &&
+    item.content_status !== "DISABLED" &&
+    item.content_status !== "ACTIVE"
+  ) {
     throw new ApiError(409, "CONTENT_ITEM_NOT_UPLOADABLE");
   }
   const contentType = request.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase();
@@ -1335,7 +1524,14 @@ async function uploadContentMedia(
   }
   const now = isoNow();
   try {
-    await env.DB.batch([
+    const statements = [];
+    if (item.active_upload_id) {
+      statements.push(env.DB.prepare(`
+        UPDATE content_uploads SET status = 'REPLACED', deleted_at = NULL, updated_at = ?
+        WHERE id = ? AND status = 'ACTIVE'
+      `).bind(now, item.active_upload_id));
+    }
+    statements.push(
       env.DB.prepare(`
         INSERT INTO content_uploads (
           id, content_item_id, r2_object_key, content_type, size_bytes,
@@ -1356,15 +1552,20 @@ async function uploadContentMedia(
       ),
       env.DB.prepare(`
         UPDATE content_items SET content_status = 'ACTIVE',
-          published_at = ?, version = version + 1, updated_at = ?
-        WHERE id = ? AND content_status IN ('REVIEW', 'DISABLED')
+          published_at = COALESCE(published_at, ?), version = version + 1, updated_at = ?
+        WHERE id = ? AND content_status IN ('REVIEW', 'DISABLED', 'ACTIVE')
       `).bind(now, now, contentId),
       auditStatement(env.DB, {
         administratorUserId,
-        action: "CONTENT_MEDIA_UPLOADED",
+        action: item.active_upload_id ? "CONTENT_MEDIA_REPLACED" : "CONTENT_MEDIA_UPLOADED",
         targetType: "CONTENT_ITEM",
         targetId: contentId,
-        previousState: { contentStatus: item.content_status, hasMedia: false },
+        previousState: {
+          contentStatus: item.content_status,
+          hasMedia: Boolean(item.active_upload_id),
+          contentType: item.active_content_type,
+          sizeBytes: item.active_size_bytes,
+        },
         newState: {
           contentStatus: "ACTIVE",
           hasMedia: true,
@@ -1375,16 +1576,34 @@ async function uploadContentMedia(
         correlationId,
         now,
       }),
-    ]);
+    );
+    await env.DB.batch(statements);
   } catch {
     await env.CONTENT_MEDIA.delete(objectKey).catch(() => undefined);
     throw new ApiError(503, "CONTENT_DATABASE_UPDATE_FAILED");
+  }
+  if (item.active_object_key) {
+    try {
+      await env.CONTENT_MEDIA.delete(item.active_object_key);
+      const deletedAt = isoNow();
+      await env.DB.prepare(`
+        UPDATE content_uploads SET deleted_at = ?, updated_at = ?
+        WHERE id = ? AND status = 'REPLACED' AND deleted_at IS NULL
+      `).bind(deletedAt, deletedAt, item.active_upload_id).run();
+    } catch {
+      logEvent("error", "replaced_content_media_delete_failed", {
+        requestId: correlationId,
+        contentId,
+        uploadId: item.active_upload_id,
+      });
+    }
   }
   return {
     uploadId,
     contentType,
     sizeBytes: bytes.byteLength,
     contentStatus: "ACTIVE",
+    replacedUploadId: item.active_upload_id,
     existing: false,
   };
 }
@@ -1817,6 +2036,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const paymentCancellationPath = /^\/v1\/payments\/orders\/([^/]+)\/cancel$/.exec(url.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([^/]+)$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
+  const contentItemPath = /^\/v1\/content\/items\/([^/]+)$/.exec(url.pathname);
   const contentCommentModerationPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})\/moderate$/i
     .exec(url.pathname);
   if (userPath) {
@@ -1908,6 +2128,22 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   } else if (request.method === "POST" && url.pathname === "/v1/content/items") {
     result = await createContentItem(request, env, administrator.userId, correlationId);
+  } else if (request.method === "PATCH" && contentItemPath) {
+    result = await updateContentItem(
+      request,
+      env,
+      decodeURIComponent(contentItemPath[1]!),
+      administrator.userId,
+      correlationId,
+    );
+  } else if (request.method === "DELETE" && contentItemPath) {
+    result = await deleteContentItem(
+      request,
+      env,
+      decodeURIComponent(contentItemPath[1]!),
+      administrator.userId,
+      correlationId,
+    );
   } else if (request.method === "PUT" && contentMediaPath) {
     result = await uploadContentMedia(
       request,
