@@ -498,12 +498,7 @@ function MembershipSelector({ products, language, ui, onChoose }) {
   const selected = products[selectedIndex] || products[defaultIndex] || products[0];
   if (!selected) return null;
 
-  const perkIdentity = (perk) => String(perk.title || "").trim().toLowerCase();
-  const sharedPerks = (products[0]?.perks || []).filter((perk) => (
-    products.every((product) => (product.perks || []).some((candidate) => perkIdentity(candidate) === perkIdentity(perk)))
-  ));
-  const sharedKeys = new Set(sharedPerks.map(perkIdentity));
-  const termExtras = (selected.perks || []).filter((perk) => !sharedKeys.has(perkIdentity(perk)));
+  const tierPerks = products[0]?.perks || selected.perks || [];
   const monthly = products.find((product) => product.durationUnit === "DAYS" && product.durationValue === 30);
   const regularTotal = monthly && selected.durationUnit === "MONTHS"
     ? monthly.amountMinor * selected.durationValue
@@ -554,16 +549,11 @@ function MembershipSelector({ products, language, ui, onChoose }) {
         <h3>{language === "de" ? "Deine Benefits" : "Your benefits"}</h3>
       </div>
       <ul>
-        {(sharedPerks.length ? sharedPerks : selected.perks || []).map((perk) => <li key={perk.id || perk.title}>
+        {tierPerks.map((perk) => <li key={perk.id || perk.title}>
           <span>✓</span><div><strong>{perk.title}</strong>{perk.description && <small>{perk.description}</small>}</div>
         </li>)}
       </ul>
     </section>
-
-    {termExtras.length > 0 && <section className="membership-term-bonus" key={`extras-${selected.sku}`}>
-      <p className="eyebrow">{language === "de" ? "BONUS DIESER LAUFZEIT" : "THIS TERM’S BONUS"}</p>
-      {termExtras.map((perk) => <div key={perk.id || perk.title}><span>✦</span><p><strong>{perk.title}</strong>{perk.description && <small>{perk.description}</small>}</p></div>)}
-    </section>}
 
     <button className="primary-action membership-selector__cta" type="button" onClick={() => onChoose(selected)}>
       {language === "de" ? `${durationLabel(selected, language)} wählen und fortfahren` : `Choose ${durationLabel(selected, language)} and continue`}
@@ -650,7 +640,11 @@ export default function App() {
 
   useEffect(() => {
     getProducts().then((result) => {
-      setProducts(result.products || []);
+      const tierPerks = result.tierPerks || {};
+      setProducts((result.products || []).map((product) => ({
+        ...product,
+        perks: tierPerks[product.tier] || product.perks || [],
+      })));
       setCatalogError(false);
     }).catch(() => setCatalogError(true));
   }, []);
@@ -1069,7 +1063,7 @@ export default function App() {
       t={t}
       wide
     >
-      <p className="modal-intro">{language === "de" ? "Wähle deine Laufzeit mit dem Slider. Die Benefits der Stufe gelten durchgehend; besondere Laufzeit-Boni erscheinen direkt an deiner Auswahl." : "Choose your term with the slider. Tier benefits remain the same throughout; any term-specific bonus appears with your selection."}</p>
+      <p className="modal-intro">{language === "de" ? "Wähle deine Laufzeit mit dem Slider. Alle angezeigten Benefits gelten für jede Laufzeit dieser Stufe." : "Choose your term with the slider. Every benefit shown applies to every term in this tier."}</p>
       <MembershipSelector products={tierSelection} language={language} ui={ui} onChoose={chooseProduct} />
     </Modal>}
 
