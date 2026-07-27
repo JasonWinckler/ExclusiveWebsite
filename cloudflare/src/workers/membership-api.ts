@@ -1060,43 +1060,75 @@ async function vipWhatsappPerk(
 
 async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>> {
   const rows = await env.DB.prepare(`
-    SELECT p.id, p.sku, p.display_name, p.tier, p.currency, p.amount_minor,
-      p.duration_unit, p.duration_value, p.purchase_limit_per_user,
-      k.id AS perk_id, k.title AS perk_title, k.description AS perk_description,
-      k.sort_order AS perk_sort_order
-    FROM products p
-    LEFT JOIN product_perks k ON k.product_id = p.id AND k.active = 1
-    WHERE p.active = 1
+    SELECT * FROM (
+      SELECT
+        1 AS record_group,
+        p.id AS record_id,
+        p.sku,
+        p.display_name,
+        p.tier,
+        p.currency,
+        p.amount_minor,
+        p.duration_unit,
+        p.duration_value,
+        p.purchase_limit_per_user,
+        NULL AS perk_title,
+        NULL AS perk_description,
+        NULL AS perk_sort_order
+      FROM products p
+      WHERE p.active = 1
+
+      UNION ALL
+
+      SELECT
+        2 AS record_group,
+        k.id AS record_id,
+        NULL AS sku,
+        NULL AS display_name,
+        k.tier,
+        NULL AS currency,
+        NULL AS amount_minor,
+        NULL AS duration_unit,
+        NULL AS duration_value,
+        NULL AS purchase_limit_per_user,
+        k.title AS perk_title,
+        k.description AS perk_description,
+        k.sort_order AS perk_sort_order
+      FROM tier_perks k
+      WHERE k.active = 1
+    ) catalog
     ORDER BY
-      CASE p.tier
+      record_group,
+      CASE tier
         WHEN 'EXCLUSIVE_BASIC' THEN 1
         WHEN 'EXCLUSIVE_PREMIUM' THEN 2
         WHEN 'EXCLUSIVE_VIP' THEN 3
       END,
-      CASE p.duration_unit WHEN 'DAYS' THEN 1 ELSE 2 END,
-      p.duration_value,
-      k.sort_order,
-      k.id
+      CASE duration_unit WHEN 'DAYS' THEN 1 WHEN 'MONTHS' THEN 2 ELSE 3 END,
+      COALESCE(duration_value, 0),
+      COALESCE(perk_sort_order, 0),
+      record_id
   `).all<{
-    id: string;
-    sku: string;
-    display_name: string;
+    record_group: 1 | 2;
+    record_id: string;
+    sku: string | null;
+    display_name: string | null;
     tier: string;
-    currency: string;
-    amount_minor: number;
-    duration_unit: "DAYS" | "MONTHS";
-    duration_value: number;
+    currency: string | null;
+    amount_minor: number | null;
+    duration_unit: "DAYS" | "MONTHS" | null;
+    duration_value: number | null;
     purchase_limit_per_user: number | null;
-    perk_id: string | null;
     perk_title: string | null;
     perk_description: string | null;
     perk_sort_order: number | null;
   }>();
-  const products = new Map<string, Record<string, unknown> & { perks: Record<string, unknown>[] }>();
+
+  const products: Record<string, unknown>[] = [];
+  const tierPerks: Record<string, Record<string, unknown>[]> = {};
   for (const row of rows.results) {
-    let product = products.get(row.id);
-    if (!product) {
-      product = {
+    if (row.record_group === 1) {
+      products.push({
         sku: row.sku,
         displayName: row.display_name,
         tier: row.tier,
@@ -1105,19 +1137,20 @@ async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>
         durationUnit: row.duration_unit,
         durationValue: row.duration_value,
         purchaseLimitPerUser: row.purchase_limit_per_user,
-        perks: [],
-      };
-      products.set(row.id, product);
-    }
-    if (row.perk_id && row.perk_title) {
-      product.perks.push({
-        title: row.perk_title,
-        description: row.perk_description,
-        sortOrder: row.perk_sort_order,
       });
+      continue;
     }
+    if (!row.perk_title) continue;
+    const perks = tierPerks[row.tier] ?? [];
+    perks.push({
+      id: row.record_id,
+      title: row.perk_title,
+      description: row.perk_description,
+      sortOrder: row.perk_sort_order,
+    });
+    tierPerks[row.tier] = perks;
   }
-  return { products: [...products.values()] };
+  return { products, tierPerks };
 }
 
 function jurisdictionAllowed(policy: string | null, jurisdictionCode: string | null): boolean {
