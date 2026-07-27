@@ -51,13 +51,20 @@ test.describe('membership safety requirements', () => {
   test('/linktree exposes only the approved neutral public links', async ({ page }) => {
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
 
+    await expect(page.getByRole('heading', { name: 'Shadow’s Temptation' })).toBeVisible();
+    await expect(page.locator('.tagline')).toHaveText(/where desire becomes temptation|wo verlangen zur versuchung wird/i);
     await expect(page.getByRole('link', { name: /exclusive content/i })).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/');
     await expect(page.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/shadows.temptation_official/');
     await expect(page.locator('.link-list a')).toHaveCount(2);
     await expect(page.locator('a[href="https://jason-shadow.com/"]')).toHaveCount(0);
+    await expect(page.locator('.ai-disclosure')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(/music|projects|projekte|künstliche intelligenz|artificial intelligence|ki-technologie/i);
     const banner = page.locator('.banner-wrap img[src="uploads/banner.png"]');
     await expect(banner).toBeVisible();
-    await expect.poll(() => banner.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(
+      () => banner.evaluate((image) => image.naturalWidth),
+      { timeout: 15_000 },
+    ).toBeGreaterThan(0);
     await expect(page.locator('script[src^="http"]')).toHaveCount(0);
   });
 });

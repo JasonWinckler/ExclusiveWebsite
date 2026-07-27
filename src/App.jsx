@@ -112,7 +112,6 @@ const copy = {
     galleryText: "Free Preview sowie freigeschaltete Basic-, Premium- und VIP-Inhalte.",
     noContent: "In dieser Galerie ist noch kein Content veröffentlicht.",
     lockedTier: "Für deinen aktuellen Zugang gesperrt",
-    openContent: "Ansehen",
     deviceNote: "Dieser Browser wird beim ersten Öffnen als persönliches Gerät registriert.",
     entitlement: "Mitgliedschaft",
     expires: "Gültig bis",
@@ -197,7 +196,6 @@ const copy = {
     galleryText: "Free Preview plus unlocked Basic, Premium and VIP content.",
     noContent: "No content has been published in this gallery yet.",
     lockedTier: "Locked for your current access",
-    openContent: "View",
     deviceNote: "This browser is registered as a personal device when the gallery is first opened.",
     entitlement: "Membership",
     expires: "Valid until",
@@ -605,23 +603,31 @@ function tierLabel(tier) {
   return tier === "FREE" ? "FREE PREVIEW" : String(tier || "").replace("EXCLUSIVE_", "");
 }
 
+const galleryTierOrder = ["FREE", "EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"];
+
+function galleryTierLabel(tier, language) {
+  const labels = {
+    FREE: language === "de" ? "Free Preview" : "Free preview",
+    EXCLUSIVE_BASIC: "Basic",
+    EXCLUSIVE_PREMIUM: "Premium",
+    EXCLUSIVE_VIP: "VIP",
+  };
+  return labels[tier] || tierLabel(tier);
+}
+
 function CreatorPost({
   item,
   media,
   blurred,
   language,
-  onOpen,
-  busy = false,
-  compact = false,
-  detail = false,
 }) {
   const accessible = item.accessible !== false;
   const mediaClass = blurred ? "creator-post__media is-sensitive-blurred" : "creator-post__media";
-  return <article className={`creator-post${compact ? " creator-post--compact" : ""}${accessible ? "" : " is-locked"}`}>
+  return <article className={`creator-post${accessible ? "" : " is-locked"}`}>
     <header className="creator-post__header">
       <img src="/linktree/uploads/profile.png" alt="" />
       <div>
-        <strong>Jason Shadow</strong>
+        <strong>Shadow’s Temptation</strong>
         <span>{formatPostDate(item.publishedAt, language)}</span>
       </div>
       <span className="creator-post__tier">{tierLabel(item.tier)}</span>
@@ -638,7 +644,7 @@ function CreatorPost({
           : media?.url
             ? item.contentType.startsWith("video/")
               ? <video src={media.url} controls playsInline preload="metadata" />
-              : <img src={media.url} alt={item.title} loading={compact ? "eager" : "lazy"} />
+              : <img src={media.url} alt={item.title} loading="eager" />
             : <div className="creator-post__loading" aria-label={language === "de" ? "Medium wird geladen" : "Loading media"}><span /></div>}
       {accessible && blurred && <div className="creator-post__blur-label"><span>18+</span>{language === "de" ? "Sensibler Inhalt ausgeblendet" : "Sensitive content blurred"}</div>}
     </div>
@@ -646,13 +652,60 @@ function CreatorPost({
       <span>{item.allowComments
         ? `${item.commentCount || 0} ${language === "de" ? "Kommentare" : "comments"}`
         : (language === "de" ? "Privater Beitrag" : "Private post")}</span>
-      {!detail && <button className={accessible ? "text-button" : "secondary-action"} type="button" disabled={!accessible || busy} onClick={() => onOpen(item)}>
-        {accessible
-          ? (language === "de" ? "Beitrag öffnen" : "Open post")
-          : (language === "de" ? "Gesperrt" : "Locked")} {accessible && "→"}
-      </button>}
     </footer>
   </article>;
+}
+
+function InlineComments({
+  item,
+  comments,
+  commentAccess,
+  commentsLoading,
+  entitlementTier,
+  userName,
+  language,
+  busy,
+  onSubmit,
+  onDelete,
+}) {
+  const titleId = `comments-${String(item.slug).replace(/[^a-z0-9-]/gi, "")}`;
+  return <section className="comments-panel comments-panel--inline" aria-labelledby={titleId}>
+    <div className="comments-panel__head">
+      <div>
+        <p className="eyebrow">{language === "de" ? "PRIVATE COMMUNITY" : "PRIVATE COMMUNITY"}</p>
+        <h3 id={titleId}>{language === "de" ? "Kommentare" : "Comments"} <span>{comments.length}</span></h3>
+      </div>
+      {entitlementTier && <span className="status-chip is-active">{entitlementTier.replace("EXCLUSIVE_", "")}</span>}
+    </div>
+    {commentsLoading
+      ? <p className="upload-note">{language === "de" ? "Kommentare werden geladen …" : "Loading comments …"}</p>
+      : comments.length
+        ? <div className="comment-list">{comments.map((comment) => <article className={comment.own ? "comment-card is-own" : "comment-card"} key={comment.id}>
+          <div>
+            <strong>{comment.displayName || userName || "Member"}</strong>
+            <time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
+          </div>
+          <p>{comment.body}</p>
+          {comment.own && <button className="text-button" type="button" onClick={() => onDelete(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}
+        </article>)}</div>
+        : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}
+    {commentAccess.canComment
+      ? <form className="comment-composer" onSubmit={onSubmit}>
+        <label>
+          <span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span>
+          <textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} />
+        </label>
+        <div>
+          <small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small>
+          <button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button>
+        </div>
+      </form>
+      : commentAccess.allowComments && <div className="paid-comment-teaser">
+        <strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong>
+        <p>{language === "de" ? "Aktive Mitglieder können direkt unter Beiträgen kommentieren." : "Active paid members can comment directly below posts."}</p>
+        <a className="secondary-action" href="#pricing">{language === "de" ? "Membership entdecken" : "Explore membership"}</a>
+      </div>}
+  </section>;
 }
 
 export default function App() {
@@ -672,11 +725,13 @@ export default function App() {
   const [digitalConsentAccepted, setDigitalConsentAccepted] = useState(false);
   const [paymentView, setPaymentView] = useState("qr");
   const [gallery, setGallery] = useState([]);
-  const [contentPreview, setContentPreview] = useState(null);
   const [mediaBySlug, setMediaBySlug] = useState({});
   const [blurSensitiveMedia, setBlurSensitiveMedia] = useState(initialSensitiveMediaBlur);
   const [comments, setComments] = useState([]);
   const [commentAccess, setCommentAccess] = useState({ allowComments: false, canComment: false });
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [activeGalleryTier, setActiveGalleryTier] = useState("FREE");
+  const [activePostIndex, setActivePostIndex] = useState(0);
   const [liveVideo, setLiveVideo] = useState(null);
   const [ageSession, setAgeSession] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -697,6 +752,14 @@ export default function App() {
   const profile = membership?.account || null;
   const entitlement = membership?.entitlement || null;
   const ageStatus = ageRequest?.status || (user ? "NOT_STARTED" : "SIGNED_OUT");
+  const galleryGroups = useMemo(() => galleryTierOrder
+    .map((tier) => ({ tier, items: gallery.filter((item) => item.tier === tier) }))
+    .filter((group) => group.items.length > 0), [gallery]);
+  const activeGalleryGroup = galleryGroups.find((group) => group.tier === activeGalleryTier) || galleryGroups[0] || null;
+  const normalizedPostIndex = activeGalleryGroup?.items.length
+    ? activePostIndex % activeGalleryGroup.items.length
+    : 0;
+  const activePost = activeGalleryGroup?.items[normalizedPostIndex] || null;
 
   const refresh = async () => {
     const current = await getCurrentUser();
@@ -862,11 +925,46 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!user || ageStatus !== "APPROVED") return;
-    gallery.slice(0, 6).filter((item) => item.accessible !== false).forEach((item) => {
-      if (!mediaBySlugRef.current[item.slug]) loadProtectedMedia(item).catch(() => {});
+    if (!galleryGroups.length) {
+      setActivePostIndex(0);
+      setComments([]);
+      setCommentAccess({ allowComments: false, canComment: false });
+      return;
+    }
+    if (!galleryGroups.some((group) => group.tier === activeGalleryTier)) {
+      setActiveGalleryTier(galleryGroups[0].tier);
+      setActivePostIndex(0);
+    }
+  }, [galleryGroups, activeGalleryTier]);
+
+  useEffect(() => {
+    if (!activePost || !user || ageStatus !== "APPROVED") {
+      setCommentsLoading(false);
+      return;
+    }
+    let current = true;
+    setComments([]);
+    setCommentAccess({ allowComments: Boolean(activePost.allowComments), canComment: false });
+    setCommentsLoading(true);
+    Promise.all([
+      loadProtectedMedia(activePost).catch(() => null),
+      getContentComments(activePost.slug).catch(() => ({
+        comments: [],
+        allowComments: Boolean(activePost.allowComments),
+        canComment: false,
+      })),
+    ]).then(([, commentResult]) => {
+      if (!current) return;
+      setComments(commentResult.comments || []);
+      setCommentAccess({
+        allowComments: Boolean(commentResult.allowComments),
+        canComment: Boolean(commentResult.canComment),
+      });
+    }).finally(() => {
+      if (current) setCommentsLoading(false);
     });
-  }, [gallery, user?.$id, ageStatus]);
+    return () => { current = false; };
+  }, [activePost?.slug, user?.$id, ageStatus]);
 
   const openAuth = (nextMode) => {
     setMode(nextMode);
@@ -1011,8 +1109,8 @@ export default function App() {
     try {
       await registerCurrentDevice();
       const result = await getContentItems();
-      setGallery(result.items || []);
-      setModal("gallery");
+      setGallery((result.items || []).filter((item) => item.accessible));
+      requestAnimationFrame(() => document.getElementById("member-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (error) {
       setNotice(messageFor(error, t));
       setModal("account");
@@ -1021,39 +1119,22 @@ export default function App() {
     }
   };
 
-  const openContent = async (item) => {
-    setBusy(true);
+  const selectGallery = (tier) => {
+    setActiveGalleryTier(tier);
+    setActivePostIndex(0);
     setNotice("");
-    try {
-      const [media, commentResult] = await Promise.all([
-        loadProtectedMedia(item, true),
-        getContentComments(item.slug).catch(() => ({ comments: [], allowComments: false, canComment: false })),
-      ]);
-      setContentPreview({
-        ...item,
-        url: media.url,
-        type: media.type || item.contentType,
-      });
-      setComments(commentResult.comments || []);
-      setCommentAccess({
-        allowComments: Boolean(commentResult.allowComments),
-        canComment: Boolean(commentResult.canComment),
-      });
-    } catch (error) {
-      setNotice(messageFor(error, t));
-    } finally {
-      setBusy(false);
-    }
   };
 
-  const viewContent = async (item) => {
-    setModal("gallery");
-    await openContent(item);
+  const movePost = (direction) => {
+    const length = activeGalleryGroup?.items.length || 0;
+    if (length < 2) return;
+    setActivePostIndex((current) => (current + direction + length) % length);
+    setNotice("");
   };
 
   const submitComment = async (event) => {
     event.preventDefault();
-    if (!contentPreview?.slug) return;
+    if (!activePost?.slug) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const body = String(data.get("comment") || "").trim();
@@ -1061,9 +1142,12 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      await createContentComment(contentPreview.slug, body);
-      const next = await getContentComments(contentPreview.slug);
+      await createContentComment(activePost.slug, body);
+      const next = await getContentComments(activePost.slug);
       setComments(next.comments || []);
+      setGallery((current) => current.map((item) => item.slug === activePost.slug
+        ? { ...item, commentCount: (next.comments || []).length }
+        : item));
       setCommentAccess({ allowComments: Boolean(next.allowComments), canComment: Boolean(next.canComment) });
       form.reset();
     } catch (error) {
@@ -1078,9 +1162,12 @@ export default function App() {
     setBusy(true);
     try {
       await deleteContentComment(commentId);
-      if (contentPreview?.slug) {
-        const next = await getContentComments(contentPreview.slug);
+      if (activePost?.slug) {
+        const next = await getContentComments(activePost.slug);
         setComments(next.comments || []);
+        setGallery((current) => current.map((item) => item.slug === activePost.slug
+          ? { ...item, commentCount: (next.comments || []).length }
+          : item));
       }
     } catch (error) {
       setNotice(messageFor(error, t));
@@ -1137,7 +1224,7 @@ export default function App() {
         <section className="hero adult-hero member-hero">
           <div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div>
           <div className="hero-content adult-hero__content">
-            <img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Jason Shadow" />
+            <img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" />
             <p className="eyebrow">{language === "de" ? "DEIN PRIVATER BEREICH" : "YOUR PRIVATE SPACE"}</p>
             <h1>{language === "de" ? `Willkommen, ${user.name || "du"}` : `Welcome, ${user.name || "you"}`}</h1>
             <p className="tagline">{ageStatus === "APPROVED"
@@ -1151,7 +1238,7 @@ export default function App() {
               <span className={entitlement?.active ? "status-chip is-active" : "status-chip"}>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : (language === "de" ? "Free Access" : "Free access")}</span>
             </div>
             <div className="hero-actions">
-              {ageStatus === "APPROVED" ? <button className="primary-action" type="button" onClick={openGallery}>{language === "de" ? "Meine Galerie öffnen" : "Open my gallery"}</button> : <button className="primary-action" type="button" onClick={() => setModal("age")}>{language === "de" ? "Verifizierung fortsetzen" : "Continue verification"}</button>}
+              {ageStatus === "APPROVED" ? <a className="primary-action" href="#member-gallery">{language === "de" ? "Beiträge entdecken" : "Discover posts"}</a> : <button className="primary-action" type="button" onClick={() => setModal("age")}>{language === "de" ? "Verifizierung fortsetzen" : "Continue verification"}</button>}
               <button className="secondary-action" type="button" onClick={() => { setDashboardTab("overview"); setModal("account"); }}>{language === "de" ? "Mein Dashboard" : "My dashboard"}</button>
             </div>
           </div>
@@ -1159,18 +1246,58 @@ export default function App() {
         <section className="section member-gallery-section" id="member-gallery">
           <div className="member-gallery-heading">
             <div className="section-heading">
-              <p className="eyebrow">{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : "FREE"}</p>
-              <h2>{language === "de" ? "Neu für dich" : "New for you"}</h2>
-              <p>{language === "de" ? "Deine freigeschalteten Veröffentlichungen – ohne Umwege." : "Your unlocked releases, ready to explore."}</p>
+              <p className="eyebrow">{language === "de" ? "DEIN ZUGANG. DEINE MOMENTE." : "YOUR ACCESS. YOUR MOMENTS."}</p>
+              <h2>{language === "de" ? "Für dich im Schatten" : "Waiting in the shadows"}</h2>
+              <p>{language === "de" ? "Deine freigeschalteten Beiträge – persönlich kuratiert und direkt für dich." : "Your unlocked posts — personally curated and ready for you."}</p>
             </div>
             {ageStatus === "APPROVED" && <SensitiveMediaToggle blurred={blurSensitiveMedia} language={language} onToggle={() => setBlurSensitiveMedia((value) => !value)} />}
           </div>
-          {gallery.length ? <div className="creator-feed">{gallery.slice(0, 6).map((item) => <CreatorPost item={item} media={mediaBySlug[item.slug]} blurred={blurSensitiveMedia} language={language} onOpen={viewContent} busy={busy} key={item.slug} />)}</div> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
+          {notice && <p className="form-notice" role="status">{notice}</p>}
+          {gallery.length ? <>
+            <div className="gallery-tier-tabs" role="tablist" aria-label={language === "de" ? "Galerie auswählen" : "Choose gallery"}>
+              {galleryGroups.map((group) => <button
+                className={group.tier === activeGalleryGroup?.tier ? "is-active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={group.tier === activeGalleryGroup?.tier}
+                onClick={() => selectGallery(group.tier)}
+                key={group.tier}
+              >
+                <span>{galleryTierLabel(group.tier, language)}</span>
+                <small>{group.items.length}</small>
+              </button>)}
+            </div>
+            {activePost && <div className="post-carousel" aria-roledescription="carousel" aria-label={`${galleryTierLabel(activeGalleryGroup.tier, language)} ${language === "de" ? "Beiträge" : "posts"}`}>
+              <div className="post-carousel__navigation">
+                <button className="post-carousel__arrow is-previous" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(-1)} aria-label={language === "de" ? "Vorheriger Beitrag" : "Previous post"}><span>←</span></button>
+                <div className="post-carousel__progress" aria-live="polite">
+                  <span>{galleryTierLabel(activeGalleryGroup.tier, language)}</span>
+                  <strong>{normalizedPostIndex + 1} / {activeGalleryGroup.items.length}</strong>
+                </div>
+                <button className="post-carousel__arrow is-next" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(1)} aria-label={language === "de" ? "Nächster Beitrag" : "Next post"}><span>→</span></button>
+              </div>
+              <div className="post-carousel__slide" key={activePost.slug}>
+                <CreatorPost item={activePost} media={mediaBySlug[activePost.slug]} blurred={blurSensitiveMedia} language={language} />
+                <InlineComments
+                  item={activePost}
+                  comments={comments}
+                  commentAccess={commentAccess}
+                  commentsLoading={commentsLoading}
+                  entitlementTier={entitlement?.active ? entitlement.tier : null}
+                  userName={user?.name}
+                  language={language}
+                  busy={busy}
+                  onSubmit={submitComment}
+                  onDelete={removeComment}
+                />
+              </div>
+            </div>}
+          </> : <div className="member-empty-state"><h3>{ageStatus === "APPROVED" ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{ageStatus === "APPROVED" ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : ui.ageText}</p></div>}
         </section>
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       </> : <>
-      <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Jason Shadow" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
+      <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
       <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
       <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
@@ -1293,6 +1420,5 @@ export default function App() {
       </div>}
     </Modal>}
 
-    {modal === "gallery" && <Modal title={ui.gallery} eyebrow={entitlement?.active ? entitlement.tier : "FREE PREVIEW"} onClose={() => { setModal(null); setContentPreview(null); }} t={t} wide><div className="gallery-visibility-toolbar"><SensitiveMediaToggle blurred={blurSensitiveMedia} language={language} onToggle={() => setBlurSensitiveMedia((value) => !value)} /></div>{notice && <p className="form-notice" role="status">{notice}</p>}{contentPreview ? <div className="content-viewer"><button className="text-button" type="button" onClick={() => { setContentPreview(null); setComments([]); }}>← {ui.gallery}</button><CreatorPost item={contentPreview} media={{ url: contentPreview.url, type: contentPreview.type }} blurred={blurSensitiveMedia} language={language} onOpen={() => {}} /><section className="comments-panel" aria-labelledby="comments-title"><div className="comments-panel__head"><div><p className="eyebrow">{language === "de" ? "PRIVATE COMMUNITY" : "PRIVATE COMMUNITY"}</p><h3 id="comments-title">{language === "de" ? "Kommentare" : "Comments"} <span>{comments.length}</span></h3></div>{entitlement?.active && <span className="status-chip is-active">{entitlement.tier.replace("EXCLUSIVE_", "")}</span>}</div>{comments.length ? <div className="comment-list">{comments.map((comment) => <article className={comment.own ? "comment-card is-own" : "comment-card"} key={comment.id}><div><strong>{comment.displayName || user?.name || "Member"}</strong><time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time></div><p>{comment.body}</p>{comment.own && <button className="text-button" type="button" onClick={() => removeComment(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}</article>)}</div> : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}{commentAccess.canComment ? <form className="comment-composer" onSubmit={submitComment}><label><span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span><textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} /></label><div><small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small><button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button></div></form> : commentAccess.allowComments && <div className="paid-comment-teaser"><strong>{language === "de" ? "Paid Member Benefit" : "Paid member benefit"}</strong><p>{language === "de" ? "Aktive Mitglieder können unter Beiträgen kommentieren." : "Active paid members can join the conversation."}</p><a className="secondary-action" href="#pricing" onClick={() => { setModal(null); setContentPreview(null); }}>{language === "de" ? "Membership entdecken" : "Explore membership"}</a></div>}</section></div> : gallery.length ? <div className="creator-feed creator-feed--modal">{gallery.map((item) => <CreatorPost item={item} media={mediaBySlug[item.slug]} blurred={blurSensitiveMedia} language={language} onOpen={openContent} busy={busy} compact key={item.slug} />)}</div> : <p>{ui.noContent}</p>}</Modal>}
   </>;
 }
