@@ -1,10 +1,10 @@
 .adult-site .hero-media img {
-  top: 42%;
+  top: 41%;
   left: 50%;
   right: auto;
   bottom: auto;
-  width: 96%;
-  height: 96%;
+  width: 98%;
+  height: 98%;
   object-fit: contain;
   object-position: center;
   transform: translate(-50%, -50%);
