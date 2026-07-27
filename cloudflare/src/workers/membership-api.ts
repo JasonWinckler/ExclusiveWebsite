@@ -1,7 +1,6 @@
 import { authenticateUser } from "../shared/auth";
 import {
   getAccessContext,
-  getActiveDeviceCount,
   getActiveEntitlement,
   getContentItem,
   getRegisteredDevice,
@@ -1532,13 +1531,14 @@ async function authorizeContent(
   if (!decision.allowed) throw new ApiError(403, decision.code);
   await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
 
-  if (env.PROTECTED_CONTENT_MODE !== "private-r2-v1" || !content.storage_key) {
+  if (env.PROTECTED_CONTENT_MODE !== "private-r2-v1") {
     throw new ApiError(503, "PROTECTED_CONTENT_DISABLED");
   }
   const upload = await env.DB.prepare(`
-    SELECT content_type, size_bytes, object_etag FROM content_uploads
+    SELECT r2_object_key, content_type, size_bytes, object_etag FROM content_uploads
     WHERE content_item_id = ? AND status = 'ACTIVE'
   `).bind(content.id).first<{
+    r2_object_key: string;
     content_type: string;
     size_bytes: number;
     object_etag: string;
@@ -1560,7 +1560,7 @@ async function authorizeContent(
     status = 206;
   }
   const object = await env.CONTENT_MEDIA.get(
-    content.storage_key,
+    upload.r2_object_key,
     range ? { range } : undefined,
   );
   if (!object || object.etag !== upload.object_etag) {
