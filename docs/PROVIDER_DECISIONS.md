@@ -10,7 +10,7 @@ Production uses `info@exclusive.jason-shadow.com` as the sender mailbox. The Mic
 
 Appwrite Cloud's built-in authentication mail service has no separate off switch on the free plan. The production frontend therefore never calls Appwrite's verification or recovery mail endpoints and has no Appwrite mail fallback. Legacy completion handlers remain available only so links already sent before the cutover can still be completed safely.
 
-Verification, password-reset and invoice messages use the established Shadow's Temptation styling and embed the existing banner as a CID attachment rather than a remotely loaded image. Every message links to the Legal Center. Invoices additionally contain customer and supplier details, SEPA instructions, the 48-hour payment deadline, the configured small-business tax notice and jurisdiction-specific EU/German or US legal links. Their dashboard call-to-action deep-links to the customer's order view after authentication.
+Verification, password-reset and invoice messages use the established Shadow's Temptation styling and embed the existing banner as a CID attachment rather than a remotely loaded image. Every message links to the Legal Center. Invoices additionally contain customer and supplier details, the seller tax identifier supplied through an encrypted Worker secret, SEPA instructions, the 48-hour payment deadline, the configured small-business tax notice and jurisdiction-specific EU/German or US legal links. Their dashboard call-to-action deep-links to the customer's order view after authentication. The identifier used for a new invoice is snapshotted in D1 so the retained invoice record is not silently changed by a later configuration update.
 
 ## Age verification
 

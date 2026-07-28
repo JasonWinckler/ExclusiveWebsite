@@ -51,7 +51,11 @@ describe("browser and repository security contract", () => {
     expect(frontend).not.toContain("account.createRecovery");
     expect(membershipConfig).toMatch(/"AUTH_EMAIL_MODE": "CUSTOM"/);
     expect(membershipConfig).toContain("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.");
+    expect(membershipConfig).not.toContain("INVOICE_TAX_IDENTIFIER");
     expect(membershipWorker).toContain('src="cid:shadow-brand-banner"');
+    expect(membershipWorker).toContain("INVOICE_TAX_IDENTIFIER_NOT_CONFIGURED");
+    expect(read("cloudflare/migrations/0013_invoice_tax_identifier.sql"))
+      .toContain("seller_tax_identifier");
     expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/");
     expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/eu/");
     expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/us/");

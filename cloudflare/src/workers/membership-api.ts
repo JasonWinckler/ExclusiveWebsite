@@ -969,6 +969,7 @@ function invoiceEmailHtml(input: {
   sellerName: string;
   sellerAddress: string;
   sellerEmail: string;
+  taxIdentifier: string;
   taxNote: string | null;
 }): string {
   const isGerman = input.locale === "de";
@@ -1029,6 +1030,7 @@ function invoiceEmailHtml(input: {
               <td class="stack-cell" width="50%" valign="top" style="padding:16px 18px;background:#16050a;border:1px solid #4a1822;border-left:0;border-radius:0 14px 14px 0;color:#bdaaa4;font-size:13px;line-height:1.65">
                 <strong style="color:#e6c77c">${labels.seller}</strong><br>
                 ${escapeHtml(input.sellerName)}<br>${escapeHtml(input.sellerAddress)}<br>
+                ${isGerman ? "Steuernummer" : "Tax number"}: ${escapeHtml(input.taxIdentifier)}<br>
                 <a href="mailto:${escapeHtml(input.sellerEmail)}" style="color:#e6c77c">${escapeHtml(input.sellerEmail)}</a>
               </td>
             </tr>
@@ -1288,6 +1290,15 @@ async function createSepaOrder(
   const sellerName = env.INVOICE_SELLER_NAME?.trim() || "Jason Shadow · Inhaber Jason Winckler";
   const sellerAddress = env.INVOICE_SELLER_ADDRESS?.trim() || "Kleiberweg 24, 48432 Rheine, Deutschland";
   const sellerEmail = env.INVOICE_SELLER_EMAIL?.trim() || "info@exclusive.jason-shadow.com";
+  const taxIdentifier = env.INVOICE_TAX_IDENTIFIER?.trim();
+  if (
+    billing &&
+    (
+      !taxIdentifier ||
+      taxIdentifier.length > 32 ||
+      !/^[A-Z0-9 ./-]+$/i.test(taxIdentifier)
+    )
+  ) throw new ApiError(503, "INVOICE_TAX_IDENTIFIER_NOT_CONFIGURED");
   const taxNote = env.INVOICE_TAX_NOTE?.trim() ||
     "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
   const statements = [
@@ -1327,9 +1338,9 @@ async function createSepaOrder(
       INSERT INTO invoices (
         id, subscription_id, invoice_number, status, billing_name, billing_street,
         billing_postal_code, billing_city, billing_country_code, seller_name,
-        seller_address, seller_email, amount_minor, tax_amount_minor, currency,
+        seller_address, seller_email, seller_tax_identifier, amount_minor, tax_amount_minor, currency,
         tax_note, issued_at, due_at, email_status, created_at, updated_at
-      ) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'PENDING', ?, ?)
+      ) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'PENDING', ?, ?)
     `).bind(
       invoiceId,
       orderId,
@@ -1342,6 +1353,7 @@ async function createSepaOrder(
       sellerName,
       sellerAddress,
       sellerEmail,
+      taxIdentifier,
       product.amount_minor,
       product.currency,
       taxNote,
@@ -1387,6 +1399,7 @@ async function createSepaOrder(
           sellerName,
           sellerAddress,
           sellerEmail,
+          taxIdentifier: taxIdentifier!,
           taxNote,
         }),
       });
