@@ -144,4 +144,18 @@ describe("browser and repository security contract", () => {
     expect(values).toHaveLength(columns.length);
     expect(values.every((value) => value === "?")).toBe(true);
   });
+
+  it("does not reset modal focus when controlled form fields rerender", () => {
+    const frontend = read("src/App.jsx");
+    const modalComponent = frontend.slice(
+      frontend.indexOf("function Modal"),
+      frontend.indexOf("function QrImage"),
+    );
+    expect(modalComponent).toContain("const onCloseRef = useRef(onClose)");
+    expect(modalComponent).toContain("closeRef.current?.focus({ preventScroll: true })");
+    expect(modalComponent).toContain("event.key === \"Escape\" && onCloseRef.current()");
+    expect(modalComponent).not.toMatch(
+      /closeRef\.current\?\.focus[\s\S]*?document\.body\.classList\.remove[\s\S]*?\}, \[onClose\]\);/,
+    );
+  });
 });

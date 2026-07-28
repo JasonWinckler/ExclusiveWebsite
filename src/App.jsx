@@ -347,16 +347,20 @@ function LockedGalleryShowcase({ language, signedIn, onAction }) {
 
 function Modal({ title, eyebrow, onClose, children, t, wide = false }) {
   const closeRef = useRef(null);
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    closeRef.current?.focus();
-    const key = (event) => event.key === "Escape" && onClose();
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    closeRef.current?.focus({ preventScroll: true });
+    const key = (event) => event.key === "Escape" && onCloseRef.current();
     document.addEventListener("keydown", key);
     document.body.classList.add("modal-open");
     return () => {
       document.removeEventListener("keydown", key);
       document.body.classList.remove("modal-open");
     };
-  }, [onClose]);
+  }, []);
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`process-modal${wide ? " process-modal--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="modal-title"><button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label={t.close}>×</button><p className="eyebrow">{eyebrow}</p><h2 id="modal-title">{title}</h2>{children}</section></div>;
 }
 
