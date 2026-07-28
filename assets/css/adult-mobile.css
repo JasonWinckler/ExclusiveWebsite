@@ -1,3 +1,4 @@
+@media (max-width: 760px) {
 .exclusive-header {
   top: 8px;
   width: min(100% - 24px, 1180px);
@@ -201,8 +202,13 @@
   top: -24px;
   margin-inline: -2px;
   scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   background: rgba(25,1,7,.96);
   box-shadow: 0 10px 24px rgba(0,0,0,.2);
+}
+.dashboard-tabs::-webkit-scrollbar {
+  display: none;
 }
 .dashboard-tabs button {
   min-height: 46px;
@@ -237,9 +243,20 @@
   width: 62px;
   height: 62px;
 }
+.dashboard-profile-card > div {
+  width: 100%;
+  min-width: 0;
+}
 .dashboard-profile-card h3,
 .dashboard-profile-card p {
   overflow-wrap: anywhere;
+}
+.dashboard-profile-card p:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .78rem;
 }
 .dashboard-stat-grid {
   grid-template-columns: 1fr;
@@ -453,4 +470,5 @@
   .adult-site .section { padding-inline: 12px; }
   .adult-hero__content { padding-inline: 10px; }
   .language-button { min-width: 38px; }
+}
 }
