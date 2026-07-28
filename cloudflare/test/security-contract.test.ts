@@ -206,4 +206,36 @@ describe("browser and repository security contract", () => {
     expect(frontend).toContain("onClick={handleLogout}");
     expect(frontend).not.toContain("run(logout, t.logoutSuccess");
   });
+
+  it("enforces username changes server-side and re-verifies changed email addresses", () => {
+    const migration = read("cloudflare/migrations/0016_profile_change_controls.sql");
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const identity = read("cloudflare/src/workers/identity-projection.ts");
+    const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
+    const frontendApi = read("src/lib/appwrite.js");
+    const frontend = read("src/App.jsx");
+    expect(migration).toContain("username_change_count");
+    expect(migration).toContain("username_next_change_at");
+    expect(migration).toContain("username_sync_status");
+    expect(membership).toContain("14 * 86_400_000");
+    expect(membership).toContain("USERNAME_CHANGE_COOLDOWN");
+    expect(membership).toContain('/v1/account/profile/name');
+    expect(identity).toContain('/update-user-name');
+    expect(maintenance).toContain("retryUsernameSync");
+    expect(frontendApi).toContain("account.updateEmail({ email, password })");
+    expect(frontend).toContain("await resendVerification(language)");
+    expect(frontend).toContain("geschützte Zugang pausiert");
+  });
+
+  it("shows truthful mobile verification security and deletion controls", () => {
+    const frontend = read("src/App.jsx");
+    const mobile = read("assets/css/adult-mobile.css");
+    expect(frontend).toContain("Privater EU-Speicher");
+    expect(frontend).toContain("Sofortige Löschung");
+    expect(frontend).toContain("Cloudflare-R2-Bucket mit EU-Jurisdiktion");
+    expect(frontend).toContain("<EvidenceUpload");
+    expect(mobile).toContain("max-height: 100dvh");
+    expect(mobile).toContain(".verification-primary");
+    expect(mobile).toContain(".camera-frame");
+  });
 });

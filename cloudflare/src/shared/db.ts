@@ -23,7 +23,6 @@ export async function upsertUserProjection(
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(appwrite_user_id) DO UPDATE SET
       email = excluded.email,
-      display_name = excluded.display_name,
       email_verified = excluded.email_verified,
       account_status = CASE
         WHEN user_profiles.account_status IN ('RESTRICTED', 'DELETION_PENDING', 'DELETED')
@@ -37,7 +36,6 @@ export async function upsertUserProjection(
       updated_at = excluded.updated_at
     WHERE
       user_profiles.email <> excluded.email
-      OR user_profiles.display_name <> excluded.display_name
       OR user_profiles.email_verified <> excluded.email_verified
       OR (
         user_profiles.account_status NOT IN ('RESTRICTED', 'DELETION_PENDING', 'DELETED')
@@ -68,7 +66,11 @@ export async function upsertUserProjection(
 
 export async function getUserProfile(db: D1Database, userId: string): Promise<UserProfileRow | null> {
   return db.prepare(`
-    SELECT appwrite_user_id, email, display_name, email_verified, account_status,
+    SELECT appwrite_user_id, email, display_name,
+      username_change_count, username_last_changed_at, username_next_change_at,
+      username_sync_status, username_sync_attempt_count, username_sync_next_retry_at,
+      username_sync_last_error_code, username_last_idempotency_key,
+      email_verified, account_status,
       age_status, jurisdiction_code, country_code, region_code, privacy_regime,
       privacy_notice_version, privacy_notice_acknowledged_at,
       marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
@@ -181,6 +183,10 @@ export async function getAccessContext(
     )
     SELECT
       p.appwrite_user_id, p.email, p.display_name, p.email_verified,
+      p.username_change_count, p.username_last_changed_at, p.username_next_change_at,
+      p.username_sync_status, p.username_sync_attempt_count,
+      p.username_sync_next_retry_at, p.username_sync_last_error_code,
+      p.username_last_idempotency_key,
       p.account_status, p.age_status, p.jurisdiction_code, p.last_active_at,
       p.last_appwrite_access_at, p.administrative_hold, p.legal_retention_until,
       p.deletion_job_hold, p.version,
@@ -198,6 +204,14 @@ export async function getAccessContext(
     appwrite_user_id: string;
     email: string;
     display_name: string;
+    username_change_count: number;
+    username_last_changed_at: string | null;
+    username_next_change_at: string | null;
+    username_sync_status: UserProfileRow["username_sync_status"];
+    username_sync_attempt_count: number;
+    username_sync_next_retry_at: string | null;
+    username_sync_last_error_code: string | null;
+    username_last_idempotency_key: string | null;
     email_verified: number;
     account_status: UserProfileRow["account_status"];
     age_status: UserProfileRow["age_status"];
@@ -224,6 +238,14 @@ export async function getAccessContext(
       appwrite_user_id: row.appwrite_user_id,
       email: row.email,
       display_name: row.display_name,
+      username_change_count: row.username_change_count,
+      username_last_changed_at: row.username_last_changed_at,
+      username_next_change_at: row.username_next_change_at,
+      username_sync_status: row.username_sync_status,
+      username_sync_attempt_count: row.username_sync_attempt_count,
+      username_sync_next_retry_at: row.username_sync_next_retry_at,
+      username_sync_last_error_code: row.username_sync_last_error_code,
+      username_last_idempotency_key: row.username_last_idempotency_key,
       email_verified: row.email_verified,
       account_status: row.account_status,
       age_status: row.age_status,

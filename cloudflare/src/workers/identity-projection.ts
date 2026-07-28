@@ -2,6 +2,7 @@ import {
   ApiError,
   errorResponse,
   jsonResponse,
+  logEvent,
   parsePositiveInt,
   readJsonBody,
   readJsonResponse,
@@ -139,6 +140,7 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     path === "/update-user-status" ||
     path === "/verify-user-email" ||
     path === "/update-user-password" ||
+    path === "/update-user-name" ||
     path === "/send-transactional-email";
   const expectedSecret = labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
@@ -188,6 +190,20 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
     return jsonResponse({ ok: true });
   }
+  if (path === "/update-user-name") {
+    if (
+      typeof body.name !== "string" ||
+      body.name.length < 2 ||
+      body.name.length > 64 ||
+      /[\u0000-\u001f\u007f]/.test(body.name) ||
+      !/[\p{L}\p{N}]/u.test(body.name)
+    ) throw new ApiError(400, "INVALID_DISPLAY_NAME");
+    await appwriteRequest(env, `/users/${encodedUserId}/name`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: body.name }),
+    });
+    return jsonResponse({ ok: true });
+  }
   if (path === "/send-transactional-email") {
     if (
       typeof body.messageId !== "string" ||
@@ -206,6 +222,7 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       "APPWRITE_INVALID_RESPONSE",
     );
     if (typeof user.email !== "string") throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
+    const deliveryStartedAt = Date.now();
     await sendMicrosoftGraphEmail({
       tenantId: env.GRAPH_TENANT_ID,
       clientId: env.GRAPH_CLIENT_ID,
@@ -217,6 +234,11 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       subject: body.subject,
       html: body.html,
       inlineImage: await emailBrandImage(env),
+    });
+    logEvent("info", "transactional_email_accepted", {
+      requestId: body.messageId,
+      provider: "MICROSOFT_GRAPH",
+      elapsedMs: Date.now() - deliveryStartedAt,
     });
     return jsonResponse({ ok: true });
   }

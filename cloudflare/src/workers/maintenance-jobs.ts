@@ -3,6 +3,7 @@ import { logEvent, parsePositiveInt } from "../shared/http";
 import {
   deleteAppwriteUser,
   syncAppwriteLabel,
+  updateAppwriteUserName,
 } from "../shared/identity-service";
 import { sendMembershipActivationConfirmation } from "../shared/membership-email";
 import { deletionBlockers } from "../shared/policy";
@@ -526,6 +527,61 @@ async function retryLabelSync(env: MaintenanceEnv, now: string, batchSize: numbe
   }
 }
 
+async function retryUsernameSync(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<void> {
+  const profiles = await env.DB.prepare(`
+    SELECT appwrite_user_id, display_name
+    FROM user_profiles
+    WHERE username_sync_status IN ('PENDING', 'FAILED')
+      AND account_status NOT IN ('DELETION_PENDING', 'DELETED')
+      AND (username_sync_next_retry_at IS NULL OR username_sync_next_retry_at <= ?)
+    ORDER BY updated_at ASC
+    LIMIT ?
+  `).bind(now, batchSize).all<{
+    appwrite_user_id: string;
+    display_name: string;
+  }>();
+  for (const profile of profiles.results) {
+    try {
+      await updateAppwriteUserName(
+        env.IDENTITY_PROJECTION,
+        env.LABEL_SYNC_SERVICE_SECRET,
+        profile.appwrite_user_id,
+        profile.display_name,
+      );
+      await env.DB.prepare(`
+        UPDATE user_profiles
+        SET username_sync_status = 'SYNCED',
+          username_sync_attempt_count = username_sync_attempt_count + 1,
+          username_sync_next_retry_at = NULL,
+          username_sync_last_error_code = NULL,
+          version = version + 1,
+          updated_at = ?
+        WHERE appwrite_user_id = ? AND display_name = ?
+      `).bind(now, profile.appwrite_user_id, profile.display_name).run();
+    } catch {
+      await env.DB.prepare(`
+        UPDATE user_profiles
+        SET username_sync_status = 'FAILED',
+          username_sync_attempt_count = username_sync_attempt_count + 1,
+          username_sync_next_retry_at = ?,
+          username_sync_last_error_code = 'APPWRITE_NAME_SYNC_FAILED',
+          version = version + 1,
+          updated_at = ?
+        WHERE appwrite_user_id = ? AND display_name = ?
+      `).bind(
+        new Date(Date.parse(now) + 60 * 60_000).toISOString(),
+        now,
+        profile.appwrite_user_id,
+        profile.display_name,
+      ).run();
+    }
+  }
+}
+
 async function retryMembershipActivationEmails(
   env: MaintenanceEnv,
   batchSize: number,
@@ -577,6 +633,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
     await cleanupRetainedEvidence(env, now, batchSize);
     await cleanupRetiredContentMedia(env, now, batchSize);
     await retryLabelSync(env, now, batchSize);
+    await retryUsernameSync(env, now, batchSize);
     await retryMembershipActivationEmails(env, batchSize);
     await discoverInactiveAccounts(
       env,

@@ -30,6 +30,7 @@ import {
   requestPasswordReset,
   resendVerification,
   submitAgeVerificationCase,
+  updateProfileEmail,
   updateProfileName,
   updatePrivacyChoices,
   updatePrivacyProfile,
@@ -101,6 +102,16 @@ const copy = {
     ageAssuranceTitle: "Was mit deinen Nachweisen geschieht",
     ageAssuranceText: "Die Dateien werden über HTTPS in einen privaten, nicht öffentlich erreichbaren Prüfbereich übertragen. Zugriff hat ausschließlich der autorisierte Admin zur Entscheidung.",
     ageDeletionText: "Nach Freigabe oder Ablehnung werden Ausweisbilder und Video sofort gelöscht. Gespeichert bleibt nur das notwendige Prüfergebnis mit Zeitpunkt und Prüfprotokoll.",
+    ageCloudflareBadge: "Geschützt auf Cloudflare",
+    agePrivateBadge: "Privater EU-Speicher",
+    ageDeleteBadge: "Sofortige Löschung",
+    ageSecurityDetails: "Technische Sicherheitsdetails",
+    ageSecurityItems: [
+      "Verschlüsselte HTTPS-Übertragung direkt an den geschützten Worker.",
+      "Separater, nicht öffentlich erreichbarer Cloudflare-R2-Bucket mit EU-Jurisdiktion.",
+      "Keine Freigabelinks und kein direkter Browserzugriff auf gespeicherte Nachweise.",
+      "Ausweisbilder und Video werden unmittelbar nach Freigabe oder Ablehnung technisch gelöscht.",
+    ],
     ageSteps: ["Dokument wählen", "Live-Challenge aufnehmen", "Persönliche Prüfung"],
     documentType: "Dokumentart",
     nationalId: "Personalausweis / nationale ID",
@@ -125,6 +136,7 @@ const copy = {
       "Sorge für helles, gleichmäßiges Licht. Gesicht und Dokument müssen scharf, vollständig und ohne Spiegelung sichtbar sein; Filter, Sonnenbrille, Maske und weitere Personen sind unzulässig.",
     ],
     watermarkNote: "Die Website entfernt Bildmetadaten, verkleinert sehr große Aufnahmen und fügt außerhalb des Dokuments den Hinweis „KOPIE – NUR ALTERSPRÜFUNG“ mit Datum und Seite hinzu.",
+    uploadPhotoHint: "Direkt fotografieren oder vorhandene Aufnahme auswählen · Metadaten werden entfernt",
     consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und bestätige die ausschließlich für Alters- und Identitätsprüfung erforderliche Verarbeitung. Die Datenschutzhinweise und sofortige Löschung nach der Entscheidung habe ich gelesen.",
     beginVerification: "Sichere Prüfung starten",
     challengeTitle: "Deine persönliche Live-Challenge",
@@ -195,6 +207,16 @@ const copy = {
     ageAssuranceTitle: "What happens to your evidence",
     ageAssuranceText: "Files travel over HTTPS into a private review area that is never publicly accessible. Only the authorised admin can access them to make a decision.",
     ageDeletionText: "ID images and video are deleted immediately after approval or rejection. Only the necessary result, decision time and review record remain.",
+    ageCloudflareBadge: "Protected on Cloudflare",
+    agePrivateBadge: "Private EU storage",
+    ageDeleteBadge: "Immediate deletion",
+    ageSecurityDetails: "Technical security details",
+    ageSecurityItems: [
+      "Encrypted HTTPS transfer directly to the protected Worker.",
+      "Separate, non-public Cloudflare R2 bucket with EU jurisdiction.",
+      "No share links and no direct browser access to stored evidence.",
+      "ID images and video are technically deleted immediately after approval or rejection.",
+    ],
     ageSteps: ["Choose document", "Record live challenge", "Personal review"],
     documentType: "Document type",
     nationalId: "National identity card",
@@ -219,6 +241,7 @@ const copy = {
       "Use bright, even light. Face and document must be sharp, complete and glare-free; filters, sunglasses, masks and other people are not permitted.",
     ],
     watermarkNote: "The website removes image metadata, scales down very large images and adds a dated “COPY – AGE VERIFICATION ONLY” label outside the document image.",
+    uploadPhotoHint: "Take a photo now or choose an existing image · metadata is removed",
     consentText: "I am at least 18, use my own valid document and confirm the processing strictly necessary for age and identity review. I have read the privacy notice and immediate-deletion information.",
     beginVerification: "Start secure verification",
     challengeTitle: "Your personal live challenge",
@@ -316,7 +339,10 @@ function Field({ label, ...props }) {
 }
 
 function VerificationRules({ ui }) {
-  return <div className="verification-rules"><h3>{ui.verificationRules}</h3><ol>{ui.rules.map((rule) => <li key={rule}>{rule}</li>)}</ol><p>{ui.watermarkNote}</p></div>;
+  return <details className="verification-rules">
+    <summary><span aria-hidden="true">✓</span><strong>{ui.verificationRules}</strong><small>+</small></summary>
+    <div><ol>{ui.rules.map((rule) => <li key={rule}>{rule}</li>)}</ol><p>{ui.watermarkNote}</p></div>
+  </details>;
 }
 
 function VerificationJourney({ ui, activeStep = 1 }) {
@@ -333,8 +359,29 @@ function VerificationAssurance({ ui }) {
     <div className="verification-assurance__icon" aria-hidden="true">
       <svg viewBox="0 0 32 32"><path d="M16 3 27 7v8c0 7-4.5 11.5-11 14C9.5 26.5 5 22 5 15V7l11-4Z" /><path d="m11 16 3 3 7-8" /></svg>
     </div>
-    <div><h3>{ui.ageAssuranceTitle}</h3><p>{ui.ageAssuranceText}</p><p>{ui.ageDeletionText}</p></div>
+    <div className="verification-assurance__content">
+      <h3>{ui.ageAssuranceTitle}</h3>
+      <p>{ui.ageAssuranceText}</p>
+      <p className="verification-deletion-notice"><strong>{ui.ageDeleteBadge}:</strong> {ui.ageDeletionText}</p>
+      <div className="verification-trust-badges" aria-label={ui.ageSecurityDetails}>
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M8 8h8M9 16h6" /></svg>{ui.ageCloudflareBadge}</span>
+        <span>{ui.agePrivateBadge}</span>
+        <span>{ui.ageDeleteBadge}</span>
+      </div>
+      <details className="verification-security-details">
+        <summary>{ui.ageSecurityDetails}</summary>
+        <ul>{ui.ageSecurityItems.map((item) => <li key={item}>{item}</li>)}</ul>
+      </details>
+    </div>
   </aside>;
+}
+
+function EvidenceUpload({ label, complete, name, required, hint, ...props }) {
+  return <label className={`evidence-upload${complete ? " is-complete" : ""}`}>
+    <span className="evidence-upload__status" aria-hidden="true">{complete ? "✓" : "+"}</span>
+    <span className="evidence-upload__copy"><strong>{label}</strong><small>{hint}</small></span>
+    <input name={name} type="file" required={required} {...props} />
+  </label>;
 }
 
 function ageDocumentOptions(countryCode, ui) {
@@ -1392,9 +1439,43 @@ export default function App() {
     const data = new FormData(event.currentTarget);
     await run(
       () => updateProfileName(String(data.get("name") || "").trim()),
-      language === "de" ? "Dein Profil wurde aktualisiert." : "Your profile was updated.",
+      language === "de"
+        ? "Dein Benutzername wurde geändert. Die nächste Änderung ist in 14 Tagen möglich."
+        : "Your username was changed. You can change it again in 14 days.",
       "account",
     );
+  };
+
+  const changeEmail = async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const email = String(data.get("email") || "").trim();
+    const password = String(data.get("password") || "");
+    setBusy(true);
+    setNotice("");
+    let emailChanged = false;
+    try {
+      await updateProfileEmail(email, password);
+      emailChanged = true;
+      await resendVerification(language);
+      await refresh();
+      form.reset();
+      setNotice(language === "de"
+        ? "E-Mail-Adresse geändert. Bitte bestätige die neue Adresse über den soeben versendeten Link."
+        : "Email address changed. Confirm the new address using the link we just sent.");
+    } catch (error) {
+      if (emailChanged) {
+        await refresh().catch(() => null);
+        setNotice(language === "de"
+          ? "Die E-Mail-Adresse wurde geändert, aber die Bestätigungsmail konnte noch nicht zugestellt werden. Nutze bitte „Bestätigungs-E-Mail erneut senden“ in der Übersicht."
+          : "Your email address was changed, but the confirmation email could not be delivered yet. Use “Resend confirmation email” in Overview.");
+      } else {
+        setNotice(friendlyErrorMessage(error, language, t.genericError));
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const privacyAction = async (work, success) => {
@@ -1696,7 +1777,7 @@ export default function App() {
           ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
         </div>
         {dashboardTab === "overview" && <div className="dashboard-overview">
-          <div className="dashboard-profile-card"><img src="/linktree/uploads/profile.png" alt="" /><div><p className="eyebrow">{language === "de" ? "WILLKOMMEN ZURÜCK" : "WELCOME BACK"}</p><h3>{user.name || user.email}</h3><p>{user.email}</p></div></div>
+          <div className="dashboard-profile-card"><img src="/linktree/uploads/profile.png" alt="" /><div><p className="eyebrow">{language === "de" ? "WILLKOMMEN ZURÜCK" : "WELCOME BACK"}</p><h3>{profile?.displayName || user.name || user.email}</h3><p>{user.email}</p></div></div>
           <div className="dashboard-stat-grid">
             <article><span>{language === "de" ? "Kontostatus" : "Account status"}</span><strong>{profile?.status || "EMAIL_PENDING"}</strong></article>
             <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
@@ -1719,12 +1800,65 @@ export default function App() {
             {ageStatus === "APPROVED" && <button className="secondary-action" type="button" onClick={openGallery}>{ui.openGallery}</button>}
           </div>
         </div>}
-        {dashboardTab === "profile" && <form className="dashboard-form" onSubmit={saveProfile}>
-          <Field label={t.name} name="name" defaultValue={user.name || ""} autoComplete="name" required maxLength="128" />
-          <Field label={t.emailLabel} value={user.email} disabled readOnly />
-          <p className="upload-note">{language === "de" ? "Die E-Mail-Adresse wird zur Anmeldung, für Bestellbestätigungen und Rechnungen verwendet." : "Your email is used for sign-in, order confirmations and invoices."}</p>
-          <button className="primary-action" disabled={busy}>{language === "de" ? "Änderungen speichern" : "Save changes"}</button>
-        </form>}
+        {dashboardTab === "profile" && <div className="profile-settings">
+          <form className="dashboard-form profile-setting-card" onSubmit={saveProfile}>
+            <div className="profile-setting-card__heading">
+              <span aria-hidden="true">01</span>
+              <div>
+                <h3>{language === "de" ? "Benutzername" : "Username"}</h3>
+                <p>{language === "de"
+                  ? "Dein sichtbarer Name für Beiträge und Kommentare."
+                  : "Your public name for posts and comments."}</p>
+              </div>
+            </div>
+            <Field
+              label={language === "de" ? "Neuer Benutzername" : "New username"}
+              name="name"
+              key={profile?.displayName || user.name}
+              defaultValue={profile?.displayName || user.name || ""}
+              autoComplete="nickname"
+              required
+              minLength="2"
+              maxLength="64"
+              disabled={!profile?.usernameCanChange}
+            />
+            <p className="profile-policy-note">
+              {!profile
+                ? (language === "de" ? "Die Profileinstellungen werden gerade geladen." : "Profile settings are loading.")
+                : profile.usernameCanChange
+                ? (profile?.usernameChangeCount
+                  ? (language === "de" ? "Die Änderung ist jetzt verfügbar." : "You can change it now.")
+                  : (language === "de" ? "Deine erste Änderung nach der Registrierung ist sofort möglich." : "Your first change after registration is available immediately."))
+                : `${language === "de" ? "Nächste Änderung möglich ab" : "Next change available"} ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(profile?.usernameNextChangeAt))}.`}
+            </p>
+            <button className="primary-action" disabled={busy || !profile?.usernameCanChange}>
+              {language === "de" ? "Benutzernamen ändern" : "Change username"}
+            </button>
+          </form>
+
+          <form className="dashboard-form profile-setting-card" onSubmit={changeEmail}>
+            <div className="profile-setting-card__heading">
+              <span aria-hidden="true">02</span>
+              <div>
+                <h3>{language === "de" ? "E-Mail-Adresse" : "Email address"}</h3>
+                <p>{language === "de"
+                  ? "Für Login, Sicherheitsnachrichten, Bestellungen und Rechnungen."
+                  : "Used for sign-in, security messages, orders and invoices."}</p>
+              </div>
+            </div>
+            <div className="current-account-value"><span>{language === "de" ? "Aktuell" : "Current"}</span><strong>{user.email}</strong></div>
+            <Field label={language === "de" ? "Neue E-Mail-Adresse" : "New email address"} name="email" type="email" autoComplete="email" required maxLength="320" />
+            <Field label={language === "de" ? "Aktuelles Passwort" : "Current password"} name="password" type="password" autoComplete="current-password" required minLength="8" maxLength="256" />
+            <p className="profile-policy-note is-security">
+              {language === "de"
+                ? "Nach der Änderung wird der geschützte Zugang pausiert, bis du die neue Adresse bestätigt hast."
+                : "Protected access is paused after the change until you confirm the new address."}
+            </p>
+            <button className="secondary-action" disabled={busy}>
+              {language === "de" ? "E-Mail sicher ändern" : "Securely change email"}
+            </button>
+          </form>
+        </div>}
         {dashboardTab === "orders" && <div className="order-list">
           {orders.length ? orders.map((order) => <article className="order-card" key={order.orderId}>
             <div className="order-card__head"><div><p className="eyebrow">{order.status}</p><h3>{order.productName}</h3></div><strong>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: order.currency }).format(order.amountMinor / 100)}</strong></div>
@@ -1781,18 +1915,20 @@ export default function App() {
         <VerificationRules ui={ui} />
         <p className="upload-note">{ui.agePrivacy}</p>
         <p className="eyebrow">{ui.challengeTitle}</p>
-        <Field
-          label={`${ageDocumentType === "PASSPORT" ? ui.passportFront : ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`}
+        <EvidenceUpload
+          label={ageDocumentType === "PASSPORT" ? ui.passportFront : ui.documentFront}
+          hint={ui.uploadPhotoHint}
+          complete={activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")}
           name="documentFront"
-          type="file"
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
           required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")}
         />
-        {(activeAgeCase?.requiredEvidence || []).includes("DOCUMENT_BACK") && <Field
-          label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`}
+        {(activeAgeCase?.requiredEvidence || []).includes("DOCUMENT_BACK") && <EvidenceUpload
+          label={ui.documentBack}
+          hint={ui.uploadPhotoHint}
+          complete={activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")}
           name="documentBack"
-          type="file"
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
           required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")}

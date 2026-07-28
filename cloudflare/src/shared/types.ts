@@ -139,6 +139,14 @@ export interface UserProfileRow {
   appwrite_user_id: string;
   email: string;
   display_name: string;
+  username_change_count?: number;
+  username_last_changed_at?: string | null;
+  username_next_change_at?: string | null;
+  username_sync_status?: "PENDING" | "SYNCED" | "FAILED";
+  username_sync_attempt_count?: number;
+  username_sync_next_retry_at?: string | null;
+  username_sync_last_error_code?: string | null;
+  username_last_idempotency_key?: string | null;
   email_verified: number;
   account_status: "EMAIL_PENDING" | "ACTIVE" | "RESTRICTED" | "DELETION_PENDING" | "DELETED";
   age_status: AgeStatus;

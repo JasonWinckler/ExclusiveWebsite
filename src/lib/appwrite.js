@@ -176,7 +176,11 @@ export async function completeLegacyEmailVerification(userId, secret) {
   }
 }
 export const completeLegacyPasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
-export const updateProfileName = (name) => account.updateName({ name });
+export const updateProfileName = (displayName) => apiRequest(
+  "/v1/account/profile/name",
+  { method: "PATCH", json: { displayName }, idempotent: true },
+);
+export const updateProfileEmail = (email, password) => account.updateEmail({ email, password });
 
 export const getProducts = (locale = "de") => apiRequest(
   `/v1/products?locale=${locale === "en" ? "en" : "de"}`,

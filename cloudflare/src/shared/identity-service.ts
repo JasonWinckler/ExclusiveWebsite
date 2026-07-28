@@ -78,6 +78,15 @@ export function updateAppwriteUserPassword(
   return callIdentityService(service, secret, "/update-user-password", { userId, password });
 }
 
+export function updateAppwriteUserName(
+  service: Service,
+  secret: string,
+  userId: string,
+  name: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/update-user-name", { userId, name });
+}
+
 export function sendTransactionalEmail(
   service: Service,
   secret: string,

@@ -27,6 +27,7 @@ import {
 import { authorizeProtectedContent } from "../shared/policy";
 import {
   sendTransactionalEmail,
+  updateAppwriteUserName,
   updateAppwriteUserStatus,
   updateAppwriteUserPassword,
   verifyAppwriteUserEmail,
@@ -196,7 +197,10 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       LIMIT 1
     )
     SELECT
-      p.account_status, p.email_verified, p.age_status, p.country_code,
+      p.account_status, p.email_verified, p.age_status, p.display_name,
+      p.username_change_count, p.username_last_changed_at, p.username_next_change_at,
+      p.username_sync_status,
+      p.country_code,
       p.region_code, p.privacy_regime, p.privacy_notice_acknowledged_at,
       e.tier AS entitlement_tier, e.expires_at AS entitlement_expires_at,
       (SELECT COUNT(*) FROM registered_devices d
@@ -215,6 +219,11 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     account_status: string;
     email_verified: number;
     age_status: string;
+    display_name: string;
+    username_change_count: number;
+    username_last_changed_at: string | null;
+    username_next_change_at: string | null;
+    username_sync_status: string;
     country_code: string | null;
     region_code: string | null;
     privacy_regime: string | null;
@@ -241,6 +250,14 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     account: {
       status: row.account_status,
       emailVerified: row.email_verified === 1,
+      displayName: row.display_name,
+      usernameChangeCount: row.username_change_count,
+      usernameLastChangedAt: row.username_last_changed_at,
+      usernameNextChangeAt: row.username_next_change_at,
+      usernameCanChange: row.username_change_count === 0 ||
+        !row.username_next_change_at ||
+        Date.parse(row.username_next_change_at) <= Date.parse(now),
+      usernameSyncStatus: row.username_sync_status,
       restricted: row.account_status === "RESTRICTED",
       deletionPending: row.account_status === "DELETION_PENDING",
       countryCode: row.country_code,
@@ -633,6 +650,160 @@ function normalizedBillingText(value: unknown, maximum: number): string | null {
   return normalized;
 }
 
+function normalizeDisplayName(value: unknown): string {
+  if (typeof value !== "string") throw new ApiError(400, "INVALID_DISPLAY_NAME");
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  if (
+    normalized.length < 2 ||
+    normalized.length > 64 ||
+    /[\u0000-\u001f\u007f]/.test(normalized) ||
+    !/[\p{L}\p{N}]/u.test(normalized)
+  ) throw new ApiError(400, "INVALID_DISPLAY_NAME");
+  return normalized;
+}
+
+async function updateDisplayName(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["displayName"]);
+  const displayName = normalizeDisplayName(body.displayName);
+  const idempotencyKey = requireIdempotencyKey(request);
+  const now = isoNow();
+  const profile = await env.DB.prepare(`
+    SELECT display_name, account_status, username_change_count,
+      username_last_changed_at, username_next_change_at,
+      username_sync_status, username_last_idempotency_key
+    FROM user_profiles
+    WHERE appwrite_user_id = ?
+  `).bind(userId).first<{
+    display_name: string;
+    account_status: string;
+    username_change_count: number;
+    username_last_changed_at: string | null;
+    username_next_change_at: string | null;
+    username_sync_status: string;
+    username_last_idempotency_key: string | null;
+  }>();
+  if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  if (profile.account_status !== "ACTIVE") throw new ApiError(409, "ACCOUNT_NOT_ACTIVE");
+  if (profile.username_last_idempotency_key === idempotencyKey) {
+    return {
+      displayName: profile.display_name,
+      changeCount: profile.username_change_count,
+      lastChangedAt: profile.username_last_changed_at,
+      nextChangeAt: profile.username_next_change_at,
+      canChange: profile.username_change_count === 0 ||
+        !profile.username_next_change_at ||
+        Date.parse(profile.username_next_change_at) <= Date.parse(now),
+      syncStatus: profile.username_sync_status,
+      existing: true,
+    };
+  }
+  if (displayName === profile.display_name) {
+    return {
+      displayName,
+      changeCount: profile.username_change_count,
+      lastChangedAt: profile.username_last_changed_at,
+      nextChangeAt: profile.username_next_change_at,
+      canChange: profile.username_change_count === 0 ||
+        !profile.username_next_change_at ||
+        Date.parse(profile.username_next_change_at) <= Date.parse(now),
+      syncStatus: profile.username_sync_status,
+      unchanged: true,
+    };
+  }
+  if (
+    profile.username_change_count > 0 &&
+    profile.username_next_change_at &&
+    Date.parse(profile.username_next_change_at) > Date.parse(now)
+  ) throw new ApiError(409, "USERNAME_CHANGE_COOLDOWN");
+
+  const nextChangeAt = new Date(Date.parse(now) + 14 * 86_400_000).toISOString();
+  const updated = await env.DB.prepare(`
+    UPDATE user_profiles
+    SET display_name = ?,
+      username_change_count = username_change_count + 1,
+      username_last_changed_at = ?,
+      username_next_change_at = ?,
+      username_sync_status = 'PENDING',
+      username_sync_next_retry_at = NULL,
+      username_sync_last_error_code = NULL,
+      username_last_idempotency_key = ?,
+      version = version + 1,
+      updated_at = ?
+    WHERE appwrite_user_id = ?
+      AND account_status = 'ACTIVE'
+      AND (
+        username_change_count = 0
+        OR username_next_change_at IS NULL
+        OR username_next_change_at <= ?
+      )
+  `).bind(
+    displayName,
+    now,
+    nextChangeAt,
+    idempotencyKey,
+    now,
+    userId,
+    now,
+  ).run();
+  if ((updated.meta.changes ?? 0) !== 1) {
+    throw new ApiError(409, "USERNAME_CHANGE_COOLDOWN");
+  }
+
+  let syncStatus: "SYNCED" | "FAILED" = "SYNCED";
+  try {
+    await updateAppwriteUserName(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      displayName,
+    );
+    await env.DB.prepare(`
+      UPDATE user_profiles
+      SET username_sync_status = 'SYNCED',
+        username_sync_attempt_count = username_sync_attempt_count + 1,
+        username_sync_next_retry_at = NULL,
+        username_sync_last_error_code = NULL,
+        version = version + 1,
+        updated_at = ?
+      WHERE appwrite_user_id = ? AND username_last_idempotency_key = ?
+    `).bind(isoNow(), userId, idempotencyKey).run();
+  } catch {
+    syncStatus = "FAILED";
+    await env.DB.prepare(`
+      UPDATE user_profiles
+      SET username_sync_status = 'FAILED',
+        username_sync_attempt_count = username_sync_attempt_count + 1,
+        username_sync_next_retry_at = ?,
+        username_sync_last_error_code = 'APPWRITE_NAME_SYNC_FAILED',
+        version = version + 1,
+        updated_at = ?
+      WHERE appwrite_user_id = ? AND username_last_idempotency_key = ?
+    `).bind(
+      new Date(Date.now() + 60 * 60_000).toISOString(),
+      isoNow(),
+      userId,
+      idempotencyKey,
+    ).run();
+  }
+  return {
+    displayName,
+    changeCount: profile.username_change_count + 1,
+    lastChangedAt: now,
+    nextChangeAt,
+    canChange: false,
+    syncStatus,
+    existing: false,
+  };
+}
+
 function billingDetails(value: unknown): BillingDetails | null {
   if (value == null) return null;
   exactObjectKeys(value, ["name", "street", "postalCode", "city", "countryCode"]);
@@ -680,12 +851,12 @@ function authEmailHtml(input: {
   const isGerman = input.locale === "de";
   const verification = input.purpose === "VERIFY_EMAIL";
   const title = verification
-    ? (isGerman ? "Dein exklusiver Zugang beginnt hier" : "Your exclusive access starts here")
+    ? (isGerman ? "E-Mail-Adresse bestätigen" : "Confirm your email address")
     : (isGerman ? "Sicher zurück in deinen Account" : "Securely return to your account");
   const intro = verification
     ? (isGerman
-      ? "Bestätige deine E-Mail und öffne die Tür zu deinem persönlichen Member-Bereich."
-      : "Confirm your email and open the door to your personal member experience.")
+      ? "Bestätige, dass diese E-Mail-Adresse zu deinem Shadow's Temptation Account gehört."
+      : "Confirm that this email address belongs to your Shadow's Temptation account.")
     : (isGerman
       ? "Mit diesem einmaligen Link legst du ein neues Passwort fest und erhältst wieder Zugriff."
       : "Use this single-use link to choose a new password and restore your access.");
@@ -694,8 +865,8 @@ function authEmailHtml(input: {
     : (isGerman ? "Neues Passwort festlegen" : "Choose a new password");
   const preheader = verification
     ? (isGerman
-      ? "Nur noch ein Klick bis zu deinem persönlichen Shadow's Temptation Account."
-      : "One click remains before your personal Shadow's Temptation account is ready.")
+      ? "Sicherer Bestätigungslink für deine neue oder registrierte E-Mail-Adresse."
+      : "Secure confirmation link for your new or registered email address.")
     : (isGerman
       ? "Dein sicherer Link zum Zurücksetzen des Passworts."
       : "Your secure password reset link.");
@@ -709,8 +880,8 @@ function authEmailHtml(input: {
     : `This link can be used once and is valid until ${expiry}. If you did not request it, please ignore this message; your existing password remains unchanged.`;
   const nextStep = verification
     ? (isGerman
-      ? "Nach der Bestätigung kannst du dich direkt anmelden und deine persönliche 18+-Verifikation starten."
-      : "After confirmation, you can sign in immediately and begin your personal 18+ verification.")
+      ? "Nach der Bestätigung kannst du dich direkt anmelden und deinen Account weiter einrichten."
+      : "After confirmation, you can sign in immediately and continue setting up your account.")
     : (isGerman
       ? "Danach kannst du dich sofort wieder anmelden und dort weitermachen, wo du aufgehört hast."
       : "You can then sign in immediately and continue exactly where you left off.");
@@ -825,7 +996,7 @@ async function issueAuthEmailToken(
   const action = input.purpose === "VERIFY_EMAIL" ? "verify-email" : "recover";
   const actionUrl = `https://exclusive.jason-shadow.com/?action=${action}&token=${encodeURIComponent(token)}`;
   const subject = input.purpose === "VERIFY_EMAIL"
-    ? (input.locale === "de" ? "Bestätige deinen Zugang · Shadow's Temptation" : "Confirm your access · Shadow's Temptation")
+    ? (input.locale === "de" ? "E-Mail-Adresse bestätigen · Shadow's Temptation" : "Confirm your email address · Shadow's Temptation")
     : (input.locale === "de" ? "Passwort sicher zurücksetzen · Shadow's Temptation" : "Secure password reset · Shadow's Temptation");
   try {
     await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
@@ -841,12 +1012,23 @@ async function issueAuthEmailToken(
       }),
     });
     await env.DB.prepare(`
-      UPDATE auth_email_tokens SET email_status = 'SENT', updated_at = ? WHERE id = ?
-    `).bind(isoNow(), tokenId).run();
+      UPDATE auth_email_tokens
+      SET email_status = 'SENT',
+        email_accepted_at = ?,
+        email_attempt_count = email_attempt_count + 1,
+        email_last_error_code = NULL,
+        updated_at = ?
+      WHERE id = ?
+    `).bind(isoNow(), isoNow(), tokenId).run();
     return { accepted: true, expiresAt, emailStatus: "SENT", existing: false };
   } catch {
     await env.DB.prepare(`
-      UPDATE auth_email_tokens SET email_status = 'FAILED', updated_at = ? WHERE id = ?
+      UPDATE auth_email_tokens
+      SET email_status = 'FAILED',
+        email_attempt_count = email_attempt_count + 1,
+        email_last_error_code = 'TRANSACTIONAL_EMAIL_FAILED',
+        updated_at = ?
+      WHERE id = ?
     `).bind(isoNow(), tokenId).run();
     throw new ApiError(503, "AUTH_EMAIL_DELIVERY_FAILED");
   }
@@ -2839,6 +3021,8 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/entitlements/status") {
     const status = await statusResponse(env, identity.userId);
     result = status.entitlement as Record<string, unknown>;
+  } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/account/profile/name") {
+    result = await updateDisplayName(request, env, identity.userId);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/age-verification/cases") {
     result = await createAgeCase(request, env, identity.userId);
   } else if (request.method === "PUT" && evidencePath) {
