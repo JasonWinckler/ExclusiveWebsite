@@ -26,6 +26,7 @@ import {
 } from "../shared/http";
 import { authorizeProtectedContent } from "../shared/policy";
 import {
+  revokeAppwriteSessions,
   sendTransactionalEmail,
   updateAppwriteUserName,
   updateAppwriteUserStatus,
@@ -2938,6 +2939,16 @@ async function requestDeletion(
         version = version + 1, updated_at = ? WHERE appwrite_user_id = ?
     `).bind(now, userId),
   ]);
+  let appwriteSessionRevocation = "SYNCED";
+  try {
+    await revokeAppwriteSessions(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+    );
+  } catch {
+    appwriteSessionRevocation = "FAILED";
+  }
   let appwriteStatusSync = "SYNCED";
   try {
     await updateAppwriteUserStatus(
@@ -2949,7 +2960,12 @@ async function requestDeletion(
   } catch {
     appwriteStatusSync = "FAILED";
   }
-  return { status: "DELETION_PENDING", scheduledAt, appwriteStatusSync };
+  return {
+    status: "DELETION_PENDING",
+    scheduledAt,
+    appwriteSessionRevocation,
+    appwriteStatusSync,
+  };
 }
 
 async function route(request: Request, env: MembershipEnv): Promise<Response> {

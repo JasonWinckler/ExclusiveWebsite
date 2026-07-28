@@ -18,6 +18,7 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import {
+  revokeAppwriteSessions,
   syncAppwriteLabel,
   updateAppwriteUserStatus,
   verifyAppwriteUserEmail,
@@ -1961,6 +1962,16 @@ async function restrictUser(
       now,
     }),
   ]);
+  let appwriteSessionRevocation = "SYNCED";
+  try {
+    await revokeAppwriteSessions(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+    );
+  } catch {
+    appwriteSessionRevocation = "FAILED";
+  }
   let appwriteStatusSync = "SYNCED";
   try {
     await updateAppwriteUserStatus(
@@ -1972,7 +1983,11 @@ async function restrictUser(
   } catch {
     appwriteStatusSync = "FAILED";
   }
-  return { accountStatus: "RESTRICTED", appwriteStatusSync };
+  return {
+    accountStatus: "RESTRICTED",
+    appwriteSessionRevocation,
+    appwriteStatusSync,
+  };
 }
 
 async function unrestrictUser(
@@ -2188,6 +2203,16 @@ async function scheduleAdminAccountDeletion(
       now,
     }),
   ]);
+  let appwriteSessionRevocation = "SYNCED";
+  try {
+    await revokeAppwriteSessions(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+    );
+  } catch {
+    appwriteSessionRevocation = "FAILED";
+  }
   let appwriteStatusSync = "SYNCED";
   try {
     await updateAppwriteUserStatus(
@@ -2203,6 +2228,7 @@ async function scheduleAdminAccountDeletion(
     deletionJobId: jobId,
     status: "DELETION_PENDING",
     scheduledAt: now,
+    appwriteSessionRevocation,
     appwriteStatusSync,
     existing: false,
   };

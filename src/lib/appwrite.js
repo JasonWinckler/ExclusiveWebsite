@@ -21,6 +21,8 @@ const client = new Client()
   .setProject(appwriteConfig.projectId);
 const account = new Account(client);
 const deviceStorageKey = "jason-shadow-device-token-v1";
+const appwriteFallbackCookieKey = "cookieFallback";
+const appwriteFallbackSessionKey = `a_session_${appwriteConfig.projectId}`;
 export const ageInstructionsVersion = "manual-age-v4";
 
 export class CloudflareApiError extends Error {
@@ -114,10 +116,63 @@ export function getDeviceToken() {
   return token;
 }
 
+function clearAppwriteFallbackSession() {
+  try {
+    const raw = localStorage.getItem(appwriteFallbackCookieKey);
+    if (!raw) return;
+    const fallbackCookies = JSON.parse(raw);
+    if (!fallbackCookies || typeof fallbackCookies !== "object" || Array.isArray(fallbackCookies)) {
+      localStorage.removeItem(appwriteFallbackCookieKey);
+      return;
+    }
+    delete fallbackCookies[appwriteFallbackSessionKey];
+    if (Object.keys(fallbackCookies).length) {
+      localStorage.setItem(appwriteFallbackCookieKey, JSON.stringify(fallbackCookies));
+    } else {
+      localStorage.removeItem(appwriteFallbackCookieKey);
+    }
+  } catch {
+    localStorage.removeItem(appwriteFallbackCookieKey);
+  }
+}
+
+async function discardBlockedSession() {
+  try {
+    await account.deleteSession({ sessionId: "current" });
+  } catch {
+    // A blocked Appwrite user may no longer be allowed to delete its own session.
+  }
+  clearAppwriteFallbackSession();
+}
+
+async function createEmailPasswordSession(email, password) {
+  try {
+    return await account.createEmailPasswordSession({ email, password });
+  } catch (error) {
+    if (error?.type !== "user_blocked") throw error;
+    await discardBlockedSession();
+    return account.createEmailPasswordSession({ email, password });
+  }
+}
+
+async function createAccount(email, password, name) {
+  try {
+    return await account.create({ userId: ID.unique(), email, password, name });
+  } catch (error) {
+    if (error?.type !== "user_blocked") throw error;
+    await discardBlockedSession();
+    return account.create({ userId: ID.unique(), email, password, name });
+  }
+}
+
 export async function getCurrentUser() {
   try {
     return await account.get();
   } catch (error) {
+    if (error?.type === "user_blocked") {
+      await discardBlockedSession();
+      return null;
+    }
     if (error?.code === 401) return null;
     throw error;
   }
@@ -134,8 +189,8 @@ export async function registerAccount({
   gpcSignal = false,
   locale = "de",
 }) {
-  const user = await account.create({ userId: ID.unique(), email, password, name });
-  await account.createEmailPasswordSession({ email, password });
+  const user = await createAccount(email, password, name);
+  await createEmailPasswordSession(email, password);
   await updatePrivacyProfile({
     countryCode,
     regionCode: countryCode === "US" ? regionCode : null,
@@ -148,8 +203,17 @@ export async function registerAccount({
   return user;
 }
 
-export const login = (email, password) => account.createEmailPasswordSession({ email, password });
-export const logout = () => account.deleteSession({ sessionId: "current" });
+export const login = (email, password) => createEmailPasswordSession(email, password);
+export async function logout() {
+  try {
+    return await account.deleteSession({ sessionId: "current" });
+  } catch (error) {
+    if (error?.type !== "user_blocked" && error?.type !== "user_session_not_found") throw error;
+    return {};
+  } finally {
+    clearAppwriteFallbackSession();
+  }
+}
 export const requestEmailVerification = (locale = "de") => apiRequest(
   "/v1/auth/email-verification/request",
   { method: "POST", json: { locale }, idempotent: true },

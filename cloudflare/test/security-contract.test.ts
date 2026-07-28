@@ -169,6 +169,25 @@ describe("browser and repository security contract", () => {
     expect(frontend).not.toContain("function messageFor");
   });
 
+  it("revokes sessions before blocking accounts and recovers stale blocked browser state", () => {
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const frontendApi = read("src/lib/appwrite.js");
+    expect(membership).toContain("await revokeAppwriteSessions(");
+    expect(admin.match(/await revokeAppwriteSessions\(/g)).toHaveLength(2);
+    expect(frontendApi).toContain("clearAppwriteFallbackSession");
+    expect(frontendApi).toContain('error?.type !== "user_blocked"');
+    expect(frontendApi).toContain("await discardBlockedSession()");
+    expect(frontendApi).toContain("return account.createEmailPasswordSession({ email, password })");
+    expect(frontendApi).toContain("return account.create({ userId: ID.unique(), email, password, name })");
+    const currentUserFlow = frontendApi.slice(
+      frontendApi.indexOf("export async function getCurrentUser"),
+      frontendApi.indexOf("export async function registerAccount"),
+    );
+    expect(currentUserFlow.indexOf('error?.type === "user_blocked"'))
+      .toBeLessThan(currentUserFlow.indexOf("error?.code === 401"));
+  });
+
   it("keeps the SEPA subscription insert aligned with its database columns", () => {
     const membershipWorker = read("cloudflare/src/workers/membership-api.ts");
     const insert = membershipWorker.match(
