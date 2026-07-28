@@ -1170,6 +1170,31 @@ export default function App() {
     } else run(() => login(data.email, data.password), t.loginSuccess, "account");
   };
 
+  const handleLogout = async () => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await logout();
+      setUser(null);
+      setMembership(null);
+      setOrders([]);
+      setPremiumTelegram(null);
+      setVipWhatsapp(null);
+      setPrivacy(null);
+      setGallery([]);
+      setComments([]);
+      setMediaBySlug({});
+      setAgeSession(null);
+      setMode("login");
+      setModal("auth");
+      setNotice(t.logoutSuccess);
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitAge = async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1725,7 +1750,7 @@ export default function App() {
           onCancelRequest={withdrawPrivacyRequest}
           onDeleteAccount={deleteAccountFromPrivacyCenter}
         />}
-        <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={() => run(logout, t.logoutSuccess, "auth")}>{ui.logout}</button></div>
+        <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={handleLogout}>{ui.logout}</button></div>
       </div>}
     </Modal>}
 
