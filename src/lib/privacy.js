@@ -1,4 +1,4 @@
-export const privacyNoticeVersion = "PRIVACY-2026-07-27";
+export const privacyNoticeVersion = "PRIVACY-2026-07-28";
 
 const fallbackCountries = [
   ["DE", "Deutschland / Germany"],

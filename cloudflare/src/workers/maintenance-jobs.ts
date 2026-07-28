@@ -4,6 +4,7 @@ import {
   deleteAppwriteUser,
   syncAppwriteLabel,
 } from "../shared/identity-service";
+import { sendMembershipActivationConfirmation } from "../shared/membership-email";
 import { deletionBlockers } from "../shared/policy";
 import type {
   MaintenanceEnv,
@@ -136,24 +137,35 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
       UPDATE entitlements SET status = 'EXPIRED', version = version + 1, updated_at = ?
       WHERE id = ? AND status = 'ACTIVE'
     `).bind(now, entitlement.id).run();
-    const anotherActive = await env.DB.prepare(`
-      SELECT 1 AS found FROM entitlements
-      WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND expires_at > ? LIMIT 1
-    `).bind(entitlement.appwrite_user_id, now).first<{ found: number }>();
-    if (!anotherActive) {
-      await env.DB.prepare(`
-        INSERT OR IGNORE INTO label_sync_attempts (
-          id, appwrite_user_id, category, desired_label, status, idempotency_key,
-          created_at, updated_at
-        ) VALUES (?, ?, 'ACCESS', NULL, 'PENDING', ?, ?, ?)
-      `).bind(
-        crypto.randomUUID(),
-        entitlement.appwrite_user_id,
-        `entitlement-expiry-label:${entitlement.id}`,
-        now,
-        now,
-      ).run();
-    }
+    const effective = await env.DB.prepare(`
+      SELECT tier FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+        AND starts_at <= ? AND expires_at > ?
+      ORDER BY CASE tier
+        WHEN 'EXCLUSIVE_VIP' THEN 3
+        WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+        ELSE 1
+      END DESC, expires_at DESC
+      LIMIT 1
+    `).bind(entitlement.appwrite_user_id, now, now).first<{ tier: string }>();
+    const desiredLabel = {
+      EXCLUSIVE_BASIC: "active_basic",
+      EXCLUSIVE_PREMIUM: "active_premium",
+      EXCLUSIVE_VIP: "active_vip",
+    }[effective?.tier ?? ""] ?? null;
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO label_sync_attempts (
+        id, appwrite_user_id, category, desired_label, status, idempotency_key,
+        created_at, updated_at
+      ) VALUES (?, ?, 'ACCESS', ?, 'PENDING', ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      entitlement.appwrite_user_id,
+      desiredLabel,
+      `entitlement-expiry-label:${entitlement.id}`,
+      now,
+      now,
+    ).run();
   }
 }
 
@@ -514,6 +526,22 @@ async function retryLabelSync(env: MaintenanceEnv, now: string, batchSize: numbe
   }
 }
 
+async function retryMembershipActivationEmails(
+  env: MaintenanceEnv,
+  batchSize: number,
+): Promise<void> {
+  const entitlements = await env.DB.prepare(`
+    SELECT id FROM entitlements
+    WHERE activation_email_status IN ('PENDING', 'FAILED')
+      AND status = 'ACTIVE'
+    ORDER BY updated_at ASC
+    LIMIT ?
+  `).bind(batchSize).all<{ id: string }>();
+  for (const entitlement of entitlements.results) {
+    await sendMembershipActivationConfirmation(env, entitlement.id);
+  }
+}
+
 async function applyAuditRetention(
   env: MaintenanceEnv,
   ownerId: string,
@@ -549,6 +577,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
     await cleanupRetainedEvidence(env, now, batchSize);
     await cleanupRetiredContentMedia(env, now, batchSize);
     await retryLabelSync(env, now, batchSize);
+    await retryMembershipActivationEmails(env, batchSize);
     await discoverInactiveAccounts(
       env,
       now,

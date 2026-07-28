@@ -7,6 +7,7 @@ import {
   adminDeleteContent,
   adminDecideAgeCase,
   adminFetchAgeEvidence,
+  adminGrantMembership,
   adminGetAgeCase,
   adminImportN26Csv,
   adminListAgeCases,
@@ -23,6 +24,7 @@ import {
   adminVerifyUserEmail,
   adminUpdateContent,
   adminUploadContent,
+  getProducts,
   requestPasswordReset,
 } from "./lib/appwrite";
 import { friendlyErrorMessage } from "./lib/error-messages";
@@ -193,6 +195,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
   const [userReasons, setUserReasons] = useState({});
+  const [membershipSelections, setMembershipSelections] = useState({});
+  const [membershipProducts, setMembershipProducts] = useState([]);
   const [userSearch, setUserSearch] = useState("");
   const [privacyRequests, setPrivacyRequests] = useState([]);
   const [privacyResponses, setPrivacyResponses] = useState({});
@@ -226,6 +230,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListUsers();
     setUsers(result.users || []);
   };
+  const loadMembershipProducts = async () => {
+    const result = await getProducts(language);
+    setMembershipProducts(result.products || []);
+  };
   const loadPrivacyRequests = async () => {
     const result = await adminListPrivacyRequests();
     setPrivacyRequests(result.requests || []);
@@ -240,6 +248,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         loadComments(),
         loadPayments(),
         loadUsers(),
+        loadMembershipProducts(),
         loadPrivacyRequests(),
       ]);
     } catch (requestError) {
@@ -249,7 +258,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadAll(); }, [language]);
   useEffect(() => () => {
     if (preview?.url) URL.revokeObjectURL(preview.url);
   }, [preview]);
@@ -473,6 +482,32 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const grantMembership = async (profile) => {
+    const reason = String(userReasons[profile.appwrite_user_id] || "").trim();
+    const productSku = membershipSelections[profile.appwrite_user_id] ||
+      membershipProducts.find((product) => product.sku === "exclusive-basic-30d")?.sku;
+    if (!productSku || reason.length < 3) return;
+    const product = membershipProducts.find((item) => item.sku === productSku);
+    if (!window.confirm(language === "de"
+      ? `${product?.displayName || productSku} manuell und ohne Zahlung vergeben? Die Aktion wird protokolliert.`
+      : `Grant ${product?.displayName || productSku} manually without a payment? This action is audited.`)) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminGrantMembership(profile.appwrite_user_id, productSku, reason);
+      setNotice(language === "de"
+        ? "Die Membership wurde manuell vergeben und der Zugriff synchronisiert."
+        : "The membership was granted manually and access was synchronised.");
+      setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: "" }));
+      await loadUsers();
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updatePrivacyRequest = async (item, status) => {
     const response = String(privacyResponses[item.id] || "").trim();
     const reason = String(privacyReasons[item.id] || "").trim();
@@ -517,7 +552,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   };
 
   const selectedEvidence = selectedCase?.evidence || [];
-  const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de);
+  const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de)
+    .filter((item) => selectedCase?.case?.document_type !== "PASSPORT" || item !== "DOCUMENT_BACK_LEGIBLE");
   const selectedChallenge = useMemo(() => {
     try {
       const parsed = JSON.parse(selectedCase?.case?.liveness_challenge_json || "[]");
@@ -568,8 +604,13 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           const reason = userReasons[profile.appwrite_user_id] || "";
           return <article className="admin-user-card" key={profile.appwrite_user_id}>
             <div className="admin-user-card__head"><div><strong>{profile.display_name || "Member"}</strong><span>{profile.email}</span></div><span className="order-status">{profile.account_status}</span></div>
-            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
+            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>Membership</dt><dd>{profile.entitlement_tier ? `${tierLabels[profile.entitlement_tier]} · ${formatDate(profile.entitlement_expires_at, language)}` : (language === "de" ? "Keine aktive" : "No active membership")}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
             <label className="form-field"><span>{language === "de" ? "Admin-Begründung" : "Admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))} placeholder={language === "de" ? "Für Sperrung, Freigabe oder Löschung" : "For restriction, restore or deletion"} /></label>
+            <div className="admin-membership-grant">
+              <label className="form-field"><span>{language === "de" ? "Membership manuell vergeben" : "Grant membership manually"}</span><select value={membershipSelections[profile.appwrite_user_id] || "exclusive-basic-30d"} onChange={(event) => setMembershipSelections((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))}>{membershipProducts.map((product) => <option value={product.sku} key={product.sku}>{product.displayName}</option>)}</select></label>
+              <button className="primary-action" type="button" disabled={busy || reason.trim().length < 3 || profile.account_status !== "ACTIVE" || !profile.email_verified || profile.age_status !== "APPROVED"} onClick={() => grantMembership(profile)}>{language === "de" ? "Membership vergeben" : "Grant membership"}</button>
+              {(profile.account_status !== "ACTIVE" || !profile.email_verified || profile.age_status !== "APPROVED") && <small>{language === "de" ? "Erst nach aktiver E-Mail- und Altersverifikation möglich." : "Available after active email and age verification."}</small>}
+            </div>
             <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button>{!profile.email_verified && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "VERIFY_EMAIL")}>{language === "de" ? "E-Mail manuell bestätigen" : "Verify email manually"}</button>}<button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
           </article>;
         })}</div>
@@ -580,7 +621,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-panel admin-review">{selectedCase ? <>
           <p className="eyebrow">{selectedCase.case.manual_review_status}</p>
           <h2>{selectedCase.case.display_name || selectedCase.case.appwrite_user_id}</h2>
-          <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{selectedCase.case.email}</dd></div><div><dt>User ID</dt><dd>{selectedCase.case.appwrite_user_id}</dd></div><div><dt>Eingereicht</dt><dd>{formatDate(selectedCase.case.submitted_at, language)}</dd></div><div><dt>Consent</dt><dd>{selectedCase.case.instructions_version} · {formatDate(selectedCase.case.consented_at, language)}</dd></div></dl>
+          <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{selectedCase.case.email}</dd></div><div><dt>User ID</dt><dd>{selectedCase.case.appwrite_user_id}</dd></div><div><dt>{language === "de" ? "Dokument" : "Document"}</dt><dd>{selectedCase.case.document_type} · {selectedCase.case.country_code_snapshot || "–"}</dd></div><div><dt>{language === "de" ? "Eingereicht" : "Submitted"}</dt><dd>{formatDate(selectedCase.case.submitted_at, language)}</dd></div><div><dt>Consent</dt><dd>{selectedCase.case.instructions_version} · {formatDate(selectedCase.case.consented_at, language)}</dd></div></dl>
           <h3>Live-Challenge</h3><ol className="challenge-list">{selectedChallenge.map((step) => <li key={step}>{(challengeCopy[language] || challengeCopy.de)[step] || step}</li>)}</ol>
           <h3>{t.evidence}</h3><p className="admin-note">{t.privacy}</p>
           <div className="evidence-list">{selectedEvidence.map((item) => <button className="secondary-action" type="button" onClick={() => openEvidence(item)} key={item.id}>{t.open}: {item.evidence_kind} · {formatBytes(item.size_bytes)}</button>)}</div>
@@ -688,6 +729,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
                 <div><dt>{language === "de" ? "Erstellt" : "Created"}</dt><dd>{formatDate(order.created_at, language)}</dd></div>
                 <div><dt>{language === "de" ? "Zahlbar bis" : "Due by"}</dt><dd>{formatDate(order.payment_due_at, language)}</dd></div>
                 {order.settled_at && <div><dt>{language === "de" ? "Freigeschaltet" : "Activated"}</dt><dd>{formatDate(order.settled_at, language)}</dd></div>}
+                {order.activation_email_status && <div><dt>{language === "de" ? "Aktivierungs-Mail" : "Activation email"}</dt><dd>{order.activation_email_status}</dd></div>}
               </dl>
               <div className="manual-payment-review">
                 <label className="form-field"><span>{t.manualReason}</span><textarea minLength="3" maxLength="500" value={reason} onChange={(event) => setPaymentReasons((current) => ({ ...current, [order.id]: event.target.value }))} /></label>

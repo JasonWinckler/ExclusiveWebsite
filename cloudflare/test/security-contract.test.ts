@@ -81,21 +81,58 @@ describe("browser and repository security contract", () => {
       .toContain("N26_CSV_EXACT_MATCH");
   });
 
-  it("requires consent, both ID sides, a one-time challenge, and live video review", () => {
+  it("requires consent, only document-specific pages, a one-time challenge, and live video review", () => {
     const migration = read("cloudflare/migrations/0001_initial.sql");
+    const ageRouteMigration = read("cloudflare/migrations/0014_localized_catalog_and_age_routes.sql");
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const admin = read("cloudflare/src/workers/admin-api.ts");
     const frontend = read("src/App.jsx");
     expect(migration).toContain("'DOCUMENT_FRONT', 'DOCUMENT_BACK', 'VIDEO'");
     expect(migration).toContain("liveness_challenge_json TEXT NOT NULL");
     expect(migration).toContain("consented_at TEXT NOT NULL");
+    expect(ageRouteMigration).toContain("'NATIONAL_ID', 'PASSPORT', 'DRIVING_LICENCE'");
+    expect(ageRouteMigration).toContain("verification_route = 'MANUAL_DOCUMENT_VIDEO'");
+    expect(ageRouteMigration).not.toMatch(/bundid/i);
     expect(membership).toContain("AGE_REVIEW_CONSENT_REQUIRED");
-    expect(membership).toContain("!kinds.has(\"VIDEO\")");
+    expect(membership).toContain('documentType === "PASSPORT"');
+    expect(membership).toContain("requiredAgeEvidence(ageCase.document_type)");
     expect(admin).toContain("AGE_APPROVAL_CHECKLIST_INCOMPLETE");
+    expect(admin).toContain("deleteAgeEvidenceImmediately");
     expect(frontend).toContain("navigator.mediaDevices.getUserMedia");
     expect(frontend).toContain("new MediaRecorder");
     expect(frontend).not.toMatch(/name="video"\s+type="file"/);
     expect(frontend).toContain("prepareIdCopy");
+  });
+
+  it("localizes the product catalog server-side and supports manual admin membership grants", () => {
+    const migration = read("cloudflare/migrations/0014_localized_catalog_and_age_routes.sql");
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const frontendApi = read("src/lib/appwrite.js");
+    expect(migration).toContain("display_name_en");
+    expect(migration).toContain("title_en");
+    expect(migration).toContain("description_en");
+    expect(membership).toContain("COALESCE(k.title_en, k.title)");
+    expect(frontendApi).toContain('locale=${locale === "en" ? "en" : "de"}');
+    expect(admin).toContain('action: "MEMBERSHIP_MANUALLY_GRANTED"');
+    expect(admin).toContain('/^\\/v1\\/users\\/([^/]+)\\/membership$/');
+    expect(frontendApi).toContain("adminGrantMembership");
+  });
+
+  it("sends a localized confirmation only from a newly activated entitlement", () => {
+    const migration = read("cloudflare/migrations/0015_membership_activation_email.sql");
+    const email = read("cloudflare/src/shared/membership-email.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
+    expect(migration).toContain("preferred_locale");
+    expect(migration).toContain("activation_email_status");
+    expect(email).toContain("membership is confirmed");
+    expect(email).toContain("Membership wurde bestätigt");
+    expect(email).toContain('src="cid:shadow-brand-banner"');
+    expect(email).toContain("sendTransactionalEmail");
+    expect(admin).toContain("'PENDING'");
+    expect(admin).toContain("sendMembershipActivationConfirmation");
+    expect(maintenance).toContain("retryMembershipActivationEmails");
   });
 
   it("enforces residence-based privacy controls server-side", () => {

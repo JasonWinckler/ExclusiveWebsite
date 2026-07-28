@@ -95,8 +95,18 @@ const copy = {
     reference: "Verwendungszweck",
     due: "Zahlbar bis",
     paymentPending: "Sobald dein Zahlungseingang bestätigt wurde, wird dein Zugang automatisch freigeschaltet. Den aktuellen Status findest du jederzeit unter „Bestellungen“.",
-    ageTitle: "Manuelle Altersprüfung",
-    ageText: "Lade gut lesbare Bilder der Vorder- und Rückseite deines Ausweises hoch. Nimm danach direkt im Browser ein Live-Video auf, in dem dein Gesicht sichtbar ist, du den Ausweis hochhältst und deinen Kopf bewegst.",
+    ageTitle: "Sichere Altersverifikation",
+    ageText: "Ein kurzer, persönlich geprüfter Prozess schützt deine Identität und hält den Zugang konsequent bei Erwachsenen.",
+    ageKicker: "PRIVATE IDENTITY REVIEW",
+    ageAssuranceTitle: "Was mit deinen Nachweisen geschieht",
+    ageAssuranceText: "Die Dateien werden über HTTPS in einen privaten, nicht öffentlich erreichbaren Prüfbereich übertragen. Zugriff hat ausschließlich der autorisierte Admin zur Entscheidung.",
+    ageDeletionText: "Nach Freigabe oder Ablehnung werden Ausweisbilder und Video sofort gelöscht. Gespeichert bleibt nur das notwendige Prüfergebnis mit Zeitpunkt und Prüfprotokoll.",
+    ageSteps: ["Dokument wählen", "Live-Challenge aufnehmen", "Persönliche Prüfung"],
+    documentType: "Dokumentart",
+    nationalId: "Personalausweis / nationale ID",
+    passport: "Reisepass",
+    drivingLicence: "Führerschein / staatliche Photo-ID",
+    passportFront: "Reisepass – Datenseite",
     documentFront: "Ausweis – Vorderseite",
     documentBack: "Ausweis – Rückseite",
     video: "Live-Video mit Gesicht und Ausweis",
@@ -107,7 +117,7 @@ const copy = {
     recordAgain: "Neu aufnehmen",
     videoReady: "Live-Video ist bereit",
     cameraError: "Die Kamera konnte nicht gestartet werden. Erlaube den Kamerazugriff und nutze einen aktuellen Browser über HTTPS.",
-    verificationRules: "Vorbereitung und zulässige Daten",
+    verificationRules: "So gelingt deine Prüfung auf Anhieb",
     rules: [
       "Verwende ausschließlich deinen eigenen, gültigen amtlichen Lichtbildausweis im Original – keine Kopie, kein Screenshot und kein Bild eines Bildschirms.",
       "Gut sichtbar bleiben müssen: Name, Foto, Geburtsdatum, Dokumentart, Ausstellungsland und Gültigkeitsdatum.",
@@ -115,12 +125,12 @@ const copy = {
       "Sorge für helles, gleichmäßiges Licht. Gesicht und Dokument müssen scharf, vollständig und ohne Spiegelung sichtbar sein; Filter, Sonnenbrille, Maske und weitere Personen sind unzulässig.",
     ],
     watermarkNote: "Die Website entfernt Bildmetadaten, verkleinert sehr große Aufnahmen und fügt außerhalb des Dokuments den Hinweis „KOPIE – NUR ALTERSPRÜFUNG“ mit Datum und Seite hinzu.",
-    consentText: "Ich bin mindestens 18 Jahre alt, verwende meinen eigenen gültigen Ausweis und willige in die ausschließlich zur Alters- und Identitätsprüfung erforderliche Verarbeitung der Ausweisbilder und Live-Aufnahme ein. Ich habe die Datenschutzhinweise und Löschfrist gelesen.",
-    beginVerification: "Einmal-Challenge erzeugen",
+    consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und bestätige die ausschließlich für Alters- und Identitätsprüfung erforderliche Verarbeitung. Die Datenschutzhinweise und sofortige Löschung nach der Entscheidung habe ich gelesen.",
+    beginVerification: "Sichere Prüfung starten",
     challengeTitle: "Deine persönliche Live-Challenge",
-    agePrivacy: "Deine Nachweise werden verschlüsselt und ausschließlich zur manuellen Altersprüfung verarbeitet. Nach einer Freigabe werden Ausweisbilder und Video unmittelbar gelöscht. Mehr dazu in der Datenschutzerklärung.",
-    submitAge: "Sicher hochladen & zur Prüfung senden",
-    ageSubmitted: "Deine Anfrage wurde zur manuellen Prüfung eingereicht.",
+    agePrivacy: "Kein Tracking, keine Werbung, kein Profiling und keine Weiterverwendung deiner Nachweise.",
+    submitAge: "Geschützt übermitteln",
+    ageSubmitted: "Deine Nachweise sind sicher eingegangen und warten auf die persönliche Prüfung.",
     reviewReady: "Zur Prüfung eingereicht",
     gallery: "Galerie",
     openGallery: "Galerie öffnen",
@@ -132,7 +142,7 @@ const copy = {
     expires: "Gültig bis",
     noMembership: "Keine aktive Mitgliedschaft",
     adminRedirect: "Admin-Zugang wird geöffnet…",
-    fileRequired: "Ausweisvorderseite, Ausweisrückseite und Live-Video sind erforderlich.",
+    fileRequired: "Bitte reiche alle für die gewählte Dokumentart erforderlichen Nachweise vollständig ein.",
     logout: "Abmelden",
     loading: "Wird verarbeitet…",
   },
@@ -179,8 +189,18 @@ const copy = {
     reference: "Remittance information",
     due: "Pay by",
     paymentPending: "Your access activates as soon as payment is confirmed. You can check the current status at any time under Orders.",
-    ageTitle: "Manual age review",
-    ageText: "Upload legible images of the front and back of your ID. Then record a live video in the browser showing your face, holding up the ID and moving your head.",
+    ageTitle: "Secure age verification",
+    ageText: "A short, personally reviewed process protects your identity and keeps access strictly limited to adults.",
+    ageKicker: "PRIVATE IDENTITY REVIEW",
+    ageAssuranceTitle: "What happens to your evidence",
+    ageAssuranceText: "Files travel over HTTPS into a private review area that is never publicly accessible. Only the authorised admin can access them to make a decision.",
+    ageDeletionText: "ID images and video are deleted immediately after approval or rejection. Only the necessary result, decision time and review record remain.",
+    ageSteps: ["Choose document", "Record live challenge", "Personal review"],
+    documentType: "Document type",
+    nationalId: "National identity card",
+    passport: "Passport",
+    drivingLicence: "Driving licence / state photo ID",
+    passportFront: "Passport – data page",
     documentFront: "ID – front",
     documentBack: "ID – back",
     video: "Live video with face and ID",
@@ -191,7 +211,7 @@ const copy = {
     recordAgain: "Record again",
     videoReady: "Live video is ready",
     cameraError: "The camera could not be started. Allow camera access and use a current browser over HTTPS.",
-    verificationRules: "Preparation and permitted data",
+    verificationRules: "Get approved on your first attempt",
     rules: [
       "Use only your own valid government-issued photo ID in its physical original form—no copy, screenshot or image shown on another screen.",
       "Keep visible: name, portrait, date of birth, document type, issuing country and expiry date.",
@@ -199,12 +219,12 @@ const copy = {
       "Use bright, even light. Face and document must be sharp, complete and glare-free; filters, sunglasses, masks and other people are not permitted.",
     ],
     watermarkNote: "The website removes image metadata, scales down very large images and adds a dated “COPY – AGE VERIFICATION ONLY” label outside the document image.",
-    consentText: "I am at least 18, use my own valid ID and consent to processing the ID images and live recording only as necessary for age and identity review. I have read the privacy and deletion information.",
-    beginVerification: "Create one-time challenge",
+    consentText: "I am at least 18, use my own valid document and confirm the processing strictly necessary for age and identity review. I have read the privacy notice and immediate-deletion information.",
+    beginVerification: "Start secure verification",
     challengeTitle: "Your personal live challenge",
-    agePrivacy: "Your evidence is encrypted and processed only for manual age verification. ID images and video are deleted immediately after approval. Learn more in the privacy notice.",
-    submitAge: "Upload securely & submit",
-    ageSubmitted: "Your request was submitted for manual review.",
+    agePrivacy: "No tracking, advertising, profiling or secondary use of your evidence.",
+    submitAge: "Submit securely",
+    ageSubmitted: "Your evidence arrived securely and is waiting for personal review.",
     reviewReady: "Submitted for review",
     gallery: "Gallery",
     openGallery: "Open gallery",
@@ -216,7 +236,7 @@ const copy = {
     expires: "Valid until",
     noMembership: "No active membership",
     adminRedirect: "Opening admin access…",
-    fileRequired: "ID front, ID back and live video are required.",
+    fileRequired: "Please provide every item required for the selected document type.",
     logout: "Log out",
     loading: "Processing…",
   },
@@ -297,6 +317,44 @@ function Field({ label, ...props }) {
 
 function VerificationRules({ ui }) {
   return <div className="verification-rules"><h3>{ui.verificationRules}</h3><ol>{ui.rules.map((rule) => <li key={rule}>{rule}</li>)}</ol><p>{ui.watermarkNote}</p></div>;
+}
+
+function VerificationJourney({ ui, activeStep = 1 }) {
+  return <div className="verification-journey" aria-label={ui.ageTitle}>
+    {ui.ageSteps.map((step, index) => <div
+      className={index + 1 <= activeStep ? "is-active" : ""}
+      key={step}
+    ><span>{index + 1}</span><strong>{step}</strong></div>)}
+  </div>;
+}
+
+function VerificationAssurance({ ui }) {
+  return <aside className="verification-assurance">
+    <div className="verification-assurance__icon" aria-hidden="true">
+      <svg viewBox="0 0 32 32"><path d="M16 3 27 7v8c0 7-4.5 11.5-11 14C9.5 26.5 5 22 5 15V7l11-4Z" /><path d="m11 16 3 3 7-8" /></svg>
+    </div>
+    <div><h3>{ui.ageAssuranceTitle}</h3><p>{ui.ageAssuranceText}</p><p>{ui.ageDeletionText}</p></div>
+  </aside>;
+}
+
+function ageDocumentOptions(countryCode, ui) {
+  if (countryCode === "DE") {
+    return [
+      { value: "NATIONAL_ID", label: ui.nationalId },
+      { value: "PASSPORT", label: ui.passport },
+    ];
+  }
+  if (countryCode === "US") {
+    return [
+      { value: "DRIVING_LICENCE", label: ui.drivingLicence },
+      { value: "PASSPORT", label: ui.passport },
+    ];
+  }
+  return [
+    { value: "NATIONAL_ID", label: ui.nationalId },
+    { value: "PASSPORT", label: ui.passport },
+    { value: "DRIVING_LICENCE", label: ui.drivingLicence },
+  ];
 }
 
 function Tier({ number, title, text, featured }) {
@@ -773,6 +831,7 @@ export default function App() {
   const [activePostIndex, setActivePostIndex] = useState(0);
   const [liveVideo, setLiveVideo] = useState(null);
   const [ageSession, setAgeSession] = useState(null);
+  const [ageDocumentType, setAgeDocumentType] = useState("NATIONAL_ID");
   const [orders, setOrders] = useState([]);
   const [dashboardTab, setDashboardTab] = useState("overview");
   const [privacy, setPrivacy] = useState(null);
@@ -866,7 +925,15 @@ export default function App() {
   }, [blurSensitiveMedia]);
 
   useEffect(() => {
-    getProducts().then((result) => {
+    if (activeAgeCase?.documentType) {
+      setAgeDocumentType(activeAgeCase.documentType);
+      return;
+    }
+    setAgeDocumentType(profile?.countryCode === "US" ? "DRIVING_LICENCE" : "NATIONAL_ID");
+  }, [activeAgeCase?.documentType, profile?.countryCode]);
+
+  useEffect(() => {
+    getProducts(language).then((result) => {
       const tierPerks = result.tierPerks || {};
       setProducts((result.products || []).map((product) => ({
         ...product,
@@ -874,7 +941,7 @@ export default function App() {
       })));
       setCatalogError(false);
     }).catch(() => setCatalogError(true));
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -1108,12 +1175,18 @@ export default function App() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const uploadedKinds = new Set(activeAgeCase?.evidenceKinds || []);
+    const requiredKinds = new Set(
+      activeAgeCase?.requiredEvidence ||
+      (ageDocumentType === "PASSPORT"
+        ? ["DOCUMENT_FRONT", "VIDEO"]
+        : ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"]),
+    );
     const documentFront = data.get("documentFront");
     const documentBack = data.get("documentBack");
     if (
-      (!uploadedKinds.has("DOCUMENT_FRONT") && (!(documentFront instanceof File) || !documentFront.size)) ||
-      (!uploadedKinds.has("DOCUMENT_BACK") && (!(documentBack instanceof File) || !documentBack.size)) ||
-      (!uploadedKinds.has("VIDEO") && (!(liveVideo instanceof File) || !liveVideo.size))
+      (requiredKinds.has("DOCUMENT_FRONT") && !uploadedKinds.has("DOCUMENT_FRONT") && (!(documentFront instanceof File) || !documentFront.size)) ||
+      (requiredKinds.has("DOCUMENT_BACK") && !uploadedKinds.has("DOCUMENT_BACK") && (!(documentBack instanceof File) || !documentBack.size)) ||
+      (requiredKinds.has("VIDEO") && !uploadedKinds.has("VIDEO") && (!(liveVideo instanceof File) || !liveVideo.size))
     ) {
       setNotice(ui.fileRequired);
       return;
@@ -1123,14 +1196,16 @@ export default function App() {
     try {
       const ageCase = activeAgeCase?.caseId && activeAgeCase?.reviewStatus === "UPLOADING"
         ? { caseId: activeAgeCase.caseId }
-        : await createAgeVerificationCase();
-      if (!uploadedKinds.has("DOCUMENT_FRONT")) {
+        : await createAgeVerificationCase({ documentType: ageDocumentType });
+      if (requiredKinds.has("DOCUMENT_FRONT") && !uploadedKinds.has("DOCUMENT_FRONT")) {
         await uploadAgeEvidence(ageCase.caseId, "DOCUMENT_FRONT", await prepareIdCopy(documentFront, "front", language));
       }
-      if (!uploadedKinds.has("DOCUMENT_BACK")) {
+      if (requiredKinds.has("DOCUMENT_BACK") && !uploadedKinds.has("DOCUMENT_BACK")) {
         await uploadAgeEvidence(ageCase.caseId, "DOCUMENT_BACK", await prepareIdCopy(documentBack, "back", language));
       }
-      if (!uploadedKinds.has("VIDEO")) await uploadAgeEvidence(ageCase.caseId, "VIDEO", liveVideo);
+      if (requiredKinds.has("VIDEO") && !uploadedKinds.has("VIDEO")) {
+        await uploadAgeEvidence(ageCase.caseId, "VIDEO", liveVideo);
+      }
       await submitAgeVerificationCase(ageCase.caseId);
       await refresh();
       form.reset();
@@ -1150,7 +1225,7 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      const created = await createAgeVerificationCase();
+      const created = await createAgeVerificationCase({ documentType: ageDocumentType });
       setAgeSession({ ...created, evidenceKinds: [] });
       await refresh();
     } catch (error) {
@@ -1320,6 +1395,7 @@ export default function App() {
       noticeAccepted: true,
       noticeVersion: privacyNoticeVersion,
       gpcSignal: hasGlobalPrivacyControl(),
+      locale: language,
     }),
     language === "de"
       ? "Dein Rechtsraum wurde gespeichert."
@@ -1653,7 +1729,55 @@ export default function App() {
       </div>}
     </Modal>}
 
-    {modal === "age" && <Modal title={ui.ageTitle} eyebrow={t.stepVerify} onClose={() => setModal("account")} t={t}><p className="modal-intro">{ui.ageText}</p>{notice && <p className="form-notice" role="status">{notice}</p>}{!activeAgeCase?.caseId ? <form className="auth-panel" onSubmit={beginAgeVerification}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><label className="consent-check"><input name="consent" type="checkbox" required /><span>{ui.consentText}</span></label><button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button></form> : <form className="auth-panel" onSubmit={submitAge}><VerificationRules ui={ui} /><p className="upload-note">{ui.agePrivacy}</p><p className="eyebrow">{ui.challengeTitle}</p><Field label={`${ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`} name="documentFront" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")} /><Field label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`} name="documentBack" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")} />{activeAgeCase?.evidenceKinds?.includes("VIDEO") ? <p className="live-recorder__ready">✓ {ui.videoReady}</p> : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}<button className="primary-action" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button></form>}</Modal>}
+    {modal === "age" && <Modal
+      title={ui.ageTitle}
+      eyebrow={ui.ageKicker}
+      onClose={() => setModal("account")}
+      t={t}
+      wide
+    >
+      <p className="modal-intro verification-lead">{ui.ageText}</p>
+      <VerificationJourney ui={ui} activeStep={activeAgeCase?.caseId ? 2 : 1} />
+      <VerificationAssurance ui={ui} />
+      {notice && <p className="form-notice" role="status">{notice}</p>}
+      {!activeAgeCase?.caseId ? <form className="auth-panel verification-start" onSubmit={beginAgeVerification}>
+        <label className="form-field">
+          <span>{ui.documentType}</span>
+          <select value={ageDocumentType} onChange={(event) => setAgeDocumentType(event.target.value)}>
+            {ageDocumentOptions(profile?.countryCode, ui).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <VerificationRules ui={ui} />
+        <p className="upload-note">{ui.agePrivacy} <a href="/legal/eu/#privacy" target="_blank" rel="noreferrer">{t.privacy}</a></p>
+        <label className="consent-check"><input name="consent" type="checkbox" required /><span>{ui.consentText}</span></label>
+        <button className="primary-action verification-primary" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button>
+      </form> : <form className="auth-panel verification-upload" onSubmit={submitAge}>
+        <div className="verification-document-badge"><span>01</span><div><strong>{ui.documentType}</strong><small>{ageDocumentOptions(profile?.countryCode, ui).find((option) => option.value === ageDocumentType)?.label}</small></div></div>
+        <VerificationRules ui={ui} />
+        <p className="upload-note">{ui.agePrivacy}</p>
+        <p className="eyebrow">{ui.challengeTitle}</p>
+        <Field
+          label={`${ageDocumentType === "PASSPORT" ? ui.passportFront : ui.documentFront}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT") ? " ✓" : ""}`}
+          name="documentFront"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
+          required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")}
+        />
+        {(activeAgeCase?.requiredEvidence || []).includes("DOCUMENT_BACK") && <Field
+          label={`${ui.documentBack}${activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK") ? " ✓" : ""}`}
+          name="documentBack"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
+          required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")}
+        />}
+        {activeAgeCase?.evidenceKinds?.includes("VIDEO")
+          ? <p className="live-recorder__ready">✓ {ui.videoReady}</p>
+          : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}
+        <button className="primary-action verification-primary" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button>
+      </form>}
+    </Modal>}
 
     {modal === "membership" && tierSelection.length > 0 && <Modal
       title={tierSelection[0].displayName.replace(/\s[–-].*$/, "")}

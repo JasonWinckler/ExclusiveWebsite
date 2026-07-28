@@ -21,7 +21,7 @@ const client = new Client()
   .setProject(appwriteConfig.projectId);
 const account = new Account(client);
 const deviceStorageKey = "jason-shadow-device-token-v1";
-export const ageInstructionsVersion = "manual-age-v3";
+export const ageInstructionsVersion = "manual-age-v4";
 
 export class CloudflareApiError extends Error {
   constructor(code, status, requestId = null) {
@@ -142,6 +142,7 @@ export async function registerAccount({
     noticeVersion: privacyNoticeVersion,
     noticeAccepted: privacyNoticeAccepted,
     gpcSignal,
+    locale,
   });
   await requestEmailVerification(locale);
   return user;
@@ -177,12 +178,23 @@ export async function completeLegacyEmailVerification(userId, secret) {
 export const completeLegacyPasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
 export const updateProfileName = (name) => account.updateName({ name });
 
-export const getProducts = () => apiRequest("/v1/products", { authenticated: false });
+export const getProducts = (locale = "de") => apiRequest(
+  `/v1/products?locale=${locale === "en" ? "en" : "de"}`,
+  { authenticated: false },
+);
 export const getMembershipStatus = () => apiRequest("/v1/membership/status");
 export const getEntitlementStatus = () => apiRequest("/v1/entitlements/status");
-export const createAgeVerificationCase = () => apiRequest("/v1/age-verification/cases", {
+export const createAgeVerificationCase = ({
+  verificationRoute = "MANUAL_DOCUMENT_VIDEO",
+  documentType = "NATIONAL_ID",
+} = {}) => apiRequest("/v1/age-verification/cases", {
   method: "POST",
-  json: { consent: true, instructionsVersion: ageInstructionsVersion },
+  json: {
+    consent: true,
+    instructionsVersion: ageInstructionsVersion,
+    verificationRoute,
+    documentType,
+  },
   idempotent: true,
 });
 export const uploadAgeEvidence = (caseId, kind, file) => apiRequest(
@@ -233,9 +245,17 @@ export const updatePrivacyProfile = ({
   noticeAccepted = true,
   noticeVersion,
   gpcSignal = false,
+  locale = "de",
 }) => apiRequest("/v1/privacy/profile", {
   method: "PATCH",
-  json: { countryCode, regionCode, noticeAccepted, noticeVersion, gpcSignal },
+  json: {
+    countryCode,
+    regionCode,
+    noticeAccepted,
+    noticeVersion,
+    gpcSignal,
+    locale: locale === "en" ? "en" : "de",
+  },
 });
 export const updatePrivacyChoices = (choices) => apiRequest("/v1/privacy/choices", {
   method: "PATCH", json: choices,
@@ -278,6 +298,15 @@ export const adminScheduleAccountDeletion = (userId, reason) => apiRequest(
     admin: true,
     method: "DELETE",
     json: { reason, confirmation: "DELETE_ACCOUNT" },
+    idempotent: true,
+  },
+);
+export const adminGrantMembership = (userId, productSku, reason) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/membership`,
+  {
+    admin: true,
+    method: "POST",
+    json: { productSku, reason },
     idempotent: true,
   },
 );

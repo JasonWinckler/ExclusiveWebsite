@@ -22,6 +22,9 @@ import {
   updateAppwriteUserStatus,
   verifyAppwriteUserEmail,
 } from "../shared/identity-service";
+import {
+  sendMembershipActivationConfirmation,
+} from "../shared/membership-email";
 import { sha256Hex } from "../shared/security";
 import type { AdminEnv, AgeEvidenceRow } from "../shared/types";
 
@@ -127,23 +130,38 @@ async function userStatus(env: AdminEnv, userId: string): Promise<Record<string,
 }
 
 async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
+  const now = isoNow();
   const users = await env.DB.prepare(`
     SELECT u.appwrite_user_id, u.email, u.display_name, u.email_verified,
       u.account_status, u.age_status, u.restricted_at, u.restriction_reason,
       u.administrative_hold, u.last_active_at, u.created_at, u.updated_at,
       COUNT(DISTINCT s.id) AS order_count,
       SUM(CASE WHEN s.status IN ('PENDING', 'PROCESSING', 'PAID') THEN 1 ELSE 0 END) AS open_order_count,
-      MAX(e.expires_at) AS entitlement_expires_at
+      (
+        SELECT e.tier FROM entitlements e
+        WHERE e.appwrite_user_id = u.appwrite_user_id
+          AND e.status = 'ACTIVE' AND e.starts_at <= ?
+          AND e.expires_at > ?
+        ORDER BY CASE e.tier
+          WHEN 'EXCLUSIVE_VIP' THEN 3
+          WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+          ELSE 1
+        END DESC, e.expires_at DESC
+        LIMIT 1
+      ) AS entitlement_tier,
+      (
+        SELECT MAX(e.expires_at) FROM entitlements e
+        WHERE e.appwrite_user_id = u.appwrite_user_id
+          AND e.status = 'ACTIVE' AND e.expires_at > ?
+      ) AS entitlement_expires_at
     FROM user_profiles u
     LEFT JOIN subscriptions s ON s.appwrite_user_id = u.appwrite_user_id
       AND s.archived_at IS NULL
-    LEFT JOIN entitlements e ON e.appwrite_user_id = u.appwrite_user_id
-      AND e.status = 'ACTIVE'
     WHERE u.account_status != 'DELETED'
     GROUP BY u.appwrite_user_id
     ORDER BY u.created_at DESC
     LIMIT 500
-  `).all();
+  `).bind(now, now, now).all();
   return { users: users.results };
 }
 
@@ -151,6 +169,7 @@ async function pendingAgeCases(env: AdminEnv): Promise<Record<string, unknown>> 
   const cases = await env.DB.prepare(`
     SELECT c.id, c.appwrite_user_id, c.status, c.manual_review_status,
       c.submitted_at, c.upload_expires_at, c.created_at,
+      c.verification_route, c.document_type, c.country_code_snapshot,
       SUM(CASE WHEN u.deleted_at IS NULL THEN 1 ELSE 0 END) AS evidence_count
     FROM age_verification_cases c
     LEFT JOIN age_verification_uploads u ON u.age_case_id = c.id
@@ -169,6 +188,7 @@ async function ageCaseDetail(env: AdminEnv, caseId: string): Promise<Record<stri
       SELECT c.id, c.appwrite_user_id, c.status, c.manual_review_status,
         c.submitted_at, c.upload_expires_at, c.created_at,
         c.instructions_version, c.consented_at, c.liveness_challenge_json,
+        c.verification_route, c.document_type, c.country_code_snapshot,
         p.email, p.display_name
       FROM age_verification_cases c
       JOIN user_profiles p ON p.appwrite_user_id = c.appwrite_user_id
@@ -286,15 +306,8 @@ async function decideAgeCase(
       body.checklist.every((item) => typeof item === "string")
     ? body.checklist
     : [];
-  if (body.decision === "APPROVED") {
-    const submitted = new Set(checklist);
-    if (
-      submitted.size !== AGE_APPROVAL_CHECKLIST.length ||
-      AGE_APPROVAL_CHECKLIST.some((item) => !submitted.has(item))
-    ) throw new ApiError(400, "AGE_APPROVAL_CHECKLIST_INCOMPLETE");
-  }
   const ageCase = await env.DB.prepare(`
-    SELECT id, appwrite_user_id, status, manual_review_status, version
+    SELECT id, appwrite_user_id, status, manual_review_status, version, document_type
     FROM age_verification_cases WHERE id = ?
   `).bind(caseId).first<{
     id: string;
@@ -302,17 +315,24 @@ async function decideAgeCase(
     status: string;
     manual_review_status: string;
     version: number;
+    document_type: "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
   }>();
   if (!ageCase) throw new ApiError(404, "AGE_CASE_NOT_FOUND");
   if (ageCase.status !== "PENDING" || ageCase.manual_review_status !== "READY_FOR_REVIEW") {
     throw new ApiError(409, "AGE_CASE_NOT_DECIDABLE");
   }
+  if (body.decision === "APPROVED") {
+    const requiredChecklist = ageCase.document_type === "PASSPORT"
+      ? AGE_APPROVAL_CHECKLIST.filter((item) => item !== "DOCUMENT_BACK_LEGIBLE")
+      : [...AGE_APPROVAL_CHECKLIST];
+    const submitted = new Set(checklist);
+    if (
+      submitted.size !== requiredChecklist.length ||
+      requiredChecklist.some((item) => !submitted.has(item))
+    ) throw new ApiError(400, "AGE_APPROVAL_CHECKLIST_INCOMPLETE");
+  }
   const now = isoNow();
-  const retentionUntil = body.decision === "APPROVED"
-    ? now
-    : new Date(
-      Date.now() + parsePositiveInt(env.AGE_EVIDENCE_RETENTION_DAYS, 7, 90) * 86_400_000,
-    ).toISOString();
+  const retentionUntil = now;
   const approvalExpiresAt = body.decision === "APPROVED"
     ? new Date(
       Date.now() + parsePositiveInt(env.AGE_APPROVAL_VALID_DAYS, 365, 3_650) * 86_400_000,
@@ -418,18 +438,13 @@ async function decideAgeCase(
       `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, attemptId),
     ]);
   }
-  let evidenceDeletionStatus: "NOT_REQUIRED" | "DELETED" | "NONE" | "RETRY_REQUIRED" =
-    body.decision === "APPROVED" ? "RETRY_REQUIRED" : "NOT_REQUIRED";
-  if (body.decision === "APPROVED") {
-    try {
-      evidenceDeletionStatus = await deleteAgeEvidenceImmediately(env, ageCase.id, isoNow());
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: "approved_age_evidence_deletion_failed",
-        caseId: ageCase.id,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
+  let evidenceDeletionStatus: "DELETED" | "NONE" | "RETRY_REQUIRED" = "RETRY_REQUIRED";
+  try {
+    evidenceDeletionStatus = await deleteAgeEvidenceImmediately(env, ageCase.id, isoNow());
+  } catch {
+    logEvent("error", "age_evidence_deletion_failed", {
+      requestId: correlationId,
+    });
   }
   return {
     caseId: ageCase.id,
@@ -542,6 +557,189 @@ export function accessLabelForTier(tier: AccessTier): string {
   }[tier];
 }
 
+async function grantManualMembership(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["productSku", "reason"]);
+  const reason = validateReason(body.reason);
+  if (
+    typeof body.productSku !== "string" ||
+    !/^exclusive-(basic|premium|vip)-(trial-7d|30d|6m|12m)$/.test(body.productSku)
+  ) throw new ApiError(400, "INVALID_PRODUCT");
+  const idempotencyKey = requireIdempotencyKey(request);
+  const sourceEventId = `admin-membership:${idempotencyKey}`;
+  const replay = await env.DB.prepare(`
+    SELECT e.id, e.tier, e.starts_at, e.expires_at, e.activation_email_status, p.sku
+    FROM entitlements e
+    JOIN products p ON p.id = e.product_id
+    WHERE e.appwrite_user_id = ? AND e.source_event_id = ?
+    LIMIT 1
+  `).bind(userId, sourceEventId).first<{
+    id: string;
+    tier: AccessTier;
+    starts_at: string;
+    expires_at: string;
+    activation_email_status: string;
+    sku: string;
+  }>();
+  if (replay) {
+    return {
+      entitlementId: replay.id,
+      tier: replay.tier,
+      productSku: replay.sku,
+      startsAt: replay.starts_at,
+      expiresAt: replay.expires_at,
+      activationEmailStatus: replay.activation_email_status,
+      existing: true,
+    };
+  }
+
+  const [profile, product, currentEffective, sameTierEnd] = await Promise.all([
+    getUserProfile(env.DB, userId),
+    env.DB.prepare(`
+      SELECT id, sku, display_name, tier, duration_unit, duration_value
+      FROM products WHERE sku = ? AND active = 1 LIMIT 1
+    `).bind(body.productSku).first<{
+      id: string;
+      sku: string;
+      display_name: string;
+      tier: AccessTier;
+      duration_unit: "DAYS" | "MONTHS";
+      duration_value: number;
+    }>(),
+    env.DB.prepare(`
+      SELECT tier FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+        AND starts_at <= ? AND expires_at > ?
+      ORDER BY CASE tier
+        WHEN 'EXCLUSIVE_VIP' THEN 3
+        WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+        ELSE 1
+      END DESC, expires_at DESC
+      LIMIT 1
+    `).bind(userId, isoNow(), isoNow()).first<{ tier: AccessTier }>(),
+    env.DB.prepare(`
+      SELECT MAX(expires_at) AS expires_at FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND tier = ? AND expires_at > ?
+    `).bind(
+      userId,
+      body.productSku.includes("-vip-")
+        ? "EXCLUSIVE_VIP"
+        : body.productSku.includes("-premium-")
+          ? "EXCLUSIVE_PREMIUM"
+          : "EXCLUSIVE_BASIC",
+      isoNow(),
+    ).first<{ expires_at: string | null }>(),
+  ]);
+  if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
+  if (
+    profile.account_status !== "ACTIVE" ||
+    profile.email_verified !== 1 ||
+    profile.age_status !== "APPROVED"
+  ) throw new ApiError(409, "MANUAL_MEMBERSHIP_USER_NOT_ELIGIBLE");
+  if (!product) throw new ApiError(404, "PRODUCT_NOT_AVAILABLE");
+
+  const now = isoNow();
+  const startsAt = sameTierEnd?.expires_at && sameTierEnd.expires_at > now
+    ? sameTierEnd.expires_at
+    : now;
+  const expiresAt = entitlementExpiry(startsAt, product.duration_unit, product.duration_value);
+  const effectiveTier = startsAt > now && currentEffective
+    ? currentEffective.tier
+    : product.tier;
+  const entitlementId = crypto.randomUUID();
+  const attemptId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO entitlements (
+        id, appwrite_user_id, product_id, subscription_id, tier, status,
+        starts_at, expires_at, source_event_id, activation_email_status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, NULL, ?, 'ACTIVE', ?, ?, ?, 'PENDING', ?, ?)
+    `).bind(
+      entitlementId,
+      userId,
+      product.id,
+      product.tier,
+      startsAt,
+      expiresAt,
+      sourceEventId,
+      now,
+      now,
+    ),
+    env.DB.prepare(`
+      INSERT INTO label_sync_attempts (
+        id, appwrite_user_id, category, desired_label, status,
+        idempotency_key, created_at, updated_at
+      ) VALUES (?, ?, 'ACCESS', ?, 'PENDING', ?, ?, ?)
+    `).bind(
+      attemptId,
+      userId,
+      accessLabelForTier(effectiveTier),
+      `admin-membership-label:${idempotencyKey}`,
+      now,
+      now,
+    ),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "MEMBERSHIP_MANUALLY_GRANTED",
+      targetType: "USER",
+      targetId: userId,
+      previousState: { effectiveTier: currentEffective?.tier ?? null },
+      newState: {
+        tier: product.tier,
+        productSku: product.sku,
+        startsAt,
+        expiresAt,
+        effectiveTier,
+      },
+      reason,
+      correlationId,
+      now,
+    }),
+  ]);
+
+  let labelSyncStatus = "SYNCED";
+  try {
+    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      userId,
+      category: "ACCESS",
+      desiredLabel: accessLabelForTier(effectiveTier),
+    });
+    await env.DB.prepare(`
+      UPDATE label_sync_attempts SET status = 'SYNCED', attempt_count = 1, updated_at = ?
+      WHERE id = ?
+    `).bind(now, attemptId).run();
+  } catch {
+    labelSyncStatus = "FAILED";
+    await env.DB.prepare(`
+      UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
+        last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, attemptId).run();
+  }
+  const activationEmailStatus = await sendMembershipActivationConfirmation(env, entitlementId);
+  return {
+    entitlementId,
+    productSku: product.sku,
+    tier: product.tier,
+    effectiveTier,
+    startsAt,
+    expiresAt,
+    labelSyncStatus,
+    activationEmailStatus,
+    existing: false,
+  };
+}
+
 export function canManuallyActivatePaymentStatus(status: string): boolean {
   return status === "PENDING" || status === "PROCESSING" || status === "PAID";
 }
@@ -557,7 +755,12 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
       p.display_name AS product_name, p.tier, p.duration_unit,
       p.duration_value, u.email, u.display_name,
       i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status,
-      i.email_last_error_code
+      i.email_last_error_code,
+      (
+        SELECT e.activation_email_status FROM entitlements e
+        WHERE e.subscription_id = s.id
+        ORDER BY e.created_at DESC LIMIT 1
+      ) AS activation_email_status
     FROM subscriptions s
     JOIN products p ON p.id = s.product_id
     JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
@@ -661,10 +864,30 @@ async function manuallyActivatePaymentOrder(
     throw new ApiError(409, "PAYMENT_ORDER_USER_NOT_ELIGIBLE");
   }
 
+  const lookupAt = isoNow();
   const active = await env.DB.prepare(`
-    SELECT MAX(expires_at) AS expires_at FROM entitlements
+    SELECT
+      MAX(expires_at) AS expires_at,
+      (
+        SELECT tier FROM entitlements current
+        WHERE current.appwrite_user_id = ?
+          AND current.status = 'ACTIVE'
+          AND current.starts_at <= ? AND current.expires_at > ?
+        ORDER BY CASE current.tier
+          WHEN 'EXCLUSIVE_VIP' THEN 3
+          WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+          ELSE 1
+        END DESC, current.expires_at DESC
+        LIMIT 1
+      ) AS current_tier
+    FROM entitlements
     WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-  `).bind(subscription.appwrite_user_id).first<{ expires_at: string | null }>();
+  `).bind(
+    subscription.appwrite_user_id,
+    lookupAt,
+    lookupAt,
+    subscription.appwrite_user_id,
+  ).first<{ expires_at: string | null; current_tier: AccessTier | null }>();
   const settledAt = isoNow();
   const startsAt = active?.expires_at && Date.parse(active.expires_at) > Date.parse(settledAt)
     ? active.expires_at
@@ -677,7 +900,10 @@ async function manuallyActivatePaymentOrder(
   const transactionId = crypto.randomUUID();
   const entitlementId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
-  const desiredLabel = accessLabelForTier(subscription.tier);
+  const desiredTier = startsAt > settledAt && active?.current_tier
+    ? active.current_tier
+    : subscription.tier;
+  const desiredLabel = accessLabelForTier(desiredTier);
   const settlementMarker = `ADMIN_MANUAL_SUPPORT:${transactionId}`;
   const payloadHash = await sha256Hex(JSON.stringify({
     orderId: subscription.id,
@@ -736,9 +962,11 @@ async function manuallyActivatePaymentOrder(
     env.DB.prepare(`
       INSERT INTO entitlements (
         id, appwrite_user_id, product_id, subscription_id, tier, status,
-        starts_at, expires_at, source_event_id, created_at, updated_at
+        starts_at, expires_at, source_event_id, activation_email_status,
+        created_at, updated_at
       )
-      SELECT ?, appwrite_user_id, product_id, id, ?, 'ACTIVE', ?, ?, ?, ?, ?
+      SELECT ?, appwrite_user_id, product_id, id, ?, 'ACTIVE', ?, ?, ?,
+        'PENDING', ?, ?
       FROM subscriptions WHERE id = ? AND settlement_note = ?
     `).bind(
       entitlementId,
@@ -822,6 +1050,7 @@ async function manuallyActivatePaymentOrder(
       attemptId,
     ).run();
   }
+  const activationEmailStatus = await sendMembershipActivationConfirmation(env, entitlementId);
 
   return {
     orderId: subscription.id,
@@ -832,6 +1061,7 @@ async function manuallyActivatePaymentOrder(
     startsAt,
     expiresAt,
     labelSyncStatus,
+    activationEmailStatus,
     existing: false,
   };
 }
@@ -891,9 +1121,12 @@ async function importN26Csv(
     reviewRequired: 0,
     duplicates: 0,
     ignored: 0,
+    activationEmailsSent: 0,
+    activationEmailsFailed: 0,
   };
   const occurrences = new Map<string, number>();
   const usersToSync = new Map<string, { attemptId: string; desiredLabel: string }>();
+  const entitlementsToNotify: string[] = [];
   for (const row of table.rows) {
     const amountMinor = parseEuroMinor(row[amountColumn]!);
     const bookedAt = parseN26Date(row[dateColumn]!);
@@ -915,13 +1148,24 @@ async function importN26Csv(
         (
           SELECT MAX(e.expires_at) FROM entitlements e
           WHERE e.appwrite_user_id = s.appwrite_user_id AND e.status = 'ACTIVE'
-        ) AS active_expires_at
+        ) AS active_expires_at,
+        (
+          SELECT e.tier FROM entitlements e
+          WHERE e.appwrite_user_id = s.appwrite_user_id
+            AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
+          ORDER BY CASE e.tier
+            WHEN 'EXCLUSIVE_VIP' THEN 3
+            WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+            ELSE 1
+          END DESC, e.expires_at DESC
+          LIMIT 1
+        ) AS active_tier
       FROM (SELECT 1) seed
       LEFT JOIN bank_transactions bt ON bt.external_transaction_id = ?
       LEFT JOIN subscriptions s ON s.transfer_reference = ?
       LEFT JOIN products p ON p.id = s.product_id
       LIMIT 1
-    `).bind(externalTransactionId, transferPurpose || "").first<{
+    `).bind(startedAt, startedAt, externalTransactionId, transferPurpose || "").first<{
       existing_transaction_id: string | null;
       subscription_id: string | null;
       appwrite_user_id: string | null;
@@ -933,6 +1177,7 @@ async function importN26Csv(
       duration_unit: "DAYS" | "MONTHS" | null;
       duration_value: number | null;
       active_expires_at: string | null;
+      active_tier: AccessTier | null;
     }>();
     if (lookup?.existing_transaction_id) {
       summary.duplicates += 1;
@@ -999,7 +1244,10 @@ async function importN26Csv(
     );
     const entitlementId = crypto.randomUUID();
     const attemptId = crypto.randomUUID();
-    const desiredLabel = accessLabelForTier(subscription.tier);
+    const desiredTier = startsAt > settledAt && lookup?.active_tier
+      ? lookup.active_tier
+      : subscription.tier;
+    const desiredLabel = accessLabelForTier(desiredTier);
     await env.DB.batch([
       env.DB.prepare(`
         INSERT INTO bank_transactions (
@@ -1035,8 +1283,9 @@ async function importN26Csv(
       env.DB.prepare(`
         INSERT INTO entitlements (
           id, appwrite_user_id, product_id, subscription_id, tier, status,
-          starts_at, expires_at, source_event_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+          starts_at, expires_at, source_event_id, activation_email_status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 'PENDING', ?, ?)
       `).bind(
         entitlementId,
         subscription.appwrite_user_id,
@@ -1079,6 +1328,7 @@ async function importN26Csv(
       }),
     ]);
     usersToSync.set(subscription.appwrite_user_id, { attemptId, desiredLabel });
+    entitlementsToNotify.push(entitlementId);
     summary.matched += 1;
   }
 
@@ -1101,6 +1351,11 @@ async function importN26Csv(
         WHERE id = ?
       `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, sync.attemptId).run();
     }
+  }
+  for (const entitlementId of entitlementsToNotify) {
+    const status = await sendMembershipActivationConfirmation(env, entitlementId);
+    if (status === "SENT" || status === "ALREADY_SENT") summary.activationEmailsSent += 1;
+    else summary.activationEmailsFailed += 1;
   }
   const completedAt = isoNow();
   await env.DB.prepare(`
@@ -2205,6 +2460,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   }
   let result: Record<string, unknown>;
   const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict|unrestrict|verify-email)$/.exec(url.pathname);
+  const userMembershipPath = /^\/v1\/users\/([^/]+)\/membership$/.exec(url.pathname);
   const userDeletePath = /^\/v1\/users\/([^/]+)$/.exec(url.pathname);
   const ageCasePath = /^\/v1\/age-verification\/cases\/([^/]+)$/.exec(url.pathname);
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
@@ -2250,6 +2506,14 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     } else {
       throw new ApiError(405, "METHOD_NOT_ALLOWED");
     }
+  } else if (request.method === "POST" && userMembershipPath) {
+    result = await grantManualMembership(
+      request,
+      env,
+      administrator.userId,
+      validateUserId(decodeURIComponent(userMembershipPath[1]!)),
+      correlationId,
+    );
   } else if (request.method === "GET" && url.pathname === "/v1/users") {
     result = await listUsers(env);
   } else if (request.method === "DELETE" && userDeletePath) {

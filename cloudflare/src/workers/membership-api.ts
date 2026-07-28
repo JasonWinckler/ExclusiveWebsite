@@ -39,8 +39,10 @@ import type {
   UserProfileRow,
 } from "../shared/types";
 
-const AGE_INSTRUCTIONS_VERSION = "manual-age-v3";
-const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-27";
+const AGE_INSTRUCTIONS_VERSION = "manual-age-v4";
+const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-28";
+type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
+type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
 const ISO_COUNTRIES = new Set(`
 AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ
 BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ
@@ -106,7 +108,28 @@ function privacyDeadline(regime: string, now = Date.now()): string {
   return new Date(now + days * 86_400_000).toISOString();
 }
 
-function livenessChallenge(): string[] {
+function normalizeAgeDocumentType(value: unknown): AgeDocumentType {
+  if (
+    value === "NATIONAL_ID" ||
+    value === "PASSPORT" ||
+    value === "DRIVING_LICENCE"
+  ) return value;
+  throw new ApiError(400, "INVALID_AGE_DOCUMENT_TYPE");
+}
+
+function availableDocumentTypes(countryCode: string | null | undefined): AgeDocumentType[] {
+  if (countryCode === "DE") return ["NATIONAL_ID", "PASSPORT"];
+  if (countryCode === "US") return ["DRIVING_LICENCE", "PASSPORT"];
+  return ["NATIONAL_ID", "PASSPORT", "DRIVING_LICENCE"];
+}
+
+function requiredAgeEvidence(documentType: AgeDocumentType): AgeEvidenceKind[] {
+  return documentType === "PASSPORT"
+    ? ["DOCUMENT_FRONT", "VIDEO"]
+    : ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"];
+}
+
+function livenessChallenge(documentType: AgeDocumentType): string[] {
   const movements = ["TURN_HEAD_LEFT", "TURN_HEAD_RIGHT", "LOOK_UP", "BLINK_TWICE"];
   const selected: string[] = [];
   while (selected.length < 2) {
@@ -114,12 +137,13 @@ function livenessChallenge(): string[] {
     const [movement] = movements.splice(random % movements.length, 1);
     selected.push(movement!);
   }
+  const documentSteps = documentType === "PASSPORT"
+    ? ["SHOW_DOCUMENT_FRONT", "TILT_DOCUMENT"]
+    : ["SHOW_DOCUMENT_FRONT", "SHOW_DOCUMENT_BACK", "TILT_DOCUMENT"];
   return [
     "FACE_CAMERA",
     "HOLD_ID_NEXT_TO_FACE",
-    "SHOW_DOCUMENT_FRONT",
-    "SHOW_DOCUMENT_BACK",
-    "TILT_DOCUMENT",
+    ...documentSteps,
     ...selected,
   ];
 }
@@ -164,7 +188,8 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     ),
     latest_age_case AS (
       SELECT id, manual_review_status, upload_expires_at,
-        instructions_version, liveness_challenge_json
+        instructions_version, liveness_challenge_json,
+        verification_route, document_type, country_code_snapshot
       FROM age_verification_cases
       WHERE appwrite_user_id = ? AND status = 'PENDING'
       ORDER BY created_at DESC
@@ -178,6 +203,7 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
         WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
       a.id AS age_case_id, a.manual_review_status, a.upload_expires_at,
       a.instructions_version, a.liveness_challenge_json,
+      a.verification_route, a.document_type, a.country_code_snapshot,
       (SELECT GROUP_CONCAT(u.evidence_kind, ',')
         FROM age_verification_uploads u
         WHERE u.age_case_id = a.id AND u.deleted_at IS NULL) AS evidence_kinds
@@ -201,6 +227,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     upload_expires_at: string | null;
     instructions_version: string | null;
     liveness_challenge_json: string | null;
+    verification_route: AgeVerificationRoute | null;
+    document_type: AgeDocumentType | null;
+    country_code_snapshot: string | null;
     evidence_kinds: string | null;
   }>();
   if (!row) throw new ApiError(503, "PROFILE_PROJECTION_UNAVAILABLE");
@@ -231,6 +260,19 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
         ? parseChallenge(row.liveness_challenge_json)
         : [],
       evidenceKinds,
+      verificationRoute: row.verification_route,
+      documentType: row.document_type,
+      countryCode: row.country_code_snapshot ?? row.country_code,
+      requiredEvidence: row.document_type
+        ? requiredAgeEvidence(row.document_type)
+        : ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"],
+      methods: [
+        {
+          id: "MANUAL_DOCUMENT_VIDEO",
+          available: true,
+          documentTypes: availableDocumentTypes(row.country_code),
+        },
+      ],
     },
     entitlement: row.entitlement_tier && row.entitlement_expires_at
       ? { active: true, tier: row.entitlement_tier, expiresAt: row.entitlement_expires_at }
@@ -254,14 +296,32 @@ async function createAgeCase(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactObjectKeys(body, ["consent", "instructionsVersion"]);
-  if (body.consent !== true || body.instructionsVersion !== AGE_INSTRUCTIONS_VERSION) {
+  exactObjectKeys(body, [
+    "consent",
+    "instructionsVersion",
+    "verificationRoute",
+    "documentType",
+  ]);
+  const acceptedInstructionsVersion =
+    body.instructionsVersion === AGE_INSTRUCTIONS_VERSION
+    || body.instructionsVersion === "manual-age-v3";
+  if (body.consent !== true || !acceptedInstructionsVersion) {
     throw new ApiError(400, "AGE_REVIEW_CONSENT_REQUIRED");
   }
+  if (
+    body.verificationRoute !== undefined
+    && body.verificationRoute !== "MANUAL_DOCUMENT_VIDEO"
+  ) {
+    throw new ApiError(400, "INVALID_AGE_VERIFICATION_ROUTE");
+  }
+  const verificationRoute: AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
+  const documentType = normalizeAgeDocumentType(body.documentType ?? "NATIONAL_ID");
+  const requiredEvidence = requiredAgeEvidence(documentType);
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
     SELECT id, status, manual_review_status, upload_expires_at,
-      instructions_version, liveness_challenge_json
+      instructions_version, liveness_challenge_json, verification_route,
+      document_type, country_code_snapshot
     FROM age_verification_cases
     WHERE appwrite_user_id = ? AND idempotency_key = ?
   `).bind(userId, idempotencyKey).first<{
@@ -271,6 +331,9 @@ async function createAgeCase(
     upload_expires_at: string;
     instructions_version: string;
     liveness_challenge_json: string;
+    verification_route: AgeVerificationRoute;
+    document_type: AgeDocumentType;
+    country_code_snapshot: string | null;
   }>();
   if (replay) {
     return {
@@ -280,13 +343,20 @@ async function createAgeCase(
       uploadExpiresAt: replay.upload_expires_at,
       instructionsVersion: replay.instructions_version,
       livenessChallenge: parseChallenge(replay.liveness_challenge_json),
-      requiredEvidence: ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"],
+      verificationRoute: replay.verification_route,
+      documentType: replay.document_type,
+      countryCode: replay.country_code_snapshot,
+      requiredEvidence: requiredAgeEvidence(replay.document_type),
       optionalEvidence: [],
     };
   }
   const profile = await getUserProfile(env.DB, userId);
   if (!profile || profile.account_status !== "ACTIVE") throw new ApiError(403, "ACCOUNT_NOT_ACTIVE");
   if (profile.age_status === "APPROVED") throw new ApiError(409, "AGE_ALREADY_APPROVED");
+  if (!profile.country_code) throw new ApiError(409, "PRIVACY_PROFILE_REQUIRED");
+  if (!availableDocumentTypes(profile.country_code).includes(documentType)) {
+    throw new ApiError(400, "AGE_DOCUMENT_TYPE_NOT_AVAILABLE_FOR_COUNTRY");
+  }
   const openCase = await env.DB.prepare(`
     SELECT id FROM age_verification_cases
     WHERE appwrite_user_id = ? AND status = 'PENDING' LIMIT 1
@@ -294,7 +364,7 @@ async function createAgeCase(
   if (openCase) throw new ApiError(409, "AGE_CASE_ALREADY_OPEN");
   const now = isoNow();
   const caseId = crypto.randomUUID();
-  const challenge = livenessChallenge();
+  const challenge = livenessChallenge(documentType);
   const uploadExpiresAt = new Date(
     Date.now() + parsePositiveInt(env.AGE_UPLOAD_WINDOW_MINUTES, 60, 1_440) * 60_000,
   ).toISOString();
@@ -305,8 +375,9 @@ async function createAgeCase(
         INSERT INTO age_verification_cases (
           id, appwrite_user_id, status, review_method, manual_review_status,
           instructions_version, consented_at, liveness_challenge_json,
-          upload_expires_at, retention_until, idempotency_key, created_at, updated_at
-        ) VALUES (?, ?, 'PENDING', 'MANUAL_R2', 'UPLOADING', ?, ?, ?, ?, ?, ?, ?, ?)
+          upload_expires_at, retention_until, idempotency_key, created_at, updated_at,
+          verification_route, document_type, country_code_snapshot
+        ) VALUES (?, ?, 'PENDING', 'MANUAL_R2', 'UPLOADING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         caseId,
         userId,
@@ -318,6 +389,9 @@ async function createAgeCase(
         idempotencyKey,
         now,
         now,
+        verificationRoute,
+        documentType,
+        profile.country_code,
       ),
       env.DB.prepare(`
         UPDATE user_profiles
@@ -335,7 +409,10 @@ async function createAgeCase(
     uploadExpiresAt,
     instructionsVersion: AGE_INSTRUCTIONS_VERSION,
     livenessChallenge: challenge,
-    requiredEvidence: ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"],
+    verificationRoute,
+    documentType,
+    countryCode: profile.country_code,
+    requiredEvidence,
     optionalEvidence: [],
   };
 }
@@ -384,7 +461,7 @@ async function uploadAgeEvidence(
     };
   }
   const ageCase = await env.DB.prepare(`
-    SELECT id, status, manual_review_status, upload_expires_at
+    SELECT id, status, manual_review_status, upload_expires_at, document_type
     FROM age_verification_cases
     WHERE id = ? AND appwrite_user_id = ?
   `).bind(caseId, userId).first<{
@@ -392,6 +469,7 @@ async function uploadAgeEvidence(
     status: string;
     manual_review_status: string;
     upload_expires_at: string;
+    document_type: AgeDocumentType;
   }>();
   if (!ageCase) throw new ApiError(404, "AGE_CASE_NOT_FOUND");
   if (ageCase.status !== "PENDING" || ageCase.manual_review_status !== "UPLOADING") {
@@ -399,6 +477,9 @@ async function uploadAgeEvidence(
   }
   if (Date.parse(ageCase.upload_expires_at) <= Date.now()) {
     throw new ApiError(409, "AGE_UPLOAD_WINDOW_EXPIRED");
+  }
+  if (!requiredAgeEvidence(ageCase.document_type).includes(kind)) {
+    throw new ApiError(409, "EVIDENCE_KIND_NOT_REQUIRED");
   }
   const existing = await env.DB.prepare(`
     SELECT id FROM age_verification_uploads
@@ -478,13 +559,14 @@ async function submitAgeCase(
   exactObjectKeys(body, []);
   const idempotencyKey = requireIdempotencyKey(request);
   const ageCase = await env.DB.prepare(`
-    SELECT id, status, manual_review_status, submission_idempotency_key
+    SELECT id, status, manual_review_status, submission_idempotency_key, document_type
     FROM age_verification_cases WHERE id = ? AND appwrite_user_id = ?
   `).bind(caseId, userId).first<{
     id: string;
     status: string;
     manual_review_status: string;
     submission_idempotency_key: string | null;
+    document_type: AgeDocumentType;
   }>();
   if (!ageCase) throw new ApiError(404, "AGE_CASE_NOT_FOUND");
   if (
@@ -499,11 +581,7 @@ async function submitAgeCase(
     WHERE age_case_id = ? AND deleted_at IS NULL
   `).bind(caseId).all<{ evidence_kind: AgeEvidenceKind }>();
   const kinds = new Set(evidence.results.map((row) => row.evidence_kind));
-  if (
-    !kinds.has("DOCUMENT_FRONT") ||
-    !kinds.has("DOCUMENT_BACK") ||
-    !kinds.has("VIDEO")
-  ) {
+  if (requiredAgeEvidence(ageCase.document_type).some((kind) => !kinds.has(kind))) {
     throw new ApiError(409, "REQUIRED_EVIDENCE_MISSING");
   }
   const now = isoNow();
@@ -1616,14 +1694,18 @@ async function vipWhatsappPerk(
   };
 }
 
-async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>> {
+async function listProducts(
+  env: MembershipEnv,
+  locale: "de" | "en",
+): Promise<Record<string, unknown>> {
   const rows = await env.DB.prepare(`
     SELECT * FROM (
       SELECT
         1 AS record_group,
         p.id AS record_id,
         p.sku,
-        p.display_name,
+        CASE WHEN ? = 'en' THEN COALESCE(p.display_name_en, p.display_name)
+          ELSE p.display_name END AS display_name,
         p.tier,
         p.currency,
         p.amount_minor,
@@ -1649,8 +1731,10 @@ async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>
         NULL AS duration_unit,
         NULL AS duration_value,
         NULL AS purchase_limit_per_user,
-        k.title AS perk_title,
-        k.description AS perk_description,
+        CASE WHEN ? = 'en' THEN COALESCE(k.title_en, k.title)
+          ELSE k.title END AS perk_title,
+        CASE WHEN ? = 'en' THEN COALESCE(k.description_en, k.description)
+          ELSE k.description END AS perk_description,
         k.sort_order AS perk_sort_order
       FROM tier_perks k
       WHERE k.active = 1
@@ -1666,7 +1750,7 @@ async function listProducts(env: MembershipEnv): Promise<Record<string, unknown>
       COALESCE(duration_value, 0),
       COALESCE(perk_sort_order, 0),
       record_id
-  `).all<{
+  `).bind(locale, locale, locale).all<{
     record_group: 1 | 2;
     record_id: string;
     sku: string | null;
@@ -2207,7 +2291,7 @@ async function privacyOverview(
   const [profileResult, requestsResult] = await env.DB.batch([
     env.DB.prepare(`
       SELECT country_code, region_code, privacy_regime,
-        privacy_notice_version, privacy_notice_acknowledged_at,
+        privacy_notice_version, privacy_notice_acknowledged_at, preferred_locale,
         marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
         profiling_opt_out, sensitive_data_limit, privacy_choices_updated_at
       FROM user_profiles WHERE appwrite_user_id = ?
@@ -2227,6 +2311,7 @@ async function privacyOverview(
     privacy_regime: string | null;
     privacy_notice_version: string | null;
     privacy_notice_acknowledged_at: string | null;
+    preferred_locale: "de" | "en";
     marketing_opt_out: number;
     sale_share_opt_out: number;
     targeted_ads_opt_out: number;
@@ -2243,6 +2328,7 @@ async function privacyOverview(
       regime: profile.privacy_regime,
       noticeVersion: profile.privacy_notice_version,
       noticeAcknowledgedAt: profile.privacy_notice_acknowledged_at,
+      preferredLocale: profile.preferred_locale,
       complete: Boolean(
         profile.country_code &&
         profile.privacy_regime &&
@@ -2295,6 +2381,7 @@ async function updatePrivacyProfile(
     "noticeAccepted",
     "noticeVersion",
     "gpcSignal",
+    "locale",
   ]);
   const country = normalizeCountry(body.countryCode);
   const region = normalizeRegion(country, body.regionCode);
@@ -2304,6 +2391,7 @@ async function updatePrivacyProfile(
   if (body.gpcSignal !== undefined && typeof body.gpcSignal !== "boolean") {
     throw new ApiError(400, "INVALID_GPC_SIGNAL");
   }
+  const locale = body.locale === undefined ? "de" : authLocale(body.locale);
   const location = privacyRegime(country, region);
   const now = isoNow();
   const result = await env.DB.prepare(`
@@ -2314,6 +2402,7 @@ async function updatePrivacyProfile(
       privacy_regime = ?,
       privacy_notice_version = ?,
       privacy_notice_acknowledged_at = ?,
+      preferred_locale = ?,
       sale_share_opt_out = CASE WHEN ? = 1 THEN 1 ELSE sale_share_opt_out END,
       targeted_ads_opt_out = CASE WHEN ? = 1 THEN 1 ELSE targeted_ads_opt_out END,
       privacy_choices_updated_at = CASE
@@ -2329,6 +2418,7 @@ async function updatePrivacyProfile(
     location.regime,
     PRIVACY_NOTICE_VERSION,
     now,
+    locale,
     body.gpcSignal === true ? 1 : 0,
     body.gpcSignal === true ? 1 : 0,
     body.gpcSignal === true ? 1 : 0,
@@ -2341,6 +2431,7 @@ async function updatePrivacyProfile(
     countryCode: country,
     regionCode: region,
     regime: location.regime,
+    preferredLocale: locale,
     noticeVersion: PRIVACY_NOTICE_VERSION,
     noticeAcknowledgedAt: now,
     gpcApplied: body.gpcSignal === true,
@@ -2495,7 +2586,7 @@ async function exportPrivacyData(
     env.DB.prepare(`
       SELECT email, display_name, email_verified, account_status, age_status,
         country_code, region_code, jurisdiction_code, privacy_regime,
-        privacy_notice_version, privacy_notice_acknowledged_at,
+        privacy_notice_version, privacy_notice_acknowledged_at, preferred_locale,
         marketing_opt_out, sale_share_opt_out, targeted_ads_opt_out,
         profiling_opt_out, sensitive_data_limit, privacy_choices_updated_at,
         created_at, updated_at
@@ -2518,12 +2609,13 @@ async function exportPrivacyData(
     `).bind(userId),
     env.DB.prepare(`
       SELECT tier, status, starts_at, expires_at, revoked_at, revocation_reason,
-        created_at, updated_at
+        activation_email_status, activation_email_sent_at, created_at, updated_at
       FROM entitlements WHERE appwrite_user_id = ? ORDER BY created_at DESC
     `).bind(userId),
     env.DB.prepare(`
       SELECT status, threshold, review_method, manual_review_status,
-        instructions_version, consented_at, submitted_at, decided_at,
+        instructions_version, verification_route, document_type,
+        country_code_snapshot, consented_at, submitted_at, decided_at,
         upload_expires_at, expires_at, retention_until, evidence_deleted_at,
         created_at, updated_at
       FROM age_verification_cases
@@ -2692,7 +2784,10 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     request.headers.get("CF-Connecting-IP") ?? "unknown",
   );
   if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
-    const result = await listProducts(env);
+    const result = await listProducts(
+      env,
+      requestUrl.searchParams.get("locale") === "en" ? "en" : "de",
+    );
     return jsonResponse(result, { origin, origins, requestId: correlationId });
   }
   if (request.method === "POST" && requestUrl.pathname === "/v1/auth/password-reset/request") {

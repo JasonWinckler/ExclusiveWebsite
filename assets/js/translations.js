@@ -141,7 +141,7 @@ Object.assign(window.SiteTranslations.de, {
 });
 
 Object.assign(window.SiteTranslations.en, {
-  stepVerifyText: 'After email confirmation, upload the front and back of your ID and record the required live camera video for manual review.',
+  stepVerifyText: 'After email confirmation, choose an accepted photo ID, provide only the required page or sides and record the one-time live challenge for personal review.',
   stepAccessText: 'Your dashboard shows the owner-reviewed status. Protected areas remain closed unless every server-side authorization check succeeds.',
   backendLiveText: 'Appwrite handles account registration and sessions. Cloudflare provides the fail-closed membership, manual review and authorization boundary.',
   backendAvsLive: 'Verified-email users submit private ID images and a browser-recorded live video for owner-operated manual review.',
@@ -153,7 +153,7 @@ Object.assign(window.SiteTranslations.en, {
 });
 
 Object.assign(window.SiteTranslations.de, {
-  stepVerifyText: 'Lade nach der E-Mail-Bestätigung Vorder- und Rückseite deines Ausweises hoch und nimm das verpflichtende Live-Kameravideo für die manuelle Prüfung auf.',
+  stepVerifyText: 'Wähle nach der E-Mail-Bestätigung ein zulässiges Lichtbilddokument, reiche nur die nötige Seite beziehungsweise Vorder- und Rückseite ein und nimm die persönliche Live-Challenge auf.',
   stepAccessText: 'Dein Dashboard zeigt den manuell geprüften Status. Geschützte Bereiche bleiben gesperrt, solange nicht jede serverseitige Zugriffsprüfung erfolgreich ist.',
   backendLiveText: 'Appwrite übernimmt Kontoregistrierung und Sitzungen. Cloudflare bildet die standardmäßig sperrende Grenze für Mitgliedschaft, manuelle Prüfung und Autorisierung.',
   backendAvsLive: 'Nutzer mit bestätigter E-Mail reichen private Ausweisbilder und ein direkt im Browser aufgenommenes Live-Video zur manuellen Prüfung ein.',
@@ -166,8 +166,8 @@ Object.assign(window.SiteTranslations.de, {
 
 // Launch-ready brand copy 2026
 Object.assign(window.SiteTranslations.de, {
-  metaTitle: "Shadow’s Temptation | Private Creator Membership",
-  metaDescription: "Shadow’s Temptation — private 18+ Creator Membership mit Free Gallery, exklusiven Stufen und persönlich kuratierten Einblicken.",
+  metaTitle: "Shadow’s Temptation | Exklusive 18+ Male-Creator-Inhalte",
+  metaDescription: "Shadow’s Temptation — exklusive Inhalte für Erwachsene, private Male-Creator-Galerien und persönliche 18+ Memberships von Jason Shadow.",
   brand: "Shadow’s Temptation",
   navProfile: "Erlebnis",
   navExclusive: "Galerien",
@@ -179,7 +179,7 @@ Object.assign(window.SiteTranslations.de, {
   trustLine: "Diskret · Persönlich kuratiert · Nur verifizierter Zugang",
   profileEyebrow: "NÄHER ALS JE ZUVOR",
   introTitle: "Dein Platz hinter dem Schatten",
-  bio: "Eine Single-Creator-Membership für alle, die mehr als einen flüchtigen Blick wollen: persönliche Posts, private Galerien und abgestufte Benefits – direkt von mir kuratiert.",
+  bio: "Exklusive Inhalte für Erwachsene von einem unabhängigen Male Creator: persönliche Posts, private Galerien und abgestufte Benefits – direkt von mir kuratiert.",
   privateLabel: "DEIN ERLEBNIS",
   privateTitle: "Persönlich. Intensiv. Nur für Mitglieder.",
   privateText: "Jede Stufe öffnet eine eigene Welt. Von ausgewählten Free Previews bis zu besonders persönlichen VIP-Momenten bestimmst du selbst, wie nah du kommen möchtest.",
@@ -216,8 +216,8 @@ Object.assign(window.SiteTranslations.de, {
 });
 
 Object.assign(window.SiteTranslations.en, {
-  metaTitle: "Shadow’s Temptation | Private Creator Membership",
-  metaDescription: "Shadow’s Temptation — a private 18+ creator membership with a Free Gallery, exclusive tiers and personally curated access.",
+  metaTitle: "Shadow’s Temptation | Exclusive Male Creator Content",
+  metaDescription: "Shadow’s Temptation — exclusive adult content, private male-creator galleries and personal 18+ memberships by Jason Shadow.",
   brand: "Shadow’s Temptation",
   navProfile: "Experience",
   navExclusive: "Galleries",
@@ -229,7 +229,7 @@ Object.assign(window.SiteTranslations.en, {
   trustLine: "Discreet · Personally curated · Verified access only",
   profileEyebrow: "CLOSER THAN EVER",
   introTitle: "Your place beyond the shadow",
-  bio: "A single-creator membership for those who want more than a passing glance: personal posts, private galleries and tiered benefits, curated directly by me.",
+  bio: "Exclusive adult content from an independent male creator: personal posts, private galleries and tiered benefits, curated directly by me.",
   privateLabel: "YOUR EXPERIENCE",
   privateTitle: "Personal. Intense. Members only.",
   privateText: "Every tier opens a different world. From selected free previews to deeply personal VIP moments, you decide how close you want to come.",
