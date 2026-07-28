@@ -24,11 +24,12 @@ const deviceStorageKey = "jason-shadow-device-token-v1";
 export const ageInstructionsVersion = "manual-age-v3";
 
 export class CloudflareApiError extends Error {
-  constructor(code, status) {
+  constructor(code, status, requestId = null) {
     super(code);
     this.name = "CloudflareApiError";
     this.code = code;
     this.status = status;
+    this.requestId = requestId;
   }
 }
 
@@ -44,13 +45,15 @@ function requireApiUrl(value, code) {
 
 async function errorFromResponse(response) {
   let code = "API_REQUEST_FAILED";
+  let requestId = response.headers.get("X-Request-Id");
   try {
     const payload = await response.clone().json();
     code = payload?.error?.code || code;
+    requestId = payload?.requestId || requestId;
   } catch {
     // API responses fail closed when their documented JSON error is unavailable.
   }
-  return new CloudflareApiError(code, response.status);
+  return new CloudflareApiError(code, response.status, requestId);
 }
 
 async function apiRequest(path, options = {}) {

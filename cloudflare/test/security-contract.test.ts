@@ -118,4 +118,17 @@ describe("browser and repository security contract", () => {
     expect(frontendApi).toContain("privacyNoticeAccepted");
     expect(frontendApi).toContain("fetchPrivacyExport");
   });
+
+  it("finishes a successful self-deletion without reusing the disabled session", () => {
+    const frontend = read("src/App.jsx");
+    const deletionFlow = frontend.slice(
+      frontend.indexOf("const deleteAccountFromPrivacyCenter"),
+      frontend.indexOf("const downloadPrivacyData"),
+    );
+    expect(deletionFlow).toContain("await requestAccountDeletion(reason)");
+    expect(deletionFlow).toContain("await logout().catch(() => null)");
+    expect(deletionFlow).not.toContain("refresh()");
+    expect(deletionFlow).not.toContain("loadPrivacy()");
+    expect(frontend).not.toContain("function messageFor");
+  });
 });

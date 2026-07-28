@@ -44,6 +44,7 @@ import {
   privacyNoticeVersion,
   usRegions,
 } from "./lib/privacy";
+import { friendlyErrorMessage } from "./lib/error-messages";
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
@@ -220,23 +221,6 @@ const copy = {
     loading: "Processing…",
   },
 };
-
-const errorCopy = {
-  AGE_ALREADY_APPROVED: "ageAlreadyApproved",
-  AGE_VERIFICATION_NOT_CONFIGURED: "ageUnavailable",
-  EMAIL_NOT_VERIFIED: "emailRequired",
-  MEMBERSHIP_API_NOT_CONFIGURED: "backendUnavailable",
-  ADMIN_API_NOT_CONFIGURED: "backendUnavailable",
-  AGE_CASE_ALREADY_OPEN: "ageExists",
-  REQUIRED_EVIDENCE_MISSING: "filesRequired",
-  PRODUCT_PURCHASE_LIMIT_REACHED: "genericError",
-};
-
-function messageFor(error, t) {
-  const code = error?.code || error?.message;
-  const key = errorCopy[code];
-  return (key && t[key]) || code || t.genericError;
-}
 
 const tierNames = {
   EXCLUSIVE_BASIC: "basic",
@@ -860,7 +844,7 @@ export default function App() {
       setPrivacy(next);
       return next;
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
       return null;
     } finally {
       setPrivacyLoading(false);
@@ -928,7 +912,7 @@ export default function App() {
           }
         }
       } catch (error) {
-        setNotice(messageFor(error, t));
+        setNotice(friendlyErrorMessage(error, language, t.genericError));
       } finally {
         setBusy(false);
       }
@@ -1084,7 +1068,7 @@ export default function App() {
       setNotice(success);
       if (nextModal) setModal(nextModal);
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1151,7 +1135,7 @@ export default function App() {
       setNotice(ui.ageSubmitted);
       setModal("account");
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1166,7 +1150,7 @@ export default function App() {
       setAgeSession({ ...created, evidenceKinds: [] });
       await refresh();
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1207,7 +1191,7 @@ export default function App() {
       setSepaOrder(order);
       await refresh();
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1223,7 +1207,7 @@ export default function App() {
       setGallery((result.items || []).filter((item) => item.accessible));
       requestAnimationFrame(() => document.getElementById("member-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
       setModal("account");
     } finally {
       setBusy(false);
@@ -1262,7 +1246,7 @@ export default function App() {
       setCommentAccess({ allowComments: Boolean(next.allowComments), canComment: Boolean(next.canComment) });
       form.reset();
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1281,7 +1265,7 @@ export default function App() {
           : item));
       }
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1318,7 +1302,7 @@ export default function App() {
       setNotice(success);
       return true;
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
       return false;
     } finally {
       setBusy(false);
@@ -1359,12 +1343,35 @@ export default function App() {
       : "The request has been withdrawn.",
   );
 
-  const deleteAccountFromPrivacyCenter = (reason) => privacyAction(
-    () => requestAccountDeletion(reason),
-    language === "de"
-      ? "Deine Kontolöschung wurde eingeplant. Der Status bleibt hier sichtbar."
-      : "Your account deletion has been scheduled. Its status remains visible here.",
-  );
+  const deleteAccountFromPrivacyCenter = async (reason) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await requestAccountDeletion(reason);
+      await logout().catch(() => null);
+      setUser(null);
+      setMembership(null);
+      setOrders([]);
+      setPremiumTelegram(null);
+      setVipWhatsapp(null);
+      setPrivacy(null);
+      setAgeSession(null);
+      setLiveVideo(null);
+      setDashboardTab("overview");
+      setMode("login");
+      setModal("auth");
+      history.replaceState({}, "", "/");
+      setNotice(language === "de"
+        ? "Deine Kontolöschung wurde sicher erfasst. Du wurdest abgemeldet; die Löschung wird jetzt nach den geltenden Aufbewahrungsfristen verarbeitet."
+        : "Your account deletion request was recorded securely. You have been signed out and deletion will now be processed under the applicable retention requirements.");
+      return true;
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const downloadPrivacyData = async () => {
     setBusy(true);
@@ -1387,7 +1394,7 @@ export default function App() {
         ? "Deine Datenkopie wurde erstellt und heruntergeladen."
         : "Your data copy has been generated and downloaded.");
     } catch (error) {
-      setNotice(messageFor(error, t));
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       setBusy(false);

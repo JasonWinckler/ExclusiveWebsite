@@ -25,6 +25,7 @@ import {
   adminUploadContent,
   requestPasswordReset,
 } from "./lib/appwrite";
+import { friendlyErrorMessage } from "./lib/error-messages";
 
 const copy = {
   de: {
@@ -242,7 +243,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         loadPrivacyRequests(),
       ]);
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -261,7 +262,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setPreview(null);
       setCheckedReviewItems([]);
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -279,7 +280,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         kind: evidence.evidence_kind,
       });
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -303,7 +304,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setPreview(null);
       await loadCases();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -339,7 +340,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         : t.published);
       await loadContent();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -372,7 +373,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setNotice(language === "de" ? "Der Beitrag wurde gelöscht." : "The post was deleted.");
       await Promise.all([loadContent(), loadComments()]);
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -393,7 +394,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       form.reset();
       await loadPayments();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -412,7 +413,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setPaymentConfirmations((current) => ({ ...current, [orderId]: false }));
       await loadPayments();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -430,7 +431,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setNotice(language === "de" ? "Kommentarstatus wurde aktualisiert." : "Comment status was updated.");
       await loadComments();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -466,7 +467,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: "" }));
       await loadUsers();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -488,7 +489,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         : "The privacy request has been updated.");
       await loadPrivacyRequests();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -509,7 +510,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       setNotice(language === "de" ? "Zahlungsauftrag wurde aktualisiert." : "Payment order was updated.");
       await loadPayments();
     } catch (requestError) {
-      setError(requestError?.code || t.genericError);
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
       setBusy(false);
     }
