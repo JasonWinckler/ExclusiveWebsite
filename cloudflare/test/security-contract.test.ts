@@ -131,4 +131,17 @@ describe("browser and repository security contract", () => {
     expect(deletionFlow).not.toContain("loadPrivacy()");
     expect(frontend).not.toContain("function messageFor");
   });
+
+  it("keeps the SEPA subscription insert aligned with its database columns", () => {
+    const membershipWorker = read("cloudflare/src/workers/membership-api.ts");
+    const insert = membershipWorker.match(
+      /INSERT INTO subscriptions\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)\s*`\)\.bind\(/,
+    );
+    if (!insert?.[1] || !insert[2]) throw new Error("SEPA subscription insert not found");
+    const columns = insert[1].split(",").map((column) => column.trim()).filter(Boolean);
+    const values = insert[2].split(",").map((value) => value.trim()).filter(Boolean);
+    expect(columns).toHaveLength(22);
+    expect(values).toHaveLength(columns.length);
+    expect(values.every((value) => value === "?")).toBe(true);
+  });
 });

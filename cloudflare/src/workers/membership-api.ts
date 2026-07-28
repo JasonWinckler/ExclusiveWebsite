@@ -1309,14 +1309,16 @@ async function createSepaOrder(
         billing_name, billing_street, billing_postal_code, billing_city,
         billing_country_code, customer_locale, terms_version, terms_accepted_at,
         digital_content_consent_at, withdrawal_acknowledged_at, created_at, updated_at
-      ) VALUES (?, ?, ?, 'SEPA_CREDIT_TRANSFER', ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderId,
       userId,
       product.id,
+      "SEPA_CREDIT_TRANSFER",
       reference,
       product.amount_minor,
       product.currency,
+      "PENDING",
       paymentDueAt,
       idempotencyKey,
       billing?.name ?? null,
