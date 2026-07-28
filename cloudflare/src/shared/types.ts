@@ -108,9 +108,14 @@ export interface PaymentReconciliationEnv {
 }
 
 export interface IdentityProjectionEnv {
+  EMAIL_ASSETS: Fetcher;
   APPWRITE_ENDPOINT: string;
   APPWRITE_PROJECT_ID: string;
   APPWRITE_SERVER_API_KEY: string;
+  GRAPH_TENANT_ID: string;
+  GRAPH_CLIENT_ID: string;
+  GRAPH_CLIENT_SECRET: string;
+  GRAPH_SENDER_MAILBOX: string;
   LABEL_SYNC_SERVICE_SECRET: string;
   ACCOUNT_LIFECYCLE_SERVICE_SECRET: string;
   MAX_UPSTREAM_JSON_BYTES?: string;

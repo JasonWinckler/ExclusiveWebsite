@@ -42,6 +42,22 @@ describe("browser and repository security contract", () => {
     expect(wranglerConfigs).not.toMatch(/(?:API_KEY|WEBHOOK_SECRET|SERVER_API_KEY)\s*":\s*"/);
   });
 
+  it("routes authentication email exclusively through the private custom mail service", () => {
+    const frontend = read("src/lib/appwrite.js");
+    const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
+    const membershipWorker = read("cloudflare/src/workers/membership-api.ts");
+    const identityConfig = read("cloudflare/wrangler.identity-projection.jsonc");
+    expect(frontend).not.toContain("account.createVerification");
+    expect(frontend).not.toContain("account.createRecovery");
+    expect(membershipConfig).toMatch(/"AUTH_EMAIL_MODE": "CUSTOM"/);
+    expect(membershipConfig).toContain("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.");
+    expect(membershipWorker).toContain('src="cid:shadow-brand-banner"');
+    expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/");
+    expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/eu/");
+    expect(membershipWorker).toContain("https://exclusive.jason-shadow.com/legal/us/");
+    expect(identityConfig).toContain('"binding": "EMAIL_ASSETS"');
+  });
+
   it("uses owner-operated review and private R2 without a public storage URL builder", () => {
     expect(read("cloudflare/wrangler.membership-api.jsonc"))
       .toMatch(/"AGE_REVIEW_MODE": "manual-r2-v1"/);

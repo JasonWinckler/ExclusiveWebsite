@@ -7,10 +7,50 @@ import {
   readJsonResponse,
 } from "../shared/http";
 import { secretsEqual } from "../shared/security";
+import { sendMicrosoftGraphEmail } from "../shared/microsoft-graph";
 import type { IdentityProjectionEnv } from "../shared/types";
 
 const AGE_LABELS = new Set(["age_pending", "age_verified", "age_rejected"]);
 const ACCESS_LABELS = new Set(["active_basic", "active_premium", "active_vip"]);
+const EMAIL_BRAND_CONTENT_ID = "shadow-brand-banner";
+const EMAIL_BRAND_MAX_BYTES = 524_288;
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
+async function emailBrandImage(env: IdentityProjectionEnv): Promise<{
+  contentType: "image/png";
+  name: string;
+  contentId: string;
+  contentBytes: string;
+}> {
+  let response: Response;
+  try {
+    response = await env.EMAIL_ASSETS.fetch(
+      new Request("https://email-assets.internal/banner.png"),
+    );
+  } catch {
+    throw new ApiError(503, "EMAIL_BRAND_ASSET_UNAVAILABLE");
+  }
+  if (!response.ok || response.headers.get("Content-Type")?.split(";")[0] !== "image/png") {
+    throw new ApiError(503, "EMAIL_BRAND_ASSET_INVALID");
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length < 1 || bytes.length > EMAIL_BRAND_MAX_BYTES) {
+    throw new ApiError(503, "EMAIL_BRAND_ASSET_INVALID");
+  }
+  return {
+    contentType: "image/png",
+    name: "shadows-temptation-banner.png",
+    contentId: EMAIL_BRAND_CONTENT_ID,
+    contentBytes: bytesToBase64(bytes),
+  };
+}
 
 function appwriteBaseUrl(raw: string): string {
   let endpoint: URL;
@@ -90,8 +130,11 @@ async function syncLabels(
 
 async function handleRequest(request: Request, env: IdentityProjectionEnv): Promise<Response> {
   if (request.method !== "POST") throw new ApiError(405, "METHOD_NOT_ALLOWED");
-  const body = await readJsonBody<Record<string, unknown>>(request, 4096);
   const path = new URL(request.url).pathname;
+  const body = await readJsonBody<Record<string, unknown>>(
+    request,
+    path === "/send-transactional-email" ? 196_608 : 4096,
+  );
   const labelServicePath = path === "/sync-labels" ||
     path === "/update-user-status" ||
     path === "/verify-user-email" ||
@@ -156,21 +199,24 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       body.html.length < 1 ||
       body.html.length > 131_072
     ) throw new ApiError(400, "INVALID_TRANSACTIONAL_EMAIL");
-    await appwriteRequest(env, "/messaging/messages/email", {
-      method: "POST",
-      body: JSON.stringify({
-        messageId: body.messageId,
-        subject: body.subject,
-        content: body.html,
-        users: [body.userId],
-        topics: [],
-        targets: [],
-        cc: [],
-        bcc: [],
-        attachments: [],
-        draft: false,
-        html: true,
-      }),
+    const userResponse = await appwriteRequest(env, `/users/${encodedUserId}`);
+    const user = await readJsonResponse<{ email?: unknown; name?: unknown }>(
+      userResponse,
+      parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
+      "APPWRITE_INVALID_RESPONSE",
+    );
+    if (typeof user.email !== "string") throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
+    await sendMicrosoftGraphEmail({
+      tenantId: env.GRAPH_TENANT_ID,
+      clientId: env.GRAPH_CLIENT_ID,
+      clientSecret: env.GRAPH_CLIENT_SECRET,
+      senderMailbox: env.GRAPH_SENDER_MAILBOX,
+      recipientEmail: user.email,
+      recipientName: typeof user.name === "string" ? user.name : undefined,
+      messageId: body.messageId,
+      subject: body.subject,
+      html: body.html,
+      inlineImage: await emailBrandImage(env),
     });
     return jsonResponse({ ok: true });
   }

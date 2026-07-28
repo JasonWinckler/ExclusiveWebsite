@@ -826,7 +826,7 @@ export default function App() {
       setPremiumTelegram(null);
       setVipWhatsapp(null);
       setPrivacy(null);
-      return;
+      return current;
     }
     setBilling((previous) => ({ ...previous, name: previous.name || current.name || "" }));
     try {
@@ -849,6 +849,7 @@ export default function App() {
       setPremiumTelegram(null);
       setVipWhatsapp(null);
     }
+    return current;
   };
 
   const loadPrivacy = async () => {
@@ -915,7 +916,17 @@ export default function App() {
           setMode("recover");
           setModal("auth");
         }
-        await refresh();
+        const current = await refresh();
+        if (parameters.get("action") === "orders") {
+          if (current && !current.labels?.includes("admin")) {
+            history.replaceState({}, "", "/");
+            setDashboardTab("orders");
+            setModal("account");
+          } else if (!current) {
+            setMode("login");
+            setModal("auth");
+          }
+        }
       } catch (error) {
         setNotice(messageFor(error, t));
       } finally {
@@ -1061,7 +1072,15 @@ export default function App() {
     setNotice("");
     try {
       await work();
-      await refresh();
+      const current = await refresh();
+      if (
+        current &&
+        !current.labels?.includes("admin") &&
+        new URLSearchParams(location.search).get("action") === "orders"
+      ) {
+        history.replaceState({}, "", "/");
+        setDashboardTab("orders");
+      }
       setNotice(success);
       if (nextModal) setModal(nextModal);
     } catch (error) {

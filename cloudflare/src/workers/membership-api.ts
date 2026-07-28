@@ -602,49 +602,76 @@ function authEmailHtml(input: {
   const isGerman = input.locale === "de";
   const verification = input.purpose === "VERIFY_EMAIL";
   const title = verification
-    ? (isGerman ? "Bestätige deine E-Mail" : "Confirm your email")
-    : (isGerman ? "Setze dein Passwort zurück" : "Reset your password");
+    ? (isGerman ? "Dein exklusiver Zugang beginnt hier" : "Your exclusive access starts here")
+    : (isGerman ? "Sicher zurück in deinen Account" : "Securely return to your account");
   const intro = verification
     ? (isGerman
-      ? "Ein letzter Schritt öffnet den Weg zu deinem privaten Bereich."
-      : "One final step opens the way to your private space.")
+      ? "Bestätige deine E-Mail und öffne die Tür zu deinem persönlichen Member-Bereich."
+      : "Confirm your email and open the door to your personal member experience.")
     : (isGerman
-      ? "Du hast einen sicheren Link zum Zurücksetzen deines Passworts angefordert."
-      : "You requested a secure link to reset your password.");
+      ? "Mit diesem einmaligen Link legst du ein neues Passwort fest und erhältst wieder Zugriff."
+      : "Use this single-use link to choose a new password and restore your access.");
   const action = verification
-    ? (isGerman ? "E-Mail jetzt bestätigen" : "Confirm email now")
+    ? (isGerman ? "Zugang jetzt bestätigen" : "Confirm my access")
     : (isGerman ? "Neues Passwort festlegen" : "Choose a new password");
+  const preheader = verification
+    ? (isGerman
+      ? "Nur noch ein Klick bis zu deinem persönlichen Shadow's Temptation Account."
+      : "One click remains before your personal Shadow's Temptation account is ready.")
+    : (isGerman
+      ? "Dein sicherer Link zum Zurücksetzen des Passworts."
+      : "Your secure password reset link.");
   const expiry = new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
     dateStyle: "long",
     timeStyle: "short",
     timeZone: "Europe/Berlin",
   }).format(new Date(input.expiresAt));
   const security = isGerman
-    ? `Der Link ist einmalig und bis ${expiry} gültig. Falls du diese Nachricht nicht angefordert hast, kannst du sie ignorieren.`
-    : `This single-use link is valid until ${expiry}. If you did not request this message, you can ignore it.`;
-  return `<!doctype html><html><body style="margin:0;background:#120306;color:#f8eee7;font-family:Arial,sans-serif">
-  <div style="max-width:680px;margin:0 auto;padding:32px 20px">
-    <div style="background:linear-gradient(145deg,#2a0710,#150407);border:1px solid #7f2438;border-radius:22px;overflow:hidden">
-      <div style="padding:30px 34px;border-bottom:1px solid #5a1b2a">
-        <div style="color:#d7ad62;font-size:12px;letter-spacing:3px;text-transform:uppercase">Shadow's Temptation · Private Membership</div>
-        <h1 style="margin:12px 0 8px;font-family:Georgia,serif;font-size:32px;color:#fff7ed">${escapeHtml(title)}</h1>
-        <p style="margin:0;color:#d9c9c2;line-height:1.65">${escapeHtml(intro)}</p>
-      </div>
-      <div style="padding:30px 34px">
-        <p style="margin:0 0 22px;line-height:1.65">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.displayName || (isGerman ? "Member" : "member"))},</p>
-        <p style="margin:0 0 26px;text-align:center">
-          <a href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:15px 24px;border-radius:999px;background:linear-gradient(135deg,#e55422,#8d1022);color:#fff7ed;text-decoration:none;font-weight:bold">${escapeHtml(action)}</a>
-        </p>
-        <p style="padding:16px 18px;border:1px solid #4a1521;border-radius:12px;color:#bdaaa4;background:#0c0204;font-size:13px;line-height:1.6">${escapeHtml(security)}</p>
-        <p style="margin:22px 0 0;color:#aa9993;font-size:12px;line-height:1.6">${isGerman ? "Funktioniert der Button nicht? Öffne diesen Link:" : "If the button does not work, open this link:"}<br><a href="${escapeHtml(input.actionUrl)}" style="color:#d7ad62;word-break:break-all">${escapeHtml(input.actionUrl)}</a></p>
-      </div>
-      <div style="padding:20px 34px;background:#0d0204;color:#998984;font-size:12px;line-height:1.6">
-        Shadow's Temptation · Jason Winckler · Rheine, Deutschland<br>
-        <a href="https://exclusive.jason-shadow.com/" style="color:#d7ad62">exclusive.jason-shadow.com</a> ·
-        <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#d7ad62">${isGerman ? "Datenschutz" : "Privacy"}</a>
-      </div>
-    </div>
-  </div></body></html>`;
+    ? `Dieser Link ist nur einmal nutzbar und bis ${expiry} gültig. Falls du die Nachricht nicht angefordert hast, ignoriere sie bitte; dein bestehendes Passwort bleibt unverändert.`
+    : `This link can be used once and is valid until ${expiry}. If you did not request it, please ignore this message; your existing password remains unchanged.`;
+  const nextStep = verification
+    ? (isGerman
+      ? "Nach der Bestätigung kannst du dich direkt anmelden und deine persönliche 18+-Verifikation starten."
+      : "After confirmation, you can sign in immediately and begin your personal 18+ verification.")
+    : (isGerman
+      ? "Danach kannst du dich sofort wieder anmelden und dort weitermachen, wo du aufgehört hast."
+      : "You can then sign in immediately and continue exactly where you left off.");
+  return `<!doctype html><html lang="${isGerman ? "de" : "en"}"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <style>@media only screen and (max-width:620px){.mail-shell{width:100%!important}.mail-pad{padding:24px 20px!important}.mail-title{font-size:30px!important}.mail-button{display:block!important;text-align:center!important}}</style>
+  </head><body style="margin:0;padding:0;background:#100205;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(preheader)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#100205">
+    <tr><td align="center" style="padding:28px 12px">
+      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td class="mail-pad" style="padding:34px 38px 20px">
+          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">Shadow's Temptation · Private Membership</div>
+          <h1 class="mail-title" style="margin:12px 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:38px;line-height:1.08;color:#fff6e8;font-weight:normal">${escapeHtml(title)}</h1>
+          <p style="margin:0;color:#d8c4bd;font-size:17px;line-height:1.65">${escapeHtml(intro)}</p>
+        </td></tr>
+        <tr><td class="mail-pad" style="padding:18px 38px 34px">
+          <p style="margin:0 0 20px;color:#f8eee7;font-size:16px;line-height:1.65">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.displayName || (isGerman ? "Member" : "member"))},</p>
+          <p style="margin:0 0 26px;color:#d8c4bd;font-size:15px;line-height:1.7">${escapeHtml(nextStep)}</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px"><tr><td style="border-radius:999px;background:#c83a22">
+            <a class="mail-button" href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:.2px">${escapeHtml(action)} →</a>
+          </td></tr></table>
+          <div style="padding:17px 18px;border:1px solid #4a1822;border-radius:14px;background:#120306;color:#bca7a0;font-size:13px;line-height:1.65">
+            <strong style="color:#e6c77c">${isGerman ? "Sicherheitsinformation" : "Security notice"}</strong><br>${escapeHtml(security)}
+          </div>
+          <p style="margin:22px 0 0;color:#9f8e89;font-size:12px;line-height:1.6">${isGerman ? "Button nicht sichtbar? Öffne den folgenden sicheren Link:" : "Button not visible? Open this secure link:"}<br><a href="${escapeHtml(input.actionUrl)}" style="color:#e6c77c;word-break:break-all">${escapeHtml(input.actionUrl)}</a></p>
+        </td></tr>
+        <tr><td style="padding:22px 38px;background:#0d0204;color:#968681;font-size:12px;line-height:1.7">
+          <strong style="color:#d7bbb2">Shadow's Temptation</strong> · Desire lives in the shadows.<br>
+          Jason Shadow · Inhaber Jason Winckler · Rheine, Deutschland<br>
+          <a href="https://exclusive.jason-shadow.com/" style="color:#e6c77c;text-decoration:none">Website</a> ·
+          <a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c;text-decoration:none">${isGerman ? "Rechtliches & Datenschutz" : "Legal & Privacy"}</a> ·
+          <a href="mailto:info@exclusive.jason-shadow.com" style="color:#e6c77c;text-decoration:none">Support</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table></body></html>`;
 }
 
 async function issueAuthEmailToken(
@@ -926,9 +953,14 @@ function invoiceEmailHtml(input: {
   locale: "de" | "en";
   invoiceNumber: string;
   customerName: string;
+  customerStreet: string;
+  customerPostalCode: string;
+  customerCity: string;
+  customerCountryCode: string;
   productName: string;
   amountMinor: number;
   currency: string;
+  issuedAt: string;
   dueAt: string;
   reference: string;
   beneficiary: string;
@@ -944,50 +976,93 @@ function invoiceEmailHtml(input: {
     style: "currency",
     currency: input.currency,
   }).format(input.amountMinor / 100);
-  const due = new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
+  const dateFormatter = new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
     dateStyle: "long",
     timeStyle: "short",
     timeZone: "Europe/Berlin",
-  }).format(new Date(input.dueAt));
-  const title = isGerman ? "Deine Rechnung & Zahlungsdaten" : "Your invoice & payment details";
+  });
+  const issued = dateFormatter.format(new Date(input.issuedAt));
+  const due = dateFormatter.format(new Date(input.dueAt));
+  const title = isGerman ? "Dein Zugang ist reserviert" : "Your access is reserved";
   const intro = isGerman
-    ? "Danke für deine Bestellung. Der Auftrag ist 48 Stunden reserviert und wird automatisch storniert, wenn bis dahin kein Zahlungseingang bestätigt wurde."
-    : "Thank you for your order. It is reserved for 48 hours and will be cancelled automatically if payment has not been confirmed by then.";
+    ? "Danke für deine Bestellung. Schließe jetzt die SEPA-Überweisung ab und sichere dir deinen Platz bei Shadow's Temptation."
+    : "Thank you for your order. Complete your SEPA transfer now and secure your place at Shadow's Temptation.";
   const labels = isGerman
-    ? { invoice: "Rechnung", product: "Mitgliedschaft", total: "Gesamtbetrag", due: "Zahlbar bis", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
-    : { invoice: "Invoice", product: "Membership", total: "Total", due: "Pay by", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
-  return `<!doctype html><html><body style="margin:0;background:#120306;color:#f8eee7;font-family:Arial,sans-serif">
-  <div style="max-width:680px;margin:0 auto;padding:32px 20px">
-    <div style="background:linear-gradient(145deg,#2a0710,#150407);border:1px solid #7f2438;border-radius:22px;overflow:hidden">
-      <div style="padding:28px 32px;border-bottom:1px solid #5a1b2a">
-        <div style="color:#d7ad62;font-size:12px;letter-spacing:3px;text-transform:uppercase">Shadow's Temptation</div>
-        <h1 style="margin:10px 0 8px;font-family:Georgia,serif;font-size:30px;color:#fff7ed">${title}</h1>
-        <p style="margin:0;color:#d9c9c2;line-height:1.6">${intro}</p>
-      </div>
-      <div style="padding:28px 32px">
-        <p style="margin:0 0 20px">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.customerName)},</p>
-        <table style="width:100%;border-collapse:collapse;color:#f8eee7">
-          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.invoice}</td><td style="padding:9px 0;text-align:right;font-weight:bold">${escapeHtml(input.invoiceNumber)}</td></tr>
-          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.product}</td><td style="padding:9px 0;text-align:right">${escapeHtml(input.productName)}</td></tr>
-          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.total}</td><td style="padding:9px 0;text-align:right;font-size:22px;color:#e7c47d;font-weight:bold">${escapeHtml(amount)}</td></tr>
-          <tr><td style="padding:9px 0;color:#bdaaa4">${labels.due}</td><td style="padding:9px 0;text-align:right">${escapeHtml(due)}</td></tr>
-        </table>
-        <div style="margin:24px 0;padding:20px;background:#0c0204;border-radius:14px;border:1px solid #4a1521">
-          <p style="margin:0 0 8px"><strong>${labels.beneficiary}:</strong> ${escapeHtml(input.beneficiary)}</p>
-          <p style="margin:0 0 8px"><strong>IBAN:</strong> ${escapeHtml(input.iban)}</p>
-          ${input.bic ? `<p style="margin:0 0 8px"><strong>BIC:</strong> ${escapeHtml(input.bic)}</p>` : ""}
-          <p style="margin:0"><strong>${labels.reference}:</strong><br><span style="color:#e7c47d;font-weight:bold">${escapeHtml(input.reference)}</span></p>
-        </div>
-        <p style="padding:14px 16px;background:#3a111b;border-left:3px solid #d7ad62;border-radius:8px;line-height:1.55"><strong>${labels.note}:</strong> ${isGerman ? "Bitte übernimm den Verwendungszweck exakt. Die Freischaltung erfolgt erst nach bestätigtem Zahlungseingang." : "Please use the remittance information exactly as shown. Access is activated only after payment has been confirmed."}</p>
-        <p style="font-size:12px;color:#aa9993;line-height:1.6">${isGerman ? "Du hast den sofortigen Beginn der digitalen Bereitstellung nach Zahlungseingang verlangt und bestätigt, dass dein Widerrufsrecht mit Beginn der Bereitstellung erlischt." : "You requested digital supply to begin after payment and acknowledged that your withdrawal right expires when supply begins."}<br><a href="https://exclusive.jason-shadow.com/legal/eu/#terms" style="color:#d7ad62">${isGerman ? "AGB" : "Terms"}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#withdrawal" style="color:#d7ad62">${isGerman ? "Widerruf" : "Withdrawal"}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#d7ad62">${isGerman ? "Datenschutz" : "Privacy"}</a></p>
-        ${input.taxNote ? `<p style="font-size:12px;color:#aa9993">${escapeHtml(input.taxNote)}</p>` : ""}
-      </div>
-      <div style="padding:20px 32px;background:#0d0204;color:#998984;font-size:12px;line-height:1.6">
-        ${escapeHtml(input.sellerName)} · ${escapeHtml(input.sellerAddress)} · ${escapeHtml(input.sellerEmail)}<br>
-        <a href="https://exclusive.jason-shadow.com/" style="color:#d7ad62">exclusive.jason-shadow.com</a>
-      </div>
-    </div>
-  </div></body></html>`;
+    ? { invoice: "Rechnungsnummer", issued: "Rechnungsdatum", product: "Mitgliedschaft", total: "Gesamtbetrag", due: "Zahlbar bis", billTo: "Rechnung an", seller: "Leistungserbringer", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
+    : { invoice: "Invoice number", issued: "Invoice date", product: "Membership", total: "Total", due: "Pay by", billTo: "Bill to", seller: "Supplier", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
+  const legalBase = input.customerCountryCode === "US"
+    ? "https://exclusive.jason-shadow.com/legal/us/"
+    : "https://exclusive.jason-shadow.com/legal/eu/";
+  const preheader = isGerman
+    ? `${input.productName} ist für 48 Stunden reserviert. Zahlungsdaten und Rechnung ${input.invoiceNumber}.`
+    : `${input.productName} is reserved for 48 hours. Payment details and invoice ${input.invoiceNumber}.`;
+  return `<!doctype html><html lang="${isGerman ? "de" : "en"}"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeHtml(input.invoiceNumber)} · Shadow's Temptation</title>
+  <style>@media only screen and (max-width:620px){.mail-shell{width:100%!important}.mail-pad{padding:24px 20px!important}.mail-title{font-size:30px!important}.mail-button{display:block!important;text-align:center!important}.stack-cell{display:block!important;width:100%!important;padding:8px 0!important;text-align:left!important}}</style>
+  </head><body style="margin:0;padding:0;background:#100205;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(preheader)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#100205">
+    <tr><td align="center" style="padding:28px 12px">
+      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td class="mail-pad" style="padding:32px 38px 20px">
+          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">Shadow's Temptation · Exclusive Membership</div>
+          <h1 class="mail-title" style="margin:12px 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:38px;line-height:1.08;color:#fff6e8;font-weight:normal">${escapeHtml(title)}</h1>
+          <p style="margin:0;color:#d8c4bd;font-size:16px;line-height:1.65">${escapeHtml(intro)}</p>
+        </td></tr>
+        <tr><td class="mail-pad" style="padding:18px 38px 34px">
+          <p style="margin:0 0 22px;color:#f8eee7;font-size:16px;line-height:1.65">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.customerName)},</p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;color:#f8eee7">
+            <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.invoice}</td><td style="padding:10px 0;text-align:right;font-weight:bold;border-bottom:1px solid #41202a">${escapeHtml(input.invoiceNumber)}</td></tr>
+            <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.issued}</td><td style="padding:10px 0;text-align:right;border-bottom:1px solid #41202a">${escapeHtml(issued)}</td></tr>
+            <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.product}</td><td style="padding:10px 0;text-align:right;border-bottom:1px solid #41202a">${escapeHtml(input.productName)}</td></tr>
+            <tr><td style="padding:13px 0;color:#bdaaa4">${labels.total}</td><td style="padding:13px 0;text-align:right;font-size:24px;color:#e7c47d;font-weight:bold">${escapeHtml(amount)}</td></tr>
+          </table>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:16px 0 22px;border-collapse:separate;border-spacing:0">
+            <tr>
+              <td class="stack-cell" width="50%" valign="top" style="padding:16px 18px;background:#16050a;border:1px solid #4a1822;border-radius:14px 0 0 14px;color:#bdaaa4;font-size:13px;line-height:1.65">
+                <strong style="color:#e6c77c">${labels.billTo}</strong><br>
+                ${escapeHtml(input.customerName)}<br>${escapeHtml(input.customerStreet)}<br>
+                ${escapeHtml(input.customerPostalCode)} ${escapeHtml(input.customerCity)} · ${escapeHtml(input.customerCountryCode)}
+              </td>
+              <td class="stack-cell" width="50%" valign="top" style="padding:16px 18px;background:#16050a;border:1px solid #4a1822;border-left:0;border-radius:0 14px 14px 0;color:#bdaaa4;font-size:13px;line-height:1.65">
+                <strong style="color:#e6c77c">${labels.seller}</strong><br>
+                ${escapeHtml(input.sellerName)}<br>${escapeHtml(input.sellerAddress)}<br>
+                <a href="mailto:${escapeHtml(input.sellerEmail)}" style="color:#e6c77c">${escapeHtml(input.sellerEmail)}</a>
+              </td>
+            </tr>
+          </table>
+          <div style="padding:22px;background:#0c0204;border-radius:16px;border:1px solid #5a1b2a">
+            <div style="color:#e6c77c;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:bold;margin-bottom:14px">SEPA Credit Transfer</div>
+            <p style="margin:0 0 9px;line-height:1.55"><strong>${labels.beneficiary}:</strong> ${escapeHtml(input.beneficiary)}</p>
+            <p style="margin:0 0 9px;line-height:1.55"><strong>IBAN:</strong> <span style="font-family:Consolas,'Courier New',monospace">${escapeHtml(input.iban)}</span></p>
+            ${input.bic ? `<p style="margin:0 0 9px;line-height:1.55"><strong>BIC:</strong> <span style="font-family:Consolas,'Courier New',monospace">${escapeHtml(input.bic)}</span></p>` : ""}
+            <p style="margin:0 0 9px;line-height:1.55"><strong>${labels.reference}:</strong><br><span style="display:inline-block;margin-top:5px;color:#e7c47d;font-family:Consolas,'Courier New',monospace;font-size:15px;font-weight:bold">${escapeHtml(input.reference)}</span></p>
+            <p style="margin:14px 0 0;color:#bdaaa4;font-size:13px"><strong>${labels.due}:</strong> ${escapeHtml(due)}</p>
+          </div>
+          <p style="margin:18px 0 24px;padding:15px 17px;background:#39101a;border-left:3px solid #e6c77c;border-radius:8px;color:#eadbd5;font-size:13px;line-height:1.6"><strong>${labels.note}:</strong> ${isGerman ? "Bitte übernimm den Verwendungszweck exakt. Nur so kann die Zahlung automatisch deiner Bestellung zugeordnet werden. Ohne bestätigten Zahlungseingang wird der Auftrag nach 48 Stunden automatisch storniert." : "Use the remittance information exactly as shown so the payment can be matched automatically. Without confirmed payment, the order is cancelled automatically after 48 hours."}</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 26px"><tr><td style="border-radius:999px;background:#c83a22">
+            <a class="mail-button" href="https://exclusive.jason-shadow.com/?action=orders" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold">${isGerman ? "Zahlungsdetails im Dashboard öffnen" : "Open payment details in dashboard"} →</a>
+          </td></tr></table>
+          ${input.taxNote ? `<p style="margin:0 0 14px;padding:13px 15px;border:1px solid #4a1822;border-radius:10px;background:#16050a;color:#cbb9b2;font-size:12px;line-height:1.6"><strong>${isGerman ? "Steuerlicher Hinweis" : "Tax notice"}:</strong> ${escapeHtml(input.taxNote)}</p>` : ""}
+          <p style="margin:0;color:#9f8e89;font-size:12px;line-height:1.7">${isGerman ? "Du hast den Beginn der digitalen Bereitstellung nach bestätigtem Zahlungseingang verlangt und den Verlust des Widerrufsrechts mit Beginn der Bereitstellung bestätigt." : "You requested digital supply to begin after confirmed payment and acknowledged the loss of the withdrawal right when supply begins."}<br>
+            <a href="${legalBase}" style="color:#e6c77c;text-decoration:none">${isGerman ? "Legal Center" : "Legal Center"}</a> ·
+            <a href="${legalBase}#terms" style="color:#e6c77c;text-decoration:none">${isGerman ? "AGB" : "Terms"}</a> ·
+            <a href="${legalBase}#withdrawal" style="color:#e6c77c;text-decoration:none">${isGerman ? "Widerruf" : "Withdrawal"}</a> ·
+            <a href="${legalBase}#privacy" style="color:#e6c77c;text-decoration:none">${isGerman ? "Datenschutz" : "Privacy"}</a>
+          </p>
+        </td></tr>
+        <tr><td style="padding:22px 38px;background:#0d0204;color:#968681;font-size:12px;line-height:1.7">
+          <strong style="color:#d7bbb2">Shadow's Temptation</strong> · Desire lives in the shadows.<br>
+          ${escapeHtml(input.sellerName)} · ${escapeHtml(input.sellerAddress)}<br>
+          <a href="https://exclusive.jason-shadow.com/" style="color:#e6c77c;text-decoration:none">Website</a> ·
+          <a href="${legalBase}" style="color:#e6c77c;text-decoration:none">${isGerman ? "Rechtliches" : "Legal"}</a> ·
+          <a href="mailto:${escapeHtml(input.sellerEmail)}" style="color:#e6c77c;text-decoration:none">Support</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table></body></html>`;
 }
 
 function sepaInstructions(env: MembershipEnv): SepaInstructions {
@@ -1210,10 +1285,11 @@ async function createSepaOrder(
   const reference = createSepaTransferPurpose(crypto.randomUUID().replace(/-/g, ""));
   const invoiceId = billing ? crypto.randomUUID() : null;
   const number = billing ? invoiceNumber(orderId, now) : null;
-  const sellerName = env.INVOICE_SELLER_NAME?.trim() || "Shadow's Temptation · Jason Winckler";
+  const sellerName = env.INVOICE_SELLER_NAME?.trim() || "Jason Shadow · Inhaber Jason Winckler";
   const sellerAddress = env.INVOICE_SELLER_ADDRESS?.trim() || "Kleiberweg 24, 48432 Rheine, Deutschland";
   const sellerEmail = env.INVOICE_SELLER_EMAIL?.trim() || "info@exclusive.jason-shadow.com";
-  const taxNote = env.INVOICE_TAX_NOTE?.trim() || null;
+  const taxNote = env.INVOICE_TAX_NOTE?.trim() ||
+    "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
   const statements = [
     env.DB.prepare(`
       INSERT INTO subscriptions (
@@ -1289,15 +1365,20 @@ async function createSepaOrder(
         userId,
         messageId,
         subject: locale === "de"
-          ? `Rechnung ${number} · Zahlung binnen 48 Stunden`
-          : `Invoice ${number} · Payment due within 48 hours`,
+          ? `Dein Zugang ist reserviert · Rechnung ${number}`
+          : `Your access is reserved · Invoice ${number}`,
         html: invoiceEmailHtml({
           locale,
           invoiceNumber: number,
           customerName: billing.name,
+          customerStreet: billing.street,
+          customerPostalCode: billing.postalCode,
+          customerCity: billing.city,
+          customerCountryCode: billing.countryCode,
           productName: product.display_name,
           amountMinor: product.amount_minor,
           currency: product.currency,
+          issuedAt: now,
           dueAt: paymentDueAt,
           reference,
           beneficiary: instructions.beneficiary,

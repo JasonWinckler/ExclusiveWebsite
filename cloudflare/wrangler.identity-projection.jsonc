@@ -2,9 +2,13 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-identity-projection",
   "main": "src/workers/identity-projection.ts",
-  "compatibility_date": "2026-07-26",
+  "compatibility_date": "2026-07-28",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "assets": {
+    "directory": "../linktree/uploads",
+    "binding": "EMAIL_ASSETS"
+  },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 0.1 },
@@ -13,6 +17,7 @@
   "vars": {
     "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
     "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+    "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
     "MAX_UPSTREAM_JSON_BYTES": "65536"
   },
   "env": {
@@ -21,6 +26,7 @@
       "vars": {
         "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
         "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
+        "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
         "MAX_UPSTREAM_JSON_BYTES": "65536"
       }
     }

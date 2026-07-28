@@ -20,7 +20,6 @@ const client = new Client()
   .setEndpoint(appwriteConfig.endpoint)
   .setProject(appwriteConfig.projectId);
 const account = new Account(client);
-const callbackUrl = (action) => `${window.location.origin}/?action=${encodeURIComponent(action)}`;
 const deviceStorageKey = "jason-shadow-device-token-v1";
 export const ageInstructionsVersion = "manual-age-v3";
 
@@ -147,29 +146,15 @@ export async function registerAccount({
 
 export const login = (email, password) => account.createEmailPasswordSession({ email, password });
 export const logout = () => account.deleteSession({ sessionId: "current" });
-export async function requestEmailVerification(locale = "de") {
-  try {
-    return await apiRequest(
-      "/v1/auth/email-verification/request",
-      { method: "POST", json: { locale }, idempotent: true },
-    );
-  } catch (error) {
-    if (!(error instanceof CloudflareApiError) || error.code !== "CUSTOM_AUTH_EMAIL_DISABLED") throw error;
-    return account.createVerification({ url: callbackUrl("verify-email") });
-  }
-}
+export const requestEmailVerification = (locale = "de") => apiRequest(
+  "/v1/auth/email-verification/request",
+  { method: "POST", json: { locale }, idempotent: true },
+);
 export const resendVerification = requestEmailVerification;
-export async function requestPasswordReset(email, locale = "de") {
-  try {
-    return await apiRequest(
-      "/v1/auth/password-reset/request",
-      { method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
-    );
-  } catch (error) {
-    if (!(error instanceof CloudflareApiError) || error.code !== "CUSTOM_AUTH_EMAIL_DISABLED") throw error;
-    return account.createRecovery({ email, url: callbackUrl("recover") });
-  }
-}
+export const requestPasswordReset = (email, locale = "de") => apiRequest(
+  "/v1/auth/password-reset/request",
+  { method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
+);
 export const completePasswordReset = (token, password) => apiRequest(
   "/v1/auth/password-reset/confirm",
   { method: "POST", json: { token, password }, authenticated: false, idempotent: true },
