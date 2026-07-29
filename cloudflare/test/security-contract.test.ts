@@ -285,6 +285,7 @@ describe("browser and repository security contract", () => {
     expect(admin).toContain("USER_DEVICE_REVOKED");
     expect(frontend).toContain("removeRegistered");
     expect(frontend).toContain("removeSession");
+    expect(frontend).toContain('import React, { useCallback, useEffect, useState } from "react"');
   });
 
   it("uses a cryptographic six-digit paper challenge and expires unreviewed evidence", () => {
