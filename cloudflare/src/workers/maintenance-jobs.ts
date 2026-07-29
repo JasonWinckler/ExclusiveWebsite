@@ -44,10 +44,13 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
     WHERE (
       status = 'PENDING' AND manual_review_status = 'UPLOADING' AND upload_expires_at <= ?
     ) OR (
+      status = 'PENDING' AND manual_review_status = 'READY_FOR_REVIEW'
+        AND review_expires_at IS NOT NULL AND review_expires_at <= ?
+    ) OR (
       status = 'APPROVED' AND expires_at IS NOT NULL AND expires_at <= ?
     )
     LIMIT ?
-  `).bind(now, now, batchSize).all<{ id: string; appwrite_user_id: string }>();
+  `).bind(now, now, now, batchSize).all<{ id: string; appwrite_user_id: string }>();
   for (const ageCase of expiringCases.results) {
     await env.DB.batch([
       env.DB.prepare(`
@@ -363,13 +366,23 @@ async function processDeletionJobs(
   now: string,
   batchSize: number,
   inactiveDays: number,
-): Promise<void> {
-  const jobs = await env.DB.prepare(`
-    SELECT id, appwrite_user_id, inactivity_cutoff_at, status, version, request_source
-    FROM deletion_jobs
-    WHERE status IN ('DELETION_PENDING', 'BLOCKED', 'FAILED') AND scheduled_at <= ?
-    ORDER BY scheduled_at ASC LIMIT ?
-  `).bind(now, batchSize).all<{
+  onlyUserId: string | null = null,
+): Promise<"COMPLETED" | "PENDING" | "BLOCKED" | "NOT_FOUND"> {
+  const statement = onlyUserId
+    ? env.DB.prepare(`
+        SELECT id, appwrite_user_id, inactivity_cutoff_at, status, version, request_source
+        FROM deletion_jobs
+        WHERE status IN ('DELETION_PENDING', 'BLOCKED', 'FAILED') AND scheduled_at <= ?
+          AND appwrite_user_id = ?
+        ORDER BY scheduled_at ASC LIMIT ?
+      `).bind(now, onlyUserId, batchSize)
+    : env.DB.prepare(`
+        SELECT id, appwrite_user_id, inactivity_cutoff_at, status, version, request_source
+        FROM deletion_jobs
+        WHERE status IN ('DELETION_PENDING', 'BLOCKED', 'FAILED') AND scheduled_at <= ?
+        ORDER BY scheduled_at ASC LIMIT ?
+      `).bind(now, batchSize);
+  const jobs = await statement.all<{
     id: string;
     appwrite_user_id: string;
     inactivity_cutoff_at: string;
@@ -377,6 +390,8 @@ async function processDeletionJobs(
     version: number;
     request_source: "AUTOMATIC" | "USER_ERASURE" | "ADMIN_ERASURE";
   }>();
+  if (!jobs.results.length) return "NOT_FOUND";
+  let outcome: "COMPLETED" | "PENDING" | "BLOCKED" = "PENDING";
   const inactiveBefore = new Date(Date.parse(now) - inactiveDays * 86_400_000).toISOString();
   for (const job of jobs.results) {
     const policyBlockers = await loadDeletionBlockers(
@@ -394,6 +409,7 @@ async function processDeletionJobs(
           "PROFILE_NOT_FOUND",
         ].includes(blocker));
     if (blockers.length) {
+      outcome = "BLOCKED";
       await env.DB.prepare(`
         UPDATE deletion_jobs SET status = 'BLOCKED', retention_checks_json = ?,
           inactivity_cutoff_at = ?, scheduled_at = ?,
@@ -431,10 +447,33 @@ async function processDeletionJobs(
         WHERE appwrite_user_id = ? AND status = 'ACTIVE'
       `).bind(now, now, job.appwrite_user_id),
       env.DB.prepare(`
-        UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
-          version = version + 1, updated_at = ?
-        WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-      `).bind(now, now, job.appwrite_user_id),
+        DELETE FROM registered_devices WHERE appwrite_user_id = ?
+      `).bind(job.appwrite_user_id),
+      env.DB.prepare(`
+        DELETE FROM admin_sessions WHERE administrator_appwrite_user_id = ?
+      `).bind(job.appwrite_user_id),
+      env.DB.prepare(`
+        DELETE FROM content_comments WHERE appwrite_user_id = ?
+      `).bind(job.appwrite_user_id),
+      env.DB.prepare(`
+        DELETE FROM auth_email_tokens WHERE appwrite_user_id = ?
+      `).bind(job.appwrite_user_id),
+      env.DB.prepare(`
+        UPDATE age_verification_cases
+        SET liveness_challenge_json = '[]', review_reason = NULL,
+          review_checklist_json = NULL, version = version + 1, updated_at = ?
+        WHERE appwrite_user_id = ?
+      `).bind(now, job.appwrite_user_id),
+      env.DB.prepare(`
+        UPDATE privacy_requests
+        SET request_note = 'Account erasure request',
+          response_summary = CASE
+            WHEN status IN ('COMPLETED', 'DENIED') THEN response_summary
+            ELSE NULL
+          END,
+          updated_at = ?
+        WHERE appwrite_user_id = ?
+      `).bind(now, job.appwrite_user_id),
     ]);
     try {
       await deleteAppwriteUser(
@@ -452,7 +491,14 @@ async function processDeletionJobs(
     await env.DB.batch([
       env.DB.prepare(`
         UPDATE user_profiles SET account_status = 'DELETED', deleted_at = ?,
-          email = 'deleted', display_name = '', version = version + 1, updated_at = ?
+          email = 'deleted', display_name = '',
+          jurisdiction_code = NULL, country_code = NULL, region_code = NULL,
+          privacy_regime = NULL, privacy_notice_version = NULL,
+          privacy_notice_acknowledged_at = NULL, last_active_at = NULL,
+          last_appwrite_access_at = NULL, username_last_changed_at = NULL,
+          username_next_change_at = NULL, username_sync_next_retry_at = NULL,
+          username_sync_last_error_code = NULL, username_last_idempotency_key = NULL,
+          restriction_reason = NULL, version = version + 1, updated_at = ?
         WHERE appwrite_user_id = ?
       `).bind(now, now, job.appwrite_user_id),
       env.DB.prepare(`
@@ -492,7 +538,9 @@ async function processDeletionJobs(
         now,
       ),
     ]);
+    outcome = "COMPLETED";
   }
+  return outcome;
 }
 
 async function retryLabelSync(env: MaintenanceEnv, now: string, batchSize: number): Promise<void> {
@@ -657,7 +705,35 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
 }
 
 export default {
-  async fetch(): Promise<Response> {
+  async fetch(request: Request, env: MaintenanceEnv): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/process-account-deletion") {
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+      }
+      const userId = (body as { userId?: unknown } | null)?.userId;
+      if (typeof userId !== "string" || !/^[A-Za-z0-9._-]{1,36}$/.test(userId)) {
+        return Response.json({ error: "INVALID_USER_ID" }, { status: 400 });
+      }
+      const status = await processDeletionJobs(
+        env,
+        isoNow(),
+        1,
+        parsePositiveInt(env.INACTIVE_ACCOUNT_DAYS, 30, 3650),
+        userId,
+      );
+      return Response.json({ status }, {
+        status: status === "COMPLETED" ? 200 : status === "BLOCKED" ? 409 : 202,
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     return new Response("Not Found", {
       status: 404,
       headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

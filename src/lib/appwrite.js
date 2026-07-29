@@ -21,9 +21,10 @@ const client = new Client()
   .setProject(appwriteConfig.projectId);
 const account = new Account(client);
 const deviceStorageKey = "jason-shadow-device-token-v1";
+const adminSessionStorageKey = "shadows-temptation-admin-session-v1";
 const appwriteFallbackCookieKey = "cookieFallback";
-const appwriteFallbackSessionKey = `a_session_${appwriteConfig.projectId}`;
-export const ageInstructionsVersion = "manual-age-v4";
+export const ageInstructionsVersion = "manual-age-v5";
+let adminSessionPromise = null;
 
 export class CloudflareApiError extends Error {
   constructor(code, status, requestId = null) {
@@ -70,6 +71,11 @@ async function apiRequest(path, options = {}) {
   }
   if (options.idempotent) headers.set("Idempotency-Key", options.idempotencyKey || crypto.randomUUID());
   if (options.device) headers.set("X-Device-Token", getDeviceToken());
+  if (options.admin && !options.skipAdminSession) {
+    const adminSession = await ensureAdminSession();
+    headers.set("X-Admin-Session", adminSession.token);
+    headers.set("X-Device-Token", getDeviceToken());
+  }
 
   let body;
   if (options.json !== undefined) {
@@ -87,7 +93,13 @@ async function apiRequest(path, options = {}) {
     credentials: "omit",
     redirect: "error",
   });
-  if (!response.ok) throw await errorFromResponse(response);
+  if (!response.ok) {
+    const error = await errorFromResponse(response);
+    if (options.admin && ["ADMIN_SESSION_EXPIRED", "ADMIN_SESSION_REQUIRED"].includes(error.code)) {
+      sessionStorage.removeItem(adminSessionStorageKey);
+    }
+    throw error;
+  }
   if (options.responseType === "response") return response;
   let payload;
   try {
@@ -99,6 +111,45 @@ async function apiRequest(path, options = {}) {
     throw new CloudflareApiError("INVALID_API_RESPONSE", 503);
   }
   return payload;
+}
+
+function storedAdminSession() {
+  try {
+    const session = JSON.parse(sessionStorage.getItem(adminSessionStorageKey) || "null");
+    if (
+      session &&
+      typeof session.token === "string" &&
+      /^[A-Za-z0-9_-]{43}$/.test(session.token) &&
+      Number.isFinite(Date.parse(session.expiresAt)) &&
+      Date.parse(session.expiresAt) > Date.now() + 5_000
+    ) return session;
+  } catch {
+    // Invalid session state is discarded below.
+  }
+  sessionStorage.removeItem(adminSessionStorageKey);
+  return null;
+}
+
+async function ensureAdminSession() {
+  const existing = storedAdminSession();
+  if (existing) return existing;
+  if (!adminSessionPromise) {
+    adminSessionPromise = apiRequest("/v1/admin-session", {
+      admin: true,
+      method: "POST",
+      device: true,
+      skipAdminSession: true,
+    }).then((created) => {
+      if (typeof created?.token !== "string" || typeof created?.expiresAt !== "string") {
+        throw new CloudflareApiError("INVALID_ADMIN_SESSION_RESPONSE", 503);
+      }
+      sessionStorage.setItem(adminSessionStorageKey, JSON.stringify(created));
+      return created;
+    }).finally(() => {
+      adminSessionPromise = null;
+    });
+  }
+  return adminSessionPromise;
 }
 
 function createDeviceToken() {
@@ -116,24 +167,12 @@ export function getDeviceToken() {
   return token;
 }
 
+export function forgetCurrentDevice() {
+  localStorage.removeItem(deviceStorageKey);
+}
+
 function clearAppwriteFallbackSession() {
-  try {
-    const raw = localStorage.getItem(appwriteFallbackCookieKey);
-    if (!raw) return;
-    const fallbackCookies = JSON.parse(raw);
-    if (!fallbackCookies || typeof fallbackCookies !== "object" || Array.isArray(fallbackCookies)) {
-      localStorage.removeItem(appwriteFallbackCookieKey);
-      return;
-    }
-    delete fallbackCookies[appwriteFallbackSessionKey];
-    if (Object.keys(fallbackCookies).length) {
-      localStorage.setItem(appwriteFallbackCookieKey, JSON.stringify(fallbackCookies));
-    } else {
-      localStorage.removeItem(appwriteFallbackCookieKey);
-    }
-  } catch {
-    localStorage.removeItem(appwriteFallbackCookieKey);
-  }
+  localStorage.removeItem(appwriteFallbackCookieKey);
 }
 
 async function discardBlockedSession() {
@@ -200,10 +239,25 @@ export async function registerAccount({
     locale,
   });
   await requestEmailVerification(locale);
+  await registerCurrentDevice();
   return user;
 }
 
-export const login = (email, password) => createEmailPasswordSession(email, password);
+export async function login(email, password) {
+  const session = await createEmailPasswordSession(email, password);
+  try {
+    await registerCurrentDevice();
+    return session;
+  } catch (error) {
+    try {
+      await account.deleteSession({ sessionId: "current" });
+    } catch {
+      // Preserve the original device-policy error.
+    }
+    clearAppwriteFallbackSession();
+    throw error;
+  }
+}
 export async function logout() {
   try {
     return await account.deleteSession({ sessionId: "current" });
@@ -211,9 +265,28 @@ export async function logout() {
     if (error?.type !== "user_blocked" && error?.type !== "user_session_not_found") throw error;
     return {};
   } finally {
+    sessionStorage.removeItem(adminSessionStorageKey);
     clearAppwriteFallbackSession();
   }
 }
+export async function endAdminSession() {
+  const current = storedAdminSession();
+  if (!current) return;
+  try {
+    await apiRequest("/v1/admin-session", {
+      admin: true,
+      method: "DELETE",
+      device: true,
+    });
+  } finally {
+    sessionStorage.removeItem(adminSessionStorageKey);
+  }
+}
+export function getAdminSessionExpiry() {
+  return storedAdminSession()?.expiresAt || null;
+}
+export const getLoginSessions = () => account.listSessions();
+export const revokeLoginSession = (sessionId) => account.deleteSession({ sessionId });
 export const requestEmailVerification = (locale = "de") => apiRequest(
   "/v1/auth/email-verification/request",
   { method: "POST", json: { locale }, idempotent: true },
@@ -283,9 +356,23 @@ export const cancelPaymentOrder = (orderId, reason) => apiRequest(
 );
 export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/premium-telegram");
 export const getVipWhatsappPerk = () => apiRequest("/v1/perks/vip-whatsapp");
-export const registerCurrentDevice = (displayName = navigator.userAgent.slice(0, 80)) => apiRequest(
+function currentDeviceName() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || "Device";
+  const browser = navigator.userAgent.includes("Edg/") ? "Edge"
+    : navigator.userAgent.includes("Chrome/") ? "Chrome"
+    : navigator.userAgent.includes("Firefox/") ? "Firefox"
+    : navigator.userAgent.includes("Safari/") ? "Safari"
+    : "Browser";
+  return `${platform} · ${browser}`.slice(0, 80);
+}
+export const registerCurrentDevice = (displayName = currentDeviceName()) => apiRequest(
   "/v1/devices/register",
   { method: "POST", json: { deviceToken: getDeviceToken(), displayName }, idempotent: true },
+);
+export const getRegisteredDevices = () => apiRequest("/v1/devices", { device: true });
+export const revokeRegisteredDevice = (deviceId) => apiRequest(
+  `/v1/devices/${encodeURIComponent(deviceId)}`,
+  { method: "DELETE", json: {}, idempotent: true, device: true },
 );
 export const getContentItems = () => apiRequest("/v1/content", { device: true });
 export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURIComponent(slug)}`, {
@@ -340,6 +427,14 @@ export const fetchPrivacyExport = () => apiRequest("/v1/privacy/export", {
 });
 
 export const adminListUsers = () => apiRequest("/v1/users", { admin: true });
+export const adminListUserDevices = (userId) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/devices`,
+  { admin: true },
+);
+export const adminRevokeUserDevice = (userId, kind, targetId) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(kind)}/${encodeURIComponent(targetId)}`,
+  { admin: true, method: "DELETE", json: {}, idempotent: true },
+);
 export const adminGetUserStatus = (userId) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}/status`, { admin: true },
 );

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import QRCode from "qrcode";
-import AdminPortal from "./AdminPortal";
+import DeviceManager from "./DeviceManager";
 import PrivacyPanel from "./PrivacyPanel";
 import {
   cancelPrivacyRequest,
@@ -38,6 +37,7 @@ import {
   cancelPaymentOrder,
   createPrivacyRequest,
   fetchPrivacyExport,
+  endAdminSession,
 } from "./lib/appwrite";
 import {
   countryOptions,
@@ -51,6 +51,7 @@ const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
 const sensitiveMediaKey = "jason-shadow-sensitive-media-blur-v1";
 const initialSensitiveMediaBlur = () => localStorage.getItem(sensitiveMediaKey) === "true";
+const AdminPortal = React.lazy(() => import("./AdminPortal"));
 
 const copy = {
   de: {
@@ -101,16 +102,17 @@ const copy = {
     ageKicker: "PRIVATE IDENTITY REVIEW",
     ageAssuranceTitle: "Was mit deinen Nachweisen geschieht",
     ageAssuranceText: "Die Dateien werden über HTTPS in einen privaten, nicht öffentlich erreichbaren Prüfbereich übertragen. Zugriff hat ausschließlich der autorisierte Admin zur Entscheidung.",
-    ageDeletionText: "Nach Freigabe oder Ablehnung werden Ausweisbilder und Video sofort gelöscht. Gespeichert bleibt nur das notwendige Prüfergebnis mit Zeitpunkt und Prüfprotokoll.",
+    ageDeletionText: "Nach Freigabe oder Ablehnung werden Ausweisbilder und Video sofort gelöscht. Erfolgt binnen 48 Stunden keine Entscheidung, werden die Nachweise ebenfalls gelöscht und die Prüfung muss neu gestartet werden.",
     ageCloudflareBadge: "Geschützt auf Cloudflare",
     agePrivateBadge: "Privater EU-Speicher",
-    ageDeleteBadge: "Sofortige Löschung",
+    ageDeleteBadge: "Sofortige Löschung nach Entscheidung / spätestens 48h",
     ageSecurityDetails: "Technische Sicherheitsdetails",
     ageSecurityItems: [
       "Verschlüsselte HTTPS-Übertragung direkt an den geschützten Worker.",
       "Separater, nicht öffentlich erreichbarer Cloudflare-R2-Bucket mit EU-Jurisdiktion.",
       "Keine Freigabelinks und kein direkter Browserzugriff auf gespeicherte Nachweise.",
       "Ausweisbilder und Video werden unmittelbar nach Freigabe oder Ablehnung technisch gelöscht.",
+      "Ohne Admin-Entscheidung werden Nachweise nach 48 Stunden automatisch gelöscht; eine neue Prüfung ist erforderlich.",
     ],
     ageSteps: ["Dokument wählen", "Live-Challenge aufnehmen", "Persönliche Prüfung"],
     documentType: "Dokumentart",
@@ -206,16 +208,17 @@ const copy = {
     ageKicker: "PRIVATE IDENTITY REVIEW",
     ageAssuranceTitle: "What happens to your evidence",
     ageAssuranceText: "Files travel over HTTPS into a private review area that is never publicly accessible. Only the authorised admin can access them to make a decision.",
-    ageDeletionText: "ID images and video are deleted immediately after approval or rejection. Only the necessary result, decision time and review record remain.",
+    ageDeletionText: "ID images and video are deleted immediately after approval or rejection. If no decision is made within 48 hours, the evidence is also deleted and verification must be restarted.",
     ageCloudflareBadge: "Protected on Cloudflare",
     agePrivateBadge: "Private EU storage",
-    ageDeleteBadge: "Immediate deletion",
+    ageDeleteBadge: "Decision / 48h deletion",
     ageSecurityDetails: "Technical security details",
     ageSecurityItems: [
       "Encrypted HTTPS transfer directly to the protected Worker.",
       "Separate, non-public Cloudflare R2 bucket with EU jurisdiction.",
       "No share links and no direct browser access to stored evidence.",
       "ID images and video are technically deleted immediately after approval or rejection.",
+      "Without an admin decision, evidence is deleted automatically after 48 hours and a new review is required.",
     ],
     ageSteps: ["Choose document", "Record live challenge", "Personal review"],
     documentType: "Document type",
@@ -273,6 +276,7 @@ const tierNames = {
 
 const challengeLabels = {
   de: {
+    WRITE_AND_SHOW_CODE: "Den persönlichen 6-stelligen Code gut lesbar auf Papier schreiben und in die Kamera halten",
     FACE_CAMERA: "Gesicht frontal und vollständig zeigen",
     HOLD_ID_NEXT_TO_FACE: "Ausweis neben das Gesicht halten",
     SHOW_DOCUMENT_FRONT: "Vorderseite in die Kamera zeigen",
@@ -284,6 +288,7 @@ const challengeLabels = {
     BLINK_TWICE: "Zweimal deutlich blinzeln",
   },
   en: {
+    WRITE_AND_SHOW_CODE: "Write the personal 6-digit code clearly on paper and hold it to the camera",
     FACE_CAMERA: "Show the full face from the front",
     HOLD_ID_NEXT_TO_FACE: "Hold the ID beside the face",
     SHOW_DOCUMENT_FRONT: "Show the front to the camera",
@@ -473,14 +478,18 @@ function QrImage({ payload, alt }) {
   const [source, setSource] = useState("");
   useEffect(() => {
     let current = true;
-    QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 2, width: 320 })
+    import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(
+        payload,
+        { errorCorrectionLevel: "M", margin: 2, width: 320 },
+      ))
       .then((value) => current && setSource(value));
     return () => { current = false; };
   }, [payload]);
   return source ? <img className="sepa-qr" src={source} alt={alt} /> : null;
 }
 
-function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, language }) {
+function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, challengeCode, language }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -587,6 +596,13 @@ function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, language 
   return <div className="live-recorder">
     <div className="live-recorder__head"><strong>{ui.video}</strong><span>{recording ? `${seconds}s / 20s` : value ? "✓" : ""}</span></div>
     <p>{ui.videoInstructions}</p>
+    {challengeCode && <div className="liveness-code-card">
+      <span>{language === "de" ? "DEIN EINMAL-CODE" : "YOUR ONE-TIME CODE"}</span>
+      <strong aria-label={challengeCode.split("").join(" ")}>{challengeCode}</strong>
+      <p>{language === "de"
+        ? "Schreibe diesen Code auf einen Zettel und halte ihn während der ungeschnittenen Aufnahme gut sichtbar in die Kamera."
+        : "Write this code on paper and keep it clearly visible during the uncut recording."}</p>
+    </div>}
     <ol className="challenge-list">{challenge.map((step) => <li key={step}>{(challengeLabels[language] || challengeLabels.de)[step] || step}</li>)}</ol>
     {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
     <div className="camera-frame">{previewUrl && !cameraReady ? <video src={previewUrl} controls playsInline /> : <video ref={videoRef} muted playsInline />}</div>
@@ -914,7 +930,26 @@ export default function App() {
   const refresh = async () => {
     const current = await getCurrentUser();
     setUser(current);
-    if (!current || current.labels?.includes("admin")) {
+    if (!current) {
+      setMembership(null);
+      setOrders([]);
+      setPremiumTelegram(null);
+      setVipWhatsapp(null);
+      setPrivacy(null);
+      return current;
+    }
+    try {
+      await registerCurrentDevice();
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+      if (["DEVICE_LIMIT_EXCEEDED", "DEVICE_CREDENTIAL_REVOKED"].includes(error?.code)) {
+        await logout().catch(() => null);
+        setUser(null);
+        setMembership(null);
+        return null;
+      }
+    }
+    if (current.labels?.includes("admin")) {
       setMembership(null);
       setOrders([]);
       setPremiumTelegram(null);
@@ -1317,7 +1352,9 @@ export default function App() {
     setNotice("");
     if (!user) return openAuth("register");
     if (!user.emailVerification || ageStatus !== "APPROVED") {
-      setNotice(ageStatus !== "APPROVED" ? t.emailRequired || t.genericError : "");
+      setNotice(!user.emailVerification
+        ? (t.emailRequired || (language === "de" ? "Bitte bestätige zuerst deine E-Mail-Adresse." : "Please verify your email address first."))
+        : (language === "de" ? "Schließe zuerst die Altersprüfung ab." : "Complete age verification first."));
       setModal("account");
       return;
     }
@@ -1533,7 +1570,7 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      await requestAccountDeletion(reason);
+      const deletion = await requestAccountDeletion(reason);
       await logout().catch(() => null);
       setUser(null);
       setMembership(null);
@@ -1548,8 +1585,12 @@ export default function App() {
       setModal("auth");
       history.replaceState({}, "", "/");
       setNotice(language === "de"
-        ? "Deine Kontolöschung wurde sicher erfasst. Du wurdest abgemeldet; die Löschung wird jetzt nach den geltenden Aufbewahrungsfristen verarbeitet."
-        : "Your account deletion request was recorded securely. You have been signed out and deletion will now be processed under the applicable retention requirements.");
+        ? (deletion.status === "DELETED"
+          ? "Dein Konto und alle unmittelbar löschbaren personenbezogenen Daten wurden gelöscht. Gesetzlich aufzubewahrende Rechnungs- und Buchungsdaten verbleiben ausschließlich pseudonymisiert."
+          : "Deine Kontolöschung wurde gestartet. Du wurdest abgemeldet; ein rechtlich erforderlicher Sperrgrund wird dir über den Support erläutert.")
+        : (deletion.status === "DELETED"
+          ? "Your account and all immediately erasable personal data were deleted. Legally required invoice and accounting records remain only in pseudonymised form."
+          : "Your account deletion has started. You were signed out; support can explain any legally required hold."));
       return true;
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language, t.genericError));
@@ -1590,6 +1631,7 @@ export default function App() {
   const handleAdminLogout = async () => {
     setBusy(true);
     try {
+      await endAdminSession().catch(() => null);
       await logout();
       history.replaceState({}, "", "/");
       setUser(null);
@@ -1599,7 +1641,9 @@ export default function App() {
     }
   };
 
-  if (isAdmin) return <AdminPortal user={user} language={language} setLanguage={setLanguage} onLogout={handleAdminLogout} />;
+  if (isAdmin) return <React.Suspense fallback={<p className="app-loading">{ui.adminRedirect}</p>}>
+    <AdminPortal user={user} language={language} setLanguage={setLanguage} onLogout={handleAdminLogout} />
+  </React.Suspense>;
   if (busy && !user && location.pathname === "/admin") return <p className="app-loading">{ui.adminRedirect}</p>;
 
   const groupedProducts = Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]);
@@ -1773,6 +1817,7 @@ export default function App() {
             ["profile", language === "de" ? "Meine Daten" : "My data"],
             ["orders", language === "de" ? "Bestellungen" : "Orders"],
             ["access", language === "de" ? "Zugang & Perks" : "Access & perks"],
+            ["devices", language === "de" ? "Geräte" : "Devices"],
             ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
           ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
         </div>
@@ -1872,6 +1917,10 @@ export default function App() {
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
+        {dashboardTab === "devices" && <DeviceManager
+          language={language}
+          onCurrentRevoked={handleLogout}
+        />}
         {dashboardTab === "privacy" && <PrivacyPanel
           language={language}
           privacy={privacy}
@@ -1935,7 +1984,7 @@ export default function App() {
         />}
         {activeAgeCase?.evidenceKinds?.includes("VIDEO")
           ? <p className="live-recorder__ready">✓ {ui.videoReady}</p>
-          : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} language={language} />}
+          : <LiveVideoRecorder ui={ui} value={liveVideo} onChange={setLiveVideo} disabled={busy} challenge={activeAgeCase?.livenessChallenge || []} challengeCode={activeAgeCase?.livenessCode} language={language} />}
         <button className="primary-action verification-primary" type="submit" disabled={busy}>{busy ? ui.loading : ui.submitAge}</button>
       </form>}
     </Modal>}

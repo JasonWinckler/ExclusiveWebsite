@@ -257,4 +257,59 @@ describe("browser and repository security contract", () => {
     expect(mobile).toContain(".verification-primary");
     expect(mobile).toContain(".camera-frame");
   });
+
+  it("limits administrator sessions to ten minutes and binds them to the current device", () => {
+    const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const adminConfig = read("cloudflare/wrangler.admin-api.jsonc");
+    const frontendApi = read("src/lib/appwrite.js");
+    expect(migration).toContain("CREATE TABLE admin_sessions");
+    expect(migration).toContain("device_token_sha256 TEXT NOT NULL");
+    expect(adminConfig).toMatch(/"ADMIN_SESSION_MINUTES": "10"/);
+    expect(admin).toContain('"X-Admin-Session"');
+    expect(admin).toContain("ADMIN_SESSION_EXPIRED");
+    expect(frontendApi).toContain("sessionStorage.setItem(adminSessionStorageKey");
+    expect(frontendApi).not.toContain("localStorage.setItem(adminSessionStorageKey");
+  });
+
+  it("enforces three registered devices with self-service and administrator revocation", () => {
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const frontend = read("src/DeviceManager.jsx");
+    expect(membershipConfig).toMatch(/"DEVICE_LIMIT": "3"/);
+    expect(membership).toContain('requestUrl.pathname === "/v1/devices"');
+    expect(membership).toContain("DEVICE_LIMIT_EXCEEDED");
+    expect(admin).toContain("const userDevicesPath");
+    expect(admin).toContain("const userDevicePath");
+    expect(admin).toContain("USER_DEVICE_REVOKED");
+    expect(frontend).toContain("removeRegistered");
+    expect(frontend).toContain("removeSession");
+  });
+
+  it("uses a cryptographic six-digit paper challenge and expires unreviewed evidence", () => {
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
+    const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
+    const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
+    expect(membership).toContain('const AGE_INSTRUCTIONS_VERSION = "manual-age-v5"');
+    expect(membership).toContain("100_000 +");
+    expect(membership).toContain("crypto.getRandomValues");
+    expect(membershipConfig).toMatch(/"AGE_REVIEW_WINDOW_HOURS": "48"/);
+    expect(migration).toContain("review_expires_at TEXT");
+    expect(maintenance).toContain("review_expires_at IS NOT NULL");
+    expect(maintenance).toContain("cleanupRetainedEvidence");
+  });
+
+  it("ships transport-security headers and validates uploaded file signatures", () => {
+    const headers = read("public/_headers");
+    const media = read("cloudflare/src/shared/media.ts");
+    expect(headers).toContain("Strict-Transport-Security: max-age=63072000");
+    expect(headers).toContain("frame-ancestors 'none'");
+    expect(headers).toContain("X-Content-Type-Options: nosniff");
+    expect(media).toContain("assertMediaSignature");
+    expect(media).toContain("sniffMediaType");
+    expect(read("cloudflare/src/workers/membership-api.ts"))
+      .toContain("EVIDENCE_MEDIA_SIGNATURE_MISMATCH");
+  });
 });

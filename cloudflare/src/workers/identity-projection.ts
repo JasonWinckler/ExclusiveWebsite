@@ -141,6 +141,8 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     path === "/verify-user-email" ||
     path === "/update-user-password" ||
     path === "/update-user-name" ||
+    path === "/list-sessions" ||
+    path === "/delete-session" ||
     path === "/send-transactional-email";
   const expectedSecret = labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
@@ -244,6 +246,47 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
   }
   if (path === "/revoke-sessions") {
     await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
+    return jsonResponse({ ok: true });
+  }
+  if (path === "/list-sessions") {
+    const response = await appwriteRequest(env, `/users/${encodedUserId}/sessions`);
+    const payload = await readJsonResponse<{ sessions?: unknown }>(
+      response,
+      parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
+      "APPWRITE_INVALID_RESPONSE",
+    );
+    if (!Array.isArray(payload.sessions)) throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
+    return jsonResponse({
+      sessions: payload.sessions.slice(0, 20).map((session) => {
+        const value = session as Record<string, unknown>;
+        return {
+          id: value.$id,
+          createdAt: value.$createdAt,
+          updatedAt: value.$updatedAt,
+          expire: value.expire,
+          current: value.current === true,
+          countryCode: value.countryCode,
+          countryName: value.countryName,
+          deviceName: value.deviceName,
+          deviceBrand: value.deviceBrand,
+          deviceModel: value.deviceModel,
+          osName: value.osName,
+          osVersion: value.osVersion,
+          clientName: value.clientName,
+          clientVersion: value.clientVersion,
+        };
+      }),
+    });
+  }
+  if (path === "/delete-session") {
+    if (typeof body.sessionId !== "string" || !/^[A-Za-z0-9._-]{1,36}$/.test(body.sessionId)) {
+      throw new ApiError(400, "INVALID_SESSION_ID");
+    }
+    await appwriteRequest(
+      env,
+      `/users/${encodedUserId}/sessions/${encodeURIComponent(body.sessionId)}`,
+      { method: "DELETE" },
+    );
     return jsonResponse({ ok: true });
   }
   if (path === "/delete-user") {

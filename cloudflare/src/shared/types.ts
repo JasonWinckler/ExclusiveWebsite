@@ -58,6 +58,7 @@ export interface MembershipEnv extends BaseEnv {
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
   IDENTITY_PROJECTION: Service;
+  MAINTENANCE_JOBS: Service;
   LABEL_SYNC_SERVICE_SECRET: string;
   DEVICE_LIMIT?: string;
   INACTIVE_ACCOUNT_DAYS?: string;
@@ -65,6 +66,7 @@ export interface MembershipEnv extends BaseEnv {
   PROTECTED_CONTENT_MODE?: string;
   AGE_REVIEW_MODE?: string;
   AGE_UPLOAD_WINDOW_MINUTES?: string;
+  AGE_REVIEW_WINDOW_HOURS?: string;
   AGE_IMAGE_MAX_BYTES?: string;
   AGE_VIDEO_MAX_BYTES?: string;
   SEPA_TRANSFER_MODE?: string;
@@ -87,11 +89,13 @@ export interface AdminEnv extends BaseEnv {
   ADMIN_RATE_LIMITER: RateLimit;
   ADMIN_LABEL?: string;
   IDENTITY_PROJECTION: Service;
+  MAINTENANCE_JOBS: Service;
   LABEL_SYNC_SERVICE_SECRET: string;
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
   AGE_EVIDENCE_RETENTION_DAYS?: string;
   AGE_APPROVAL_VALID_DAYS?: string;
+  ADMIN_SESSION_MINUTES?: string;
   N26_CSV_IMPORT_MODE?: string;
   MAX_N26_CSV_BYTES?: string;
   CONTENT_IMAGE_MAX_BYTES?: string;

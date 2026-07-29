@@ -15,7 +15,9 @@ import {
   adminListContentComments,
   adminListPaymentOrders,
   adminListPrivacyRequests,
+  adminListUserDevices,
   adminListUsers,
+  adminRevokeUserDevice,
   adminDecidePrivacyRequest,
   adminModerateContentComment,
   adminRestrictUser,
@@ -25,6 +27,7 @@ import {
   adminUpdateContent,
   adminUploadContent,
   getProducts,
+  getAdminSessionExpiry,
   requestPasswordReset,
 } from "./lib/appwrite";
 import { friendlyErrorMessage } from "./lib/error-messages";
@@ -134,6 +137,7 @@ const approvalChecklist = {
     FACE_MATCHES_DOCUMENT: "Gesicht im Video stimmt plausibel mit dem Ausweisfoto überein.",
     LIVE_VIDEO_UNCUT: "Live-Video ist durchgehend, ohne Schnitt, Filter, Bildschirmwiedergabe oder zweite Person.",
     CHALLENGE_COMPLETED_IN_ORDER: "Die serverseitige Challenge wurde vollständig in der vorgegebenen Reihenfolge ausgeführt.",
+    LIVENESS_CODE_MATCHES: "Der handschriftliche 6-stellige Code stimmt exakt mit dem Fallcode überein.",
   },
   en: {
     DOCUMENT_FRONT_LEGIBLE: "The front is complete and legible.",
@@ -143,11 +147,13 @@ const approvalChecklist = {
     FACE_MATCHES_DOCUMENT: "The face in the video plausibly matches the ID portrait.",
     LIVE_VIDEO_UNCUT: "The live video is continuous, without cuts, filters, screen replay or another person.",
     CHALLENGE_COMPLETED_IN_ORDER: "The server challenge was completed in full and in the required order.",
+    LIVENESS_CODE_MATCHES: "The handwritten 6-digit code exactly matches the case code.",
   },
 };
 
 const challengeCopy = {
   de: {
+    WRITE_AND_SHOW_CODE: "Persönlichen 6-stelligen Code auf Papier zeigen",
     FACE_CAMERA: "Gesicht frontal und vollständig zeigen",
     HOLD_ID_NEXT_TO_FACE: "Ausweis neben das Gesicht halten",
     SHOW_DOCUMENT_FRONT: "Vorderseite in die Kamera zeigen",
@@ -159,6 +165,7 @@ const challengeCopy = {
     BLINK_TWICE: "Zweimal deutlich blinzeln",
   },
   en: {
+    WRITE_AND_SHOW_CODE: "Show the personal 6-digit code on paper",
     FACE_CAMERA: "Show the full face from the front",
     HOLD_ID_NEXT_TO_FACE: "Hold the ID beside the face",
     SHOW_DOCUMENT_FRONT: "Show the front to the camera",
@@ -197,6 +204,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [userReasons, setUserReasons] = useState({});
   const [membershipSelections, setMembershipSelections] = useState({});
   const [membershipProducts, setMembershipProducts] = useState([]);
+  const [deviceUserId, setDeviceUserId] = useState(null);
+  const [userDevices, setUserDevices] = useState(null);
   const [userSearch, setUserSearch] = useState("");
   const [privacyRequests, setPrivacyRequests] = useState([]);
   const [privacyResponses, setPrivacyResponses] = useState({});
@@ -209,6 +218,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [preview, setPreview] = useState(null);
   const [importSummary, setImportSummary] = useState(null);
   const [checkedReviewItems, setCheckedReviewItems] = useState([]);
+  const [sessionSeconds, setSessionSeconds] = useState(600);
 
   const loadCases = async () => {
     const result = await adminListAgeCases();
@@ -259,6 +269,18 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   };
 
   useEffect(() => { loadAll(); }, [language]);
+  useEffect(() => {
+    const check = () => {
+      const expiry = getAdminSessionExpiry();
+      if (!expiry) return;
+      const remaining = Math.max(0, Math.ceil((Date.parse(expiry) - Date.now()) / 1000));
+      setSessionSeconds(remaining);
+      if (remaining === 0) onLogout();
+    };
+    check();
+    const interval = window.setInterval(check, 1_000);
+    return () => window.clearInterval(interval);
+  }, [onLogout]);
   useEffect(() => () => {
     if (preview?.url) URL.revokeObjectURL(preview.url);
   }, [preview]);
@@ -508,6 +530,36 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const openUserDevices = async (profile) => {
+    setBusy(true);
+    setError("");
+    try {
+      setDeviceUserId(profile.appwrite_user_id);
+      setUserDevices(await adminListUserDevices(profile.appwrite_user_id));
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeUserDevice = async (profile, kind, targetId) => {
+    if (!window.confirm(language === "de"
+      ? "Dieses Gerät bzw. diese Sitzung wirklich entfernen?"
+      : "Remove this device or session?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminRevokeUserDevice(profile.appwrite_user_id, kind, targetId);
+      setUserDevices(await adminListUserDevices(profile.appwrite_user_id));
+      setNotice(language === "de" ? "Gerät wurde entfernt." : "Device was removed.");
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updatePrivacyRequest = async (item, status) => {
     const response = String(privacyResponses[item.id] || "").trim();
     const reason = String(privacyReasons[item.id] || "").trim();
@@ -553,13 +605,19 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
   const selectedEvidence = selectedCase?.evidence || [];
   const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de)
-    .filter((item) => selectedCase?.case?.document_type !== "PASSPORT" || item !== "DOCUMENT_BACK_LEGIBLE");
+    .filter((item) => selectedCase?.case?.document_type !== "PASSPORT" || item !== "DOCUMENT_BACK_LEGIBLE")
+    .filter((item) => selectedCase?.case?.instructions_version === "manual-age-v5" || item !== "LIVENESS_CODE_MATCHES");
   const selectedChallenge = useMemo(() => {
     try {
       const parsed = JSON.parse(selectedCase?.case?.liveness_challenge_json || "[]");
-      return Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed)) return { code: null, steps: parsed };
+      if (parsed && Array.isArray(parsed.steps)) return {
+        code: typeof parsed.code === "string" ? parsed.code : null,
+        steps: parsed.steps,
+      };
+      return { code: null, steps: [] };
     } catch {
-      return [];
+      return { code: null, steps: [] };
     }
   }, [selectedCase]);
   const summaryEntries = useMemo(
@@ -577,7 +635,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </div>
     </header>
     <main className="admin-main">
-      <div className="admin-title"><div><p className="eyebrow">SINGLE CREATOR CONTROL</p><h1>{t.title}</h1></div><button className="secondary-action" type="button" onClick={loadAll} disabled={busy}>{t.refresh}</button></div>
+      <div className="admin-title"><div><p className="eyebrow">SINGLE CREATOR CONTROL</p><h1>{t.title}</h1><small className="admin-session-timer">{language === "de" ? "Sichere Admin-Sitzung" : "Secure admin session"} · {Math.floor(sessionSeconds / 60)}:{String(sessionSeconds % 60).padStart(2, "0")}</small></div><button className="secondary-action" type="button" onClick={loadAll} disabled={busy}>{t.refresh}</button></div>
       <nav className="admin-tabs" aria-label={t.title}>{[
         ["overview", language === "de" ? "Übersicht" : "Overview"],
         ["users", language === "de" ? "Nutzer" : "Users"],
@@ -612,6 +670,25 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
               {(profile.account_status !== "ACTIVE" || !profile.email_verified || profile.age_status !== "APPROVED") && <small>{language === "de" ? "Erst nach aktiver E-Mail- und Altersverifikation möglich." : "Available after active email and age verification."}</small>}
             </div>
             <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button>{!profile.email_verified && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "VERIFY_EMAIL")}>{language === "de" ? "E-Mail manuell bestätigen" : "Verify email manually"}</button>}<button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
+            <button className="secondary-action admin-device-toggle" type="button" disabled={busy} onClick={() => openUserDevices(profile)}>
+              {language === "de" ? "Geräte & Sitzungen verwalten" : "Manage devices & sessions"}
+            </button>
+            {deviceUserId === profile.appwrite_user_id && userDevices && <div className="admin-device-manager">
+              <h4>{language === "de" ? "Aktive Login-Sitzungen" : "Active login sessions"}</h4>
+              {(userDevices.loginSessions || []).length
+                ? userDevices.loginSessions.map((session) => <div className="admin-device-row" key={session.id}>
+                  <span><strong>{[session.deviceBrand, session.deviceName, session.osName, session.clientName].filter(Boolean).join(" · ") || (language === "de" ? "Unbekanntes Gerät" : "Unknown device")}</strong><small>{formatDate(session.updatedAt, language)} · {session.countryName || session.countryCode || "—"}</small></span>
+                  <button className="danger-action" type="button" disabled={busy} onClick={() => removeUserDevice(profile, "session", session.id)}>{language === "de" ? "Abmelden" : "Sign out"}</button>
+                </div>)
+                : <p>{language === "de" ? "Keine Login-Sitzungen." : "No login sessions."}</p>}
+              <h4>{language === "de" ? "Registrierte Inhaltsgeräte" : "Registered content devices"}</h4>
+              {(userDevices.registeredDevices || []).filter((device) => device.status === "ACTIVE").length
+                ? userDevices.registeredDevices.filter((device) => device.status === "ACTIVE").map((device) => <div className="admin-device-row" key={device.id}>
+                  <span><strong>{device.display_name || (language === "de" ? "Persönliches Gerät" : "Personal device")}</strong><small>{formatDate(device.last_seen_at, language)}</small></span>
+                  <button className="danger-action" type="button" disabled={busy} onClick={() => removeUserDevice(profile, "registered", device.id)}>{language === "de" ? "Entfernen" : "Remove"}</button>
+                </div>)
+                : <p>{language === "de" ? "Keine registrierten Geräte." : "No registered devices."}</p>}
+            </div>}
           </article>;
         })}</div>
       </section>}
@@ -622,7 +699,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           <p className="eyebrow">{selectedCase.case.manual_review_status}</p>
           <h2>{selectedCase.case.display_name || selectedCase.case.appwrite_user_id}</h2>
           <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{selectedCase.case.email}</dd></div><div><dt>User ID</dt><dd>{selectedCase.case.appwrite_user_id}</dd></div><div><dt>{language === "de" ? "Dokument" : "Document"}</dt><dd>{selectedCase.case.document_type} · {selectedCase.case.country_code_snapshot || "–"}</dd></div><div><dt>{language === "de" ? "Eingereicht" : "Submitted"}</dt><dd>{formatDate(selectedCase.case.submitted_at, language)}</dd></div><div><dt>Consent</dt><dd>{selectedCase.case.instructions_version} · {formatDate(selectedCase.case.consented_at, language)}</dd></div></dl>
-          <h3>Live-Challenge</h3><ol className="challenge-list">{selectedChallenge.map((step) => <li key={step}>{(challengeCopy[language] || challengeCopy.de)[step] || step}</li>)}</ol>
+          <h3>Live-Challenge</h3>
+          {selectedChallenge.code && <div className="admin-liveness-code"><span>{language === "de" ? "Fallcode" : "Case code"}</span><strong>{selectedChallenge.code}</strong></div>}
+          <ol className="challenge-list">{selectedChallenge.steps.map((step) => <li key={step}>{(challengeCopy[language] || challengeCopy.de)[step] || step}</li>)}</ol>
           <h3>{t.evidence}</h3><p className="admin-note">{t.privacy}</p>
           <div className="evidence-list">{selectedEvidence.map((item) => <button className="secondary-action" type="button" onClick={() => openEvidence(item)} key={item.id}>{t.open}: {item.evidence_kind} · {formatBytes(item.size_bytes)}</button>)}</div>
           {preview && <div className="evidence-preview">{preview.type.startsWith("video/") ? <video src={preview.url} controls playsInline /> : <img src={preview.url} alt={preview.kind} />}</div>}

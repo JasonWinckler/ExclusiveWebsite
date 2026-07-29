@@ -64,7 +64,7 @@ export function preflight(request: Request, origins: ReadonlySet<string>): Respo
   const headers = corsHeaders(origin, origins);
   headers.set(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, Idempotency-Key, X-Device-Token",
+    "Authorization, Content-Type, Idempotency-Key, X-Admin-Session, X-Device-Token",
   );
   headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   headers.set("Access-Control-Max-Age", "600");

@@ -27,6 +27,9 @@
   "services": [{
     "binding": "IDENTITY_PROJECTION",
     "service": "exclusive-identity-projection"
+  }, {
+    "binding": "MAINTENANCE_JOBS",
+    "service": "exclusive-maintenance-jobs"
   }],
   "ratelimits": [{
     "name": "ADMIN_RATE_LIMITER",
@@ -40,6 +43,7 @@
     "MAX_JSON_BODY_BYTES": "32768",
     "MAX_UPSTREAM_JSON_BYTES": "65536",
     "ADMIN_LABEL": "admin",
+    "ADMIN_SESSION_MINUTES": "10",
     "AGE_EVIDENCE_RETENTION_DAYS": "7",
     "AGE_APPROVAL_VALID_DAYS": "365",
     "N26_CSV_IMPORT_MODE": "n26-csv-v1",
@@ -63,6 +67,9 @@
       "services": [{
         "binding": "IDENTITY_PROJECTION",
         "service": "exclusive-identity-projection-preview"
+      }, {
+        "binding": "MAINTENANCE_JOBS",
+        "service": "exclusive-maintenance-jobs-preview"
       }],
       "ratelimits": [{
         "name": "ADMIN_RATE_LIMITER",
@@ -76,6 +83,7 @@
         "MAX_JSON_BODY_BYTES": "32768",
         "MAX_UPSTREAM_JSON_BYTES": "65536",
         "ADMIN_LABEL": "admin",
+        "ADMIN_SESSION_MINUTES": "10",
         "AGE_EVIDENCE_RETENTION_DAYS": "1",
         "AGE_APPROVAL_VALID_DAYS": "365",
         "N26_CSV_IMPORT_MODE": "n26-csv-v1",

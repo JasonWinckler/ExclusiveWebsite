@@ -27,6 +27,9 @@
   "services": [{
     "binding": "IDENTITY_PROJECTION",
     "service": "exclusive-identity-projection"
+  }, {
+    "binding": "MAINTENANCE_JOBS",
+    "service": "exclusive-maintenance-jobs"
   }],
   "ratelimits": [{
     "name": "USER_RATE_LIMITER",
@@ -45,6 +48,7 @@
     "PROTECTED_CONTENT_MODE": "private-r2-v1",
     "AGE_REVIEW_MODE": "manual-r2-v1",
     "AGE_UPLOAD_WINDOW_MINUTES": "60",
+    "AGE_REVIEW_WINDOW_HOURS": "48",
     "AGE_IMAGE_MAX_BYTES": "10000000",
     "AGE_VIDEO_MAX_BYTES": "25000000",
     "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
@@ -53,7 +57,7 @@
     "INVOICE_SELLER_NAME": "Jason Shadow · Inhaber Jason Winckler",
     "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
     "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com",
-    "INVOICE_TAX_NOTE": "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet."
+    "INVOICE_TAX_NOTE": "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet. Steuerbefreiung für Kleinunternehmer gemäß § 19 Abs. 1 UStG; keine Umsatzsteuer ausgewiesen."
   },
   "env": {
     "preview": {
@@ -71,6 +75,9 @@
       "services": [{
         "binding": "IDENTITY_PROJECTION",
         "service": "exclusive-identity-projection-preview"
+      }, {
+        "binding": "MAINTENANCE_JOBS",
+        "service": "exclusive-maintenance-jobs-preview"
       }],
       "ratelimits": [{
         "name": "USER_RATE_LIMITER",
@@ -89,6 +96,7 @@
         "PROTECTED_CONTENT_MODE": "private-r2-v1",
         "AGE_REVIEW_MODE": "manual-r2-v1",
         "AGE_UPLOAD_WINDOW_MINUTES": "60",
+        "AGE_REVIEW_WINDOW_HOURS": "48",
         "AGE_IMAGE_MAX_BYTES": "10000000",
         "AGE_VIDEO_MAX_BYTES": "25000000",
         "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
@@ -97,7 +105,7 @@
         "INVOICE_SELLER_NAME": "Jason Shadow · Inhaber Jason Winckler",
         "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
         "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com",
-        "INVOICE_TAX_NOTE": "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet."
+        "INVOICE_TAX_NOTE": "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet. Steuerbefreiung für Kleinunternehmer gemäß § 19 Abs. 1 UStG; keine Umsatzsteuer ausgewiesen."
       }
     }
   }

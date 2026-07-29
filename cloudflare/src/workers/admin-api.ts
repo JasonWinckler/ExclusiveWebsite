@@ -18,6 +18,8 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import {
+  deleteAppwriteSession,
+  listAppwriteSessions,
   revokeAppwriteSessions,
   syncAppwriteLabel,
   updateAppwriteUserStatus,
@@ -26,7 +28,8 @@ import {
 import {
   sendMembershipActivationConfirmation,
 } from "../shared/membership-email";
-import { sha256Hex } from "../shared/security";
+import { assertMediaSignature } from "../shared/media";
+import { sha256Hex, validateDeviceToken } from "../shared/security";
 import type { AdminEnv, AgeEvidenceRow } from "../shared/types";
 
 const AGE_APPROVAL_CHECKLIST = [
@@ -37,7 +40,93 @@ const AGE_APPROVAL_CHECKLIST = [
   "FACE_MATCHES_DOCUMENT",
   "LIVE_VIDEO_UNCUT",
   "CHALLENGE_COMPLETED_IN_ORDER",
+  "LIVENESS_CODE_MATCHES",
 ] as const;
+
+function randomAdminSessionToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function createAdminSession(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+): Promise<Record<string, unknown>> {
+  const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const sessionToken = randomAdminSessionToken();
+  const now = isoNow();
+  const expiresAt = new Date(
+    Date.now() + parsePositiveInt(env.ADMIN_SESSION_MINUTES, 10, 10) * 60_000,
+  ).toISOString();
+  const userAgent = request.headers.get("User-Agent")?.trim().slice(0, 120) || null;
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE admin_sessions SET revoked_at = ?, last_seen_at = ?
+      WHERE administrator_appwrite_user_id = ? AND revoked_at IS NULL AND expires_at <= ?
+    `).bind(now, now, administratorUserId, now),
+    env.DB.prepare(`
+      INSERT INTO admin_sessions (
+        id, administrator_appwrite_user_id, session_token_sha256,
+        device_token_sha256, created_at, expires_at, last_seen_at, user_agent_label
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      administratorUserId,
+      await sha256Hex(sessionToken),
+      await sha256Hex(deviceToken),
+      now,
+      expiresAt,
+      now,
+      userAgent,
+    ),
+  ]);
+  return { token: sessionToken, expiresAt };
+}
+
+async function requireAdminSession(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+): Promise<void> {
+  const token = request.headers.get("X-Admin-Session")?.trim() ?? "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(401, "ADMIN_SESSION_REQUIRED");
+  const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const now = isoNow();
+  const session = await env.DB.prepare(`
+    SELECT id FROM admin_sessions
+    WHERE administrator_appwrite_user_id = ? AND session_token_sha256 = ?
+      AND device_token_sha256 = ? AND revoked_at IS NULL AND expires_at > ?
+  `).bind(
+    administratorUserId,
+    await sha256Hex(token),
+    await sha256Hex(deviceToken),
+    now,
+  ).first<{ id: string }>();
+  if (!session) throw new ApiError(401, "ADMIN_SESSION_EXPIRED");
+  await env.DB.prepare(`
+    UPDATE admin_sessions SET last_seen_at = ? WHERE id = ?
+  `).bind(now, session.id).run();
+}
+
+async function revokeAdminSession(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+): Promise<Record<string, unknown>> {
+  const token = request.headers.get("X-Admin-Session")?.trim() ?? "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: "REVOKED" };
+  const now = isoNow();
+  await env.DB.prepare(`
+    UPDATE admin_sessions SET revoked_at = ?, last_seen_at = ?
+    WHERE administrator_appwrite_user_id = ? AND session_token_sha256 = ?
+      AND revoked_at IS NULL
+  `).bind(now, now, administratorUserId, await sha256Hex(token)).run();
+  return { status: "REVOKED" };
+}
 
 function validateUserId(value: string): string {
   if (!/^[A-Za-z0-9._-]{1,36}$/.test(value)) throw new ApiError(400, "INVALID_USER_ID");
@@ -166,10 +255,75 @@ async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
   return { users: users.results };
 }
 
+async function listUserDevices(env: AdminEnv, userId: string): Promise<Record<string, unknown>> {
+  const [registered, appwrite] = await Promise.all([
+    env.DB.prepare(`
+      SELECT id, display_name, status, first_seen_at, last_seen_at, revoked_at
+      FROM registered_devices
+      WHERE appwrite_user_id = ?
+      ORDER BY status ASC, last_seen_at DESC
+      LIMIT 20
+    `).bind(userId).all(),
+    listAppwriteSessions(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+    ),
+  ]);
+  return {
+    registeredDevices: registered.results,
+    loginSessions: appwrite.sessions,
+  };
+}
+
+async function revokeUserDevice(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  kind: string,
+  targetId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  requireIdempotencyKey(request);
+  const now = isoNow();
+  if (kind === "registered") {
+    if (!/^[0-9a-f-]{36}$/i.test(targetId)) throw new ApiError(400, "INVALID_DEVICE_ID");
+    const result = await env.DB.prepare(`
+      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
+    `).bind(now, now, targetId, userId).run();
+    if ((result.meta.changes ?? 0) !== 1) throw new ApiError(404, "DEVICE_NOT_FOUND");
+  } else if (kind === "session") {
+    if (!/^[A-Za-z0-9._-]{1,36}$/.test(targetId)) throw new ApiError(400, "INVALID_SESSION_ID");
+    await deleteAppwriteSession(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      targetId,
+    );
+  } else {
+    throw new ApiError(400, "INVALID_DEVICE_KIND");
+  }
+  await auditStatement(env.DB, {
+    administratorUserId,
+    action: "USER_DEVICE_REVOKED",
+    targetType: kind === "session" ? "APPWRITE_SESSION" : "REGISTERED_DEVICE",
+    targetId,
+    previousState: { active: true },
+    newState: { active: false },
+    reason: "Administrator device management",
+    correlationId,
+    now,
+  }).run();
+  return { status: "REVOKED", kind, targetId };
+}
+
 async function pendingAgeCases(env: AdminEnv): Promise<Record<string, unknown>> {
   const cases = await env.DB.prepare(`
     SELECT c.id, c.appwrite_user_id, c.status, c.manual_review_status,
-      c.submitted_at, c.upload_expires_at, c.created_at,
+      c.submitted_at, c.upload_expires_at, c.review_expires_at, c.created_at,
       c.verification_route, c.document_type, c.country_code_snapshot,
       SUM(CASE WHEN u.deleted_at IS NULL THEN 1 ELSE 0 END) AS evidence_count
     FROM age_verification_cases c
@@ -187,7 +341,7 @@ async function ageCaseDetail(env: AdminEnv, caseId: string): Promise<Record<stri
   const [ageCase, evidence] = await Promise.all([
     env.DB.prepare(`
       SELECT c.id, c.appwrite_user_id, c.status, c.manual_review_status,
-        c.submitted_at, c.upload_expires_at, c.created_at,
+        c.submitted_at, c.upload_expires_at, c.review_expires_at, c.created_at,
         c.instructions_version, c.consented_at, c.liveness_challenge_json,
         c.verification_route, c.document_type, c.country_code_snapshot,
         p.email, p.display_name
@@ -308,7 +462,8 @@ async function decideAgeCase(
     ? body.checklist
     : [];
   const ageCase = await env.DB.prepare(`
-    SELECT id, appwrite_user_id, status, manual_review_status, version, document_type
+    SELECT id, appwrite_user_id, status, manual_review_status, version,
+      document_type, review_expires_at, instructions_version
     FROM age_verification_cases WHERE id = ?
   `).bind(caseId).first<{
     id: string;
@@ -317,19 +472,27 @@ async function decideAgeCase(
     manual_review_status: string;
     version: number;
     document_type: "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
+    review_expires_at: string | null;
+    instructions_version: string;
   }>();
   if (!ageCase) throw new ApiError(404, "AGE_CASE_NOT_FOUND");
   if (ageCase.status !== "PENDING" || ageCase.manual_review_status !== "READY_FOR_REVIEW") {
     throw new ApiError(409, "AGE_CASE_NOT_DECIDABLE");
   }
+  if (ageCase.review_expires_at && Date.parse(ageCase.review_expires_at) <= Date.now()) {
+    throw new ApiError(409, "AGE_REVIEW_WINDOW_EXPIRED");
+  }
   if (body.decision === "APPROVED") {
     const requiredChecklist = ageCase.document_type === "PASSPORT"
       ? AGE_APPROVAL_CHECKLIST.filter((item) => item !== "DOCUMENT_BACK_LEGIBLE")
       : [...AGE_APPROVAL_CHECKLIST];
+    const versionChecklist = ageCase.instructions_version === "manual-age-v5"
+      ? requiredChecklist
+      : requiredChecklist.filter((item) => item !== "LIVENESS_CODE_MATCHES");
     const submitted = new Set(checklist);
     if (
-      submitted.size !== requiredChecklist.length ||
-      requiredChecklist.some((item) => !submitted.has(item))
+      submitted.size !== versionChecklist.length ||
+      versionChecklist.some((item) => !submitted.has(item))
     ) throw new ApiError(400, "AGE_APPROVAL_CHECKLIST_INCOMPLETE");
   }
   const now = isoNow();
@@ -1754,6 +1917,7 @@ async function uploadContentMedia(
     : parsePositiveInt(env.CONTENT_IMAGE_MAX_BYTES, 15_000_000, 25_000_000);
   const bytes = await readRawBody(request, maxBytes);
   if (bytes.byteLength < 1) throw new ApiError(400, "CONTENT_MEDIA_BODY_REQUIRED");
+  assertMediaSignature(bytes, contentType, "CONTENT_MEDIA_SIGNATURE_MISMATCH");
   const declaredLength = request.headers.get("Content-Length");
   if (declaredLength && Number(declaredLength) !== bytes.byteLength) {
     throw new ApiError(400, "CONTENT_MEDIA_SIZE_MISMATCH");
@@ -2224,9 +2388,25 @@ async function scheduleAdminAccountDeletion(
   } catch {
     appwriteStatusSync = "FAILED";
   }
+  let deletionStatus = "DELETION_PENDING";
+  try {
+    const response = await env.MAINTENANCE_JOBS.fetch(
+      "https://maintenance.internal/process-account-deletion",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      },
+    );
+    const payload = await response.json<{ status?: unknown }>();
+    if (response.ok && payload.status === "COMPLETED") deletionStatus = "DELETED";
+    else if (payload.status === "BLOCKED") deletionStatus = "BLOCKED";
+  } catch {
+    // The scheduled maintenance worker retries an inline deletion failure.
+  }
   return {
     deletionJobId: jobId,
-    status: "DELETION_PENDING",
+    status: deletionStatus,
     scheduledAt: now,
     appwriteSessionRevocation,
     appwriteStatusSync,
@@ -2473,6 +2653,15 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     env,
     env.ADMIN_LABEL || "admin",
   );
+  if (request.method === "POST" && url.pathname === "/v1/admin-session") {
+    const result = await createAdminSession(request, env, administrator.userId);
+    return jsonResponse(result, { origin, origins, requestId: correlationId });
+  }
+  if (request.method === "DELETE" && url.pathname === "/v1/admin-session") {
+    const result = await revokeAdminSession(request, env, administrator.userId);
+    return jsonResponse(result, { origin, origins, requestId: correlationId });
+  }
+  await requireAdminSession(request, env, administrator.userId);
   const evidencePath = /^\/v1\/age-verification\/evidence\/([^/]+)$/.exec(url.pathname);
   if (request.method === "GET" && evidencePath) {
     return streamAgeEvidence(
@@ -2487,6 +2676,9 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   let result: Record<string, unknown>;
   const userPath = /^\/v1\/users\/([^/]+)\/(status|hold|restrict|unrestrict|verify-email)$/.exec(url.pathname);
   const userMembershipPath = /^\/v1\/users\/([^/]+)\/membership$/.exec(url.pathname);
+  const userDevicesPath = /^\/v1\/users\/([^/]+)\/devices$/.exec(url.pathname);
+  const userDevicePath = /^\/v1\/users\/([^/]+)\/devices\/(registered|session)\/([^/]+)$/
+    .exec(url.pathname);
   const userDeletePath = /^\/v1\/users\/([^/]+)$/.exec(url.pathname);
   const ageCasePath = /^\/v1\/age-verification\/cases\/([^/]+)$/.exec(url.pathname);
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
@@ -2532,6 +2724,21 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     } else {
       throw new ApiError(405, "METHOD_NOT_ALLOWED");
     }
+  } else if (request.method === "GET" && userDevicesPath) {
+    result = await listUserDevices(
+      env,
+      validateUserId(decodeURIComponent(userDevicesPath[1]!)),
+    );
+  } else if (request.method === "DELETE" && userDevicePath) {
+    result = await revokeUserDevice(
+      request,
+      env,
+      administrator.userId,
+      validateUserId(decodeURIComponent(userDevicePath[1]!)),
+      userDevicePath[2]!,
+      decodeURIComponent(userDevicePath[3]!),
+      correlationId,
+    );
   } else if (request.method === "POST" && userMembershipPath) {
     result = await grantManualMembership(
       request,

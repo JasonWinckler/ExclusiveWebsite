@@ -24,6 +24,33 @@ async function callIdentityService(
   }
 }
 
+async function callIdentityServiceJson<T>(
+  service: Service,
+  secret: string,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await service.fetch(`https://identity.internal${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Service-Secret": secret,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(503, "IDENTITY_PROJECTION_UNAVAILABLE");
+  }
+  if (!response.ok) throw new ApiError(503, "IDENTITY_PROJECTION_FAILED");
+  try {
+    return await response.json<T>();
+  } catch {
+    throw new ApiError(503, "IDENTITY_PROJECTION_FAILED");
+  }
+}
+
 export function syncAppwriteLabel(
   service: Service,
   secret: string,
@@ -50,6 +77,23 @@ export function revokeAppwriteSessions(
   userId: string,
 ): Promise<void> {
   return callIdentityService(service, secret, "/revoke-sessions", { userId });
+}
+
+export function listAppwriteSessions(
+  service: Service,
+  secret: string,
+  userId: string,
+): Promise<{ sessions: Record<string, unknown>[] }> {
+  return callIdentityServiceJson(service, secret, "/list-sessions", { userId });
+}
+
+export function deleteAppwriteSession(
+  service: Service,
+  secret: string,
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  return callIdentityService(service, secret, "/delete-session", { userId, sessionId });
 }
 
 export function updateAppwriteUserStatus(

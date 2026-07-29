@@ -239,7 +239,7 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .dashboard dd { margin: 6px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .dashboard-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .text-button { padding: 10px; border: 0; color: var(--muted); background: transparent; font: inherit; font-weight: 800; cursor: pointer; }
-@media(max-width: 760px) { .exclusive-header { top: 8px; border-radius: 22px; } .desktop-nav { display: none; } .adult-hero { min-height: 680px; } .adult-hero h1 { font-size: clamp(3rem, 17vw, 5rem); } .editorial-grid { grid-template-columns: 1fr; } .access-section { align-items: stretch; flex-direction: column; } .access-section .hero-actions { justify-content: flex-start; } .modal-backdrop { padding: 10px; } .process-modal { max-height: calc(100dvh - 20px); border-radius: 24px; } }
+@media(max-width: 760px) { .exclusive-header { top: 8px; border-radius: 22px; } .desktop-nav { display: none; } .adult-hero { min-height: 680px; } .adult-hero h1 { font-size: clamp(3rem, 17vw, 5rem); } .editorial-grid { grid-template-columns: 1fr; } .access-section { align-items: stretch; flex-direction: column; } .access-section .hero-actions { justify-content: flex-start; } .modal-backdrop { place-items: start center; padding: 10px; overscroll-behavior: contain; } .process-modal { max-height: calc(100svh - 20px); border-radius: 24px; overflow-anchor: none; scroll-behavior: auto; } }
 
 /* Membership catalog, SEPA transfer, protected gallery and creator admin */
 .pricing-section { padding-inline: clamp(24px, 6vw, 70px) !important; }
@@ -1268,6 +1268,68 @@ button:disabled { opacity: .58; cursor: not-allowed; }
   .privacy-hero { align-items: flex-start; flex-direction: column; }
   .privacy-grid,.privacy-choice-list { grid-template-columns: 1fr; }
   .privacy-card__actions { align-items: stretch; flex-direction: column; }
+}
+
+.liveness-code-card,.admin-liveness-code {
+  display:grid;
+  gap:8px;
+  padding:18px;
+  border:1px solid rgba(255,216,158,.58);
+  border-radius:18px;
+  text-align:center;
+  background:linear-gradient(135deg,rgba(255,91,32,.16),rgba(105,9,22,.28));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+}
+.liveness-code-card span,.admin-liveness-code span {
+  color:var(--gold);
+  font-size:.76rem;
+  font-weight:900;
+  letter-spacing:.18em;
+}
+.liveness-code-card strong,.admin-liveness-code strong {
+  font-family:Cinzel,Georgia,serif;
+  font-size:clamp(2rem,8vw,3.2rem);
+  letter-spacing:.22em;
+  overflow-wrap:anywhere;
+}
+.liveness-code-card p { margin:0;color:var(--muted);line-height:1.5; }
+.device-manager { display:grid;gap:20px; }
+.device-manager__heading {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+}
+.device-manager__heading p { margin:6px 0 0;color:var(--muted);line-height:1.55; }
+.device-manager__groups { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px; }
+.device-manager__groups>div,.admin-device-manager {
+  display:grid;
+  align-content:start;
+  gap:12px;
+  padding:18px;
+  border:1px solid var(--stroke);
+  border-radius:20px;
+  background:rgba(255,255,255,.035);
+}
+.device-card,.admin-device-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:14px;
+  border:1px solid rgba(255,202,144,.18);
+  border-radius:16px;
+  background:rgba(8,0,3,.42);
+}
+.device-card>div,.admin-device-row>span { min-width:0;display:grid;gap:4px; }
+.device-card span,.admin-device-row small { color:var(--muted);font-size:.82rem;overflow-wrap:anywhere; }
+.admin-device-toggle { margin-top:14px; }
+.admin-session-timer { display:inline-flex;margin-top:8px;color:var(--gold);font-weight:800;letter-spacing:.04em; }
+
+@media(max-width:760px) {
+  .device-manager__heading,.device-card,.admin-device-row { align-items:stretch;flex-direction:column; }
+  .device-manager__groups { grid-template-columns:1fr; }
+  .liveness-code-card strong,.admin-liveness-code strong { font-size:clamp(1.8rem,12vw,2.8rem);letter-spacing:.14em; }
 }
 @media (prefers-reduced-motion: reduce) {
   .post-carousel__slide,

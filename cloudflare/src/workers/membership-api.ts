@@ -25,6 +25,7 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import { authorizeProtectedContent } from "../shared/policy";
+import { assertMediaSignature } from "../shared/media";
 import {
   revokeAppwriteSessions,
   sendTransactionalEmail,
@@ -41,7 +42,7 @@ import type {
   UserProfileRow,
 } from "../shared/types";
 
-const AGE_INSTRUCTIONS_VERSION = "manual-age-v4";
+const AGE_INSTRUCTIONS_VERSION = "manual-age-v5";
 const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-28";
 type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
 type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
@@ -131,7 +132,17 @@ function requiredAgeEvidence(documentType: AgeDocumentType): AgeEvidenceKind[] {
     : ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"];
 }
 
-function livenessChallenge(documentType: AgeDocumentType): string[] {
+interface LivenessChallenge {
+  code: string | null;
+  steps: string[];
+}
+
+function sixDigitLivenessCode(): string {
+  const random = crypto.getRandomValues(new Uint32Array(1))[0]!;
+  return String(100_000 + (random % 900_000));
+}
+
+function livenessChallenge(documentType: AgeDocumentType): LivenessChallenge {
   const movements = ["TURN_HEAD_LEFT", "TURN_HEAD_RIGHT", "LOOK_UP", "BLINK_TWICE"];
   const selected: string[] = [];
   while (selected.length < 2) {
@@ -142,22 +153,42 @@ function livenessChallenge(documentType: AgeDocumentType): string[] {
   const documentSteps = documentType === "PASSPORT"
     ? ["SHOW_DOCUMENT_FRONT", "TILT_DOCUMENT"]
     : ["SHOW_DOCUMENT_FRONT", "SHOW_DOCUMENT_BACK", "TILT_DOCUMENT"];
-  return [
-    "FACE_CAMERA",
-    "HOLD_ID_NEXT_TO_FACE",
-    ...documentSteps,
-    ...selected,
-  ];
+  return {
+    code: sixDigitLivenessCode(),
+    steps: [
+      "WRITE_AND_SHOW_CODE",
+      "FACE_CAMERA",
+      "HOLD_ID_NEXT_TO_FACE",
+      ...documentSteps,
+      ...selected,
+    ],
+  };
 }
 
-function parseChallenge(value: string): string[] {
+function parseChallenge(value: string): LivenessChallenge {
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (Array.isArray(parsed) && parsed.every((step) => typeof step === "string")) return parsed;
+    if (Array.isArray(parsed) && parsed.every((step) => typeof step === "string")) {
+      return { code: null, steps: parsed };
+    }
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { code?: unknown }).code === "string" &&
+      /^\d{6}$/.test((parsed as { code: string }).code) &&
+      Array.isArray((parsed as { steps?: unknown }).steps) &&
+      (parsed as { steps: unknown[] }).steps.every((step) => typeof step === "string")
+    ) {
+      return {
+        code: (parsed as { code: string }).code,
+        steps: (parsed as { steps: string[] }).steps,
+      };
+    }
   } catch {
     // Stored challenge corruption fails closed to an empty, unusable challenge.
   }
-  return [];
+  return { code: null, steps: [] };
 }
 
 function exactObjectKeys(
@@ -190,6 +221,7 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     ),
     latest_age_case AS (
       SELECT id, manual_review_status, upload_expires_at,
+        review_expires_at,
         instructions_version, liveness_challenge_json,
         verification_route, document_type, country_code_snapshot
       FROM age_verification_cases
@@ -207,6 +239,7 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       (SELECT COUNT(*) FROM registered_devices d
         WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
       a.id AS age_case_id, a.manual_review_status, a.upload_expires_at,
+      a.review_expires_at,
       a.instructions_version, a.liveness_challenge_json,
       a.verification_route, a.document_type, a.country_code_snapshot,
       (SELECT GROUP_CONCAT(u.evidence_kind, ',')
@@ -235,6 +268,7 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     age_case_id: string | null;
     manual_review_status: string | null;
     upload_expires_at: string | null;
+    review_expires_at: string | null;
     instructions_version: string | null;
     liveness_challenge_json: string | null;
     verification_route: AgeVerificationRoute | null;
@@ -243,6 +277,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     evidence_kinds: string | null;
   }>();
   if (!row) throw new ApiError(503, "PROFILE_PROJECTION_UNAVAILABLE");
+  const parsedChallenge = row.liveness_challenge_json
+    ? parseChallenge(row.liveness_challenge_json)
+    : { code: null, steps: [] };
   const evidenceKinds = (row.evidence_kinds ?? "")
     .split(",")
     .filter((value): value is AgeEvidenceKind =>
@@ -273,10 +310,10 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       caseId: row.age_case_id,
       reviewStatus: row.manual_review_status,
       uploadExpiresAt: row.upload_expires_at,
+      reviewExpiresAt: row.review_expires_at,
       instructionsVersion: row.instructions_version,
-      livenessChallenge: row.liveness_challenge_json
-        ? parseChallenge(row.liveness_challenge_json)
-        : [],
+      livenessChallenge: parsedChallenge.steps,
+      livenessCode: parsedChallenge.code,
       evidenceKinds,
       verificationRoute: row.verification_route,
       documentType: row.document_type,
@@ -322,7 +359,7 @@ async function createAgeCase(
   ]);
   const acceptedInstructionsVersion =
     body.instructionsVersion === AGE_INSTRUCTIONS_VERSION
-    || body.instructionsVersion === "manual-age-v3";
+    || body.instructionsVersion === "manual-age-v4";
   if (body.consent !== true || !acceptedInstructionsVersion) {
     throw new ApiError(400, "AGE_REVIEW_CONSENT_REQUIRED");
   }
@@ -354,13 +391,15 @@ async function createAgeCase(
     country_code_snapshot: string | null;
   }>();
   if (replay) {
+    const parsed = parseChallenge(replay.liveness_challenge_json);
     return {
       caseId: replay.id,
       status: replay.status,
       reviewStatus: replay.manual_review_status,
       uploadExpiresAt: replay.upload_expires_at,
       instructionsVersion: replay.instructions_version,
-      livenessChallenge: parseChallenge(replay.liveness_challenge_json),
+      livenessChallenge: parsed.steps,
+      livenessCode: parsed.code,
       verificationRoute: replay.verification_route,
       documentType: replay.document_type,
       countryCode: replay.country_code_snapshot,
@@ -426,7 +465,8 @@ async function createAgeCase(
     reviewStatus: "UPLOADING",
     uploadExpiresAt,
     instructionsVersion: AGE_INSTRUCTIONS_VERSION,
-    livenessChallenge: challenge,
+    livenessChallenge: challenge.steps,
+    livenessCode: challenge.code,
     verificationRoute,
     documentType,
     countryCode: profile.country_code,
@@ -516,6 +556,7 @@ async function uploadAgeEvidence(
     : parsePositiveInt(env.AGE_IMAGE_MAX_BYTES, 10_000_000, 25_000_000);
   const bytes = await readRawBody(request, maxBytes);
   if (bytes.byteLength < 1) throw new ApiError(400, "EVIDENCE_BODY_REQUIRED");
+  assertMediaSignature(bytes, contentType, "EVIDENCE_MEDIA_SIGNATURE_MISMATCH");
   const declaredLength = request.headers.get("Content-Length");
   if (declaredLength && Number(declaredLength) !== bytes.byteLength) {
     throw new ApiError(400, "EVIDENCE_SIZE_MISMATCH");
@@ -603,15 +644,24 @@ async function submitAgeCase(
     throw new ApiError(409, "REQUIRED_EVIDENCE_MISSING");
   }
   const now = isoNow();
+  const reviewExpiresAt = new Date(
+    Date.now() + parsePositiveInt(env.AGE_REVIEW_WINDOW_HOURS, 48, 168) * 60 * 60_000,
+  ).toISOString();
   const updated = await env.DB.prepare(`
     UPDATE age_verification_cases SET manual_review_status = 'READY_FOR_REVIEW',
-      submitted_at = ?, submission_idempotency_key = ?, retention_until = NULL,
+      submitted_at = ?, submission_idempotency_key = ?,
+      review_expires_at = ?, retention_until = ?,
       version = version + 1, updated_at = ?
     WHERE id = ? AND appwrite_user_id = ? AND status = 'PENDING'
       AND manual_review_status = 'UPLOADING' AND submission_idempotency_key IS NULL
-  `).bind(now, idempotencyKey, now, caseId, userId).run();
+  `).bind(now, idempotencyKey, reviewExpiresAt, reviewExpiresAt, now, caseId, userId).run();
   if ((updated.meta.changes ?? 0) !== 1) throw new ApiError(409, "AGE_CASE_CONCURRENTLY_UPDATED");
-  return { caseId, status: "PENDING", reviewStatus: "READY_FOR_REVIEW" };
+  return {
+    caseId,
+    status: "PENDING",
+    reviewStatus: "READY_FOR_REVIEW",
+    reviewExpiresAt,
+  };
 }
 
 export function isValidIban(value: string): boolean {
@@ -1250,8 +1300,8 @@ function invoiceEmailHtml(input: {
     ? "Danke für deine Bestellung. Schließe jetzt die SEPA-Überweisung ab und sichere dir deinen Platz bei Shadow's Temptation."
     : "Thank you for your order. Complete your SEPA transfer now and secure your place at Shadow's Temptation.";
   const labels = isGerman
-    ? { invoice: "Rechnungsnummer", issued: "Rechnungsdatum", product: "Mitgliedschaft", total: "Gesamtbetrag", due: "Zahlbar bis", billTo: "Rechnung an", seller: "Leistungserbringer", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
-    : { invoice: "Invoice number", issued: "Invoice date", product: "Membership", total: "Total", due: "Pay by", billTo: "Bill to", seller: "Supplier", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
+    ? { invoice: "Rechnungsnummer", issued: "Rechnungsdatum", product: "Mitgliedschaft", servicePeriod: "Leistungszeitraum", total: "Gesamtbetrag", due: "Zahlbar bis", billTo: "Rechnung an", seller: "Leistungserbringer", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
+    : { invoice: "Invoice number", issued: "Invoice date", product: "Membership", servicePeriod: "Service period", total: "Total", due: "Pay by", billTo: "Bill to", seller: "Supplier", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
   const legalBase = input.customerCountryCode === "US"
     ? "https://exclusive.jason-shadow.com/legal/us/"
     : "https://exclusive.jason-shadow.com/legal/eu/";
@@ -1279,6 +1329,7 @@ function invoiceEmailHtml(input: {
             <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.invoice}</td><td style="padding:10px 0;text-align:right;font-weight:bold;border-bottom:1px solid #41202a">${escapeHtml(input.invoiceNumber)}</td></tr>
             <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.issued}</td><td style="padding:10px 0;text-align:right;border-bottom:1px solid #41202a">${escapeHtml(issued)}</td></tr>
             <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.product}</td><td style="padding:10px 0;text-align:right;border-bottom:1px solid #41202a">${escapeHtml(input.productName)}</td></tr>
+            <tr><td style="padding:10px 0;color:#bdaaa4;border-bottom:1px solid #41202a">${labels.servicePeriod}</td><td style="padding:10px 0;text-align:right;border-bottom:1px solid #41202a">${isGerman ? "Beginn nach bestätigtem Zahlungseingang; Laufzeit gemäß gewählter Membership" : "Starts after confirmed payment; term as stated in the selected membership"}</td></tr>
             <tr><td style="padding:13px 0;color:#bdaaa4">${labels.total}</td><td style="padding:13px 0;text-align:right;font-size:24px;color:#e7c47d;font-weight:bold">${escapeHtml(amount)}</td></tr>
           </table>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:16px 0 22px;border-collapse:separate;border-spacing:0">
@@ -2011,7 +2062,7 @@ async function registerDevice(
     displayName.length > 80
   )) throw new ApiError(400, "INVALID_DEVICE_NAME");
   const profile = await getUserProfile(env.DB, userId);
-  if (!profile || profile.account_status !== "ACTIVE") {
+  if (!profile || !["EMAIL_PENDING", "ACTIVE"].includes(profile.account_status)) {
     throw new ApiError(403, "ACCOUNT_NOT_ACTIVE");
   }
   const tokenHash = await sha256Hex(deviceToken);
@@ -2056,6 +2107,78 @@ async function registerDevice(
   ).run();
   if ((result.meta.changes ?? 0) !== 1) throw new ApiError(409, "DEVICE_LIMIT_EXCEEDED");
   return { status: "ACTIVE", deviceId, existing: false };
+}
+
+async function listDevices(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const token = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const tokenHash = await sha256Hex(token);
+  const devices = await env.DB.prepare(`
+    SELECT id, display_name, status, first_seen_at, last_seen_at, revoked_at,
+      CASE WHEN device_token_hash = ? THEN 1 ELSE 0 END AS is_current
+    FROM registered_devices
+    WHERE appwrite_user_id = ?
+    ORDER BY status ASC, last_seen_at DESC
+    LIMIT 20
+  `).bind(tokenHash, userId).all<{
+    id: string;
+    display_name: string | null;
+    status: "ACTIVE" | "REVOKED";
+    first_seen_at: string;
+    last_seen_at: string;
+    revoked_at: string | null;
+    is_current: number;
+  }>();
+  return {
+    devices: devices.results.map((device) => ({
+      id: device.id,
+      displayName: device.display_name,
+      status: device.status,
+      firstSeenAt: device.first_seen_at,
+      lastSeenAt: device.last_seen_at,
+      revokedAt: device.revoked_at,
+      current: device.is_current === 1,
+    })),
+    limit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
+  };
+}
+
+async function revokeDevice(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  deviceId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) throw new ApiError(400, "INVALID_DEVICE_ID");
+  requireIdempotencyKey(request);
+  const token = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const tokenHash = await sha256Hex(token);
+  const device = await env.DB.prepare(`
+    SELECT id, status, device_token_hash
+    FROM registered_devices
+    WHERE id = ? AND appwrite_user_id = ?
+  `).bind(deviceId, userId).first<{
+    id: string;
+    status: "ACTIVE" | "REVOKED";
+    device_token_hash: string;
+  }>();
+  if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
+  const now = isoNow();
+  if (device.status === "ACTIVE") {
+    await env.DB.prepare(`
+      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
+    `).bind(now, now, device.id, userId).run();
+  }
+  return {
+    status: "REVOKED",
+    deviceId: device.id,
+    current: device.device_token_hash === tokenHash,
+  };
 }
 
 async function revokeCurrentDevice(
@@ -2960,8 +3083,24 @@ async function requestDeletion(
   } catch {
     appwriteStatusSync = "FAILED";
   }
+  let deletionStatus = "DELETION_PENDING";
+  try {
+    const response = await env.MAINTENANCE_JOBS.fetch(
+      "https://maintenance.internal/process-account-deletion",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      },
+    );
+    const payload = await response.json<{ status?: unknown }>();
+    if (response.ok && payload.status === "COMPLETED") deletionStatus = "DELETED";
+    else if (payload.status === "BLOCKED") deletionStatus = "BLOCKED";
+  } catch {
+    // The hourly maintenance job safely retries a deletion that cannot finish inline.
+  }
   return {
-    status: "DELETION_PENDING",
+    status: deletionStatus,
     scheduledAt,
     appwriteSessionRevocation,
     appwriteStatusSync,
@@ -3026,6 +3165,7 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     .exec(requestUrl.pathname);
   const privacyRequestPath = /^\/v1\/privacy\/requests\/([0-9a-f-]{36})$/i
     .exec(requestUrl.pathname);
+  const devicePath = /^\/v1\/devices\/([0-9a-f-]{36})$/i.exec(requestUrl.pathname);
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
     result = await statusResponse(env, identity.userId);
@@ -3082,6 +3222,10 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
     return exportPrivacyData(env, identity.userId, origin, origins, correlationId);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/devices/register") {
     result = await registerDevice(request, env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/devices") {
+    result = await listDevices(request, env, identity.userId);
+  } else if (request.method === "DELETE" && devicePath) {
+    result = await revokeDevice(request, env, identity.userId, devicePath[1]!);
   } else if (request.method === "DELETE" && requestUrl.pathname === "/v1/devices/current") {
     result = await revokeCurrentDevice(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/content") {

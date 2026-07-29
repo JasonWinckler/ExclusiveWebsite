@@ -264,8 +264,8 @@ export default function PrivacyPanel({
       <label className="consent-check">
         <input type="checkbox" checked={deletionConfirmed} onChange={(event) => setDeletionConfirmed(event.target.checked)} required />
         <span>{de
-          ? "Ich verstehe, dass mein Zugang widerrufen und mein Konto nach Ablauf der anwendbaren Fristen nicht wiederhergestellt werden kann."
-          : "I understand that access will be revoked and the account cannot be restored after the applicable process completes."}</span>
+          ? "Ich verstehe, dass mein Zugang sofort widerrufen und mein Konto unwiderruflich gelöscht wird. Gesetzlich aufzubewahrende Rechnungsdaten bleiben nur pseudonymisiert erhalten."
+          : "I understand that access is revoked immediately and my account is permanently deleted. Legally retained invoice records remain only in pseudonymised form."}</span>
       </label>
       <label className="field"><span>{de ? "Zur Bestätigung LÖSCHEN eingeben" : "Type DELETE to confirm"}</span>
         <input value={deletionPhrase} onChange={(event) => setDeletionPhrase(event.target.value)}
@@ -274,7 +274,7 @@ export default function PrivacyPanel({
       <button className="danger-action" disabled={busy || !deletionConfirmed || (de
         ? deletionPhrase.trim().toLocaleUpperCase("de-DE") !== "LÖSCHEN"
         : deletionPhrase.trim().toUpperCase() !== "DELETE")}>
-        {de ? "Löschung meines Kontos beantragen" : "Request account deletion"}
+        {de ? "Konto jetzt endgültig löschen" : "Delete account permanently now"}
       </button>
     </form>
   </div>;
