@@ -231,7 +231,7 @@ async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
         SELECT e.tier FROM entitlements e
         WHERE e.appwrite_user_id = u.appwrite_user_id
           AND e.status = 'ACTIVE' AND e.starts_at <= ?
-          AND e.expires_at > ?
+          AND e.expires_at > ? AND e.paused_at IS NULL
         ORDER BY CASE e.tier
           WHEN 'EXCLUSIVE_VIP' THEN 3
           WHEN 'EXCLUSIVE_PREMIUM' THEN 2
@@ -240,9 +240,16 @@ async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
         LIMIT 1
       ) AS entitlement_tier,
       (
-        SELECT MAX(e.expires_at) FROM entitlements e
+        SELECT e.expires_at FROM entitlements e
         WHERE e.appwrite_user_id = u.appwrite_user_id
-          AND e.status = 'ACTIVE' AND e.expires_at > ?
+          AND e.status = 'ACTIVE' AND e.starts_at <= ?
+          AND e.expires_at > ? AND e.paused_at IS NULL
+        ORDER BY CASE e.tier
+          WHEN 'EXCLUSIVE_VIP' THEN 3
+          WHEN 'EXCLUSIVE_PREMIUM' THEN 2
+          ELSE 1
+        END DESC, e.expires_at DESC
+        LIMIT 1
       ) AS entitlement_expires_at
     FROM user_profiles u
     LEFT JOIN subscriptions s ON s.appwrite_user_id = u.appwrite_user_id
@@ -251,7 +258,7 @@ async function listUsers(env: AdminEnv): Promise<Record<string, unknown>> {
     GROUP BY u.appwrite_user_id
     ORDER BY u.created_at DESC
     LIMIT 500
-  `).bind(now, now, now).all();
+  `).bind(now, now, now, now).all();
   return { users: users.results };
 }
 
@@ -289,12 +296,24 @@ async function revokeUserDevice(
   const now = isoNow();
   if (kind === "registered") {
     if (!/^[0-9a-f-]{36}$/i.test(targetId)) throw new ApiError(400, "INVALID_DEVICE_ID");
+    const device = await env.DB.prepare(`
+      SELECT appwrite_session_id FROM registered_devices
+      WHERE id = ? AND appwrite_user_id = ?
+    `).bind(targetId, userId).first<{ appwrite_session_id: string | null }>();
+    if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
+    if (device.appwrite_session_id) {
+      await deleteAppwriteSession(
+        env.IDENTITY_PROJECTION,
+        env.LABEL_SYNC_SERVICE_SECRET,
+        userId,
+        device.appwrite_session_id,
+      );
+    }
     const result = await env.DB.prepare(`
-      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
-        version = version + 1, updated_at = ?
-      WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
-    `).bind(now, now, targetId, userId).run();
-    if ((result.meta.changes ?? 0) !== 1) throw new ApiError(404, "DEVICE_NOT_FOUND");
+      DELETE FROM registered_devices
+      WHERE id = ? AND appwrite_user_id = ?
+    `).bind(targetId, userId).run();
+    if ((result.meta.changes ?? 0) !== 1) throw new ApiError(409, "DEVICE_CONCURRENTLY_UPDATED");
   } else if (kind === "session") {
     if (!/^[A-Za-z0-9._-]{1,36}$/.test(targetId)) throw new ApiError(400, "INVALID_SESSION_ID");
     await deleteAppwriteSession(
@@ -308,7 +327,7 @@ async function revokeUserDevice(
   }
   await auditStatement(env.DB, {
     administratorUserId,
-    action: "USER_DEVICE_REVOKED",
+    action: kind === "session" ? "USER_SESSION_SIGNED_OUT" : "USER_DEVICE_REMOVED",
     targetType: kind === "session" ? "APPWRITE_SESSION" : "REGISTERED_DEVICE",
     targetId,
     previousState: { active: true },
@@ -317,7 +336,72 @@ async function revokeUserDevice(
     correlationId,
     now,
   }).run();
-  return { status: "REVOKED", kind, targetId };
+  return { status: kind === "session" ? "SIGNED_OUT" : "REMOVED", kind, targetId };
+}
+
+async function setUserDeviceLock(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  userId: string,
+  targetId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(targetId)) throw new ApiError(400, "INVALID_DEVICE_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactKeys(body, ["action"]);
+  if (body.action !== "LOCK" && body.action !== "UNLOCK") {
+    throw new ApiError(400, "INVALID_DEVICE_ACTION");
+  }
+  requireIdempotencyKey(request);
+  const current = await env.DB.prepare(`
+    SELECT status, appwrite_session_id FROM registered_devices
+    WHERE id = ? AND appwrite_user_id = ?
+  `).bind(targetId, userId).first<{
+    status: "ACTIVE" | "REVOKED";
+    appwrite_session_id: string | null;
+  }>();
+  if (!current) throw new ApiError(404, "DEVICE_NOT_FOUND");
+  const now = isoNow();
+  if (body.action === "UNLOCK") {
+    await env.DB.prepare(`
+      DELETE FROM registered_devices
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'REVOKED'
+    `).bind(targetId, userId).run();
+  } else {
+    await env.DB.prepare(`
+      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
+    `).bind(now, now, targetId, userId).run();
+    if (current.appwrite_session_id) {
+      await deleteAppwriteSession(
+        env.IDENTITY_PROJECTION,
+        env.LABEL_SYNC_SERVICE_SECRET,
+        userId,
+        current.appwrite_session_id,
+      );
+    }
+  }
+  await auditStatement(env.DB, {
+    administratorUserId,
+    action: body.action === "LOCK" ? "USER_DEVICE_LOCKED" : "USER_DEVICE_UNLOCKED",
+    targetType: "REGISTERED_DEVICE",
+    targetId,
+    previousState: { status: current.status },
+    newState: { status: body.action === "LOCK" ? "LOCKED" : "UNLOCKED" },
+    reason: "Administrator device security control",
+    correlationId,
+    now,
+  }).run();
+  return {
+    status: body.action === "LOCK" ? "LOCKED" : "UNLOCKED",
+    kind: "registered",
+    targetId,
+  };
 }
 
 async function pendingAgeCases(env: AdminEnv): Promise<Record<string, unknown>> {
@@ -721,6 +805,196 @@ export function accessLabelForTier(tier: AccessTier): string {
   }[tier];
 }
 
+const accessTierRank: Record<AccessTier, number> = {
+  EXCLUSIVE_BASIC: 1,
+  EXCLUSIVE_PREMIUM: 2,
+  EXCLUSIVE_VIP: 3,
+};
+
+interface EntitlementTimelineRow {
+  id: string;
+  tier: AccessTier;
+  starts_at: string;
+  expires_at: string;
+  paused_at: string | null;
+  paused_remaining_seconds: number | null;
+  resume_at: string | null;
+  subscription_id: string | null;
+  version: number;
+}
+
+interface EntitlementTimelineUpdate {
+  row: EntitlementTimelineRow;
+  startsAt: string;
+  expiresAt: string;
+  pauseAt: string | null;
+  remainingSeconds: number | null;
+  pausedByEntitlementId: string | null;
+  resumeAt: string | null;
+}
+
+interface EntitlementActivationPlan {
+  startsAt: string;
+  expiresAt: string;
+  effectiveTier: AccessTier;
+  upgradeActivatedImmediately: boolean;
+  timelineUpdates: EntitlementTimelineUpdate[];
+}
+
+function shiftedIso(value: string, milliseconds: number): string {
+  return new Date(Date.parse(value) + milliseconds).toISOString();
+}
+
+async function planEntitlementActivation(
+  db: D1Database,
+  userId: string,
+  tier: AccessTier,
+  durationUnit: "DAYS" | "MONTHS",
+  durationValue: number,
+  entitlementId: string,
+  now: string,
+): Promise<EntitlementActivationPlan> {
+  const timeline = await db.prepare(`
+    SELECT id, tier, starts_at, expires_at, paused_at,
+      paused_remaining_seconds, resume_at, subscription_id, version
+    FROM entitlements
+    WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND expires_at > ?
+    ORDER BY starts_at ASC, expires_at ASC
+  `).bind(userId, now).all<EntitlementTimelineRow>();
+  const active = timeline.results
+    .filter((row) =>
+      row.paused_at === null &&
+      Date.parse(row.starts_at) <= Date.parse(now) &&
+      Date.parse(row.expires_at) > Date.parse(now))
+    .sort((left, right) =>
+      accessTierRank[right.tier] - accessTierRank[left.tier] ||
+      Date.parse(right.expires_at) - Date.parse(left.expires_at))[0];
+
+  if (active && accessTierRank[tier] > accessTierRank[active.tier]) {
+    const startsAt = now;
+    const expiresAt = entitlementExpiry(startsAt, durationUnit, durationValue);
+    const extensionMs = Date.parse(expiresAt) - Date.parse(startsAt);
+    const timelineUpdates = timeline.results.map((row): EntitlementTimelineUpdate | null => {
+      if (row.id === active.id) {
+        return {
+          row,
+          startsAt: row.starts_at,
+          expiresAt: shiftedIso(row.expires_at, extensionMs),
+          pauseAt: now,
+          remainingSeconds: Math.max(
+            1,
+            Math.ceil((Date.parse(row.expires_at) - Date.parse(now)) / 1_000),
+          ),
+          pausedByEntitlementId: entitlementId,
+          resumeAt: expiresAt,
+        };
+      }
+      if (row.paused_at && row.resume_at) {
+        return {
+          row,
+          startsAt: row.starts_at,
+          expiresAt: shiftedIso(row.expires_at, extensionMs),
+          pauseAt: row.paused_at,
+          remainingSeconds: row.paused_remaining_seconds,
+          pausedByEntitlementId: null,
+          resumeAt: shiftedIso(row.resume_at, extensionMs),
+        };
+      }
+      if (Date.parse(row.starts_at) > Date.parse(now)) {
+        return {
+          row,
+          startsAt: shiftedIso(row.starts_at, extensionMs),
+          expiresAt: shiftedIso(row.expires_at, extensionMs),
+          pauseAt: null,
+          remainingSeconds: null,
+          pausedByEntitlementId: null,
+          resumeAt: null,
+        };
+      }
+      return null;
+    }).filter((update): update is EntitlementTimelineUpdate => update !== null);
+    return {
+      startsAt,
+      expiresAt,
+      effectiveTier: tier,
+      upgradeActivatedImmediately: true,
+      timelineUpdates,
+    };
+  }
+
+  const latestExpiry = timeline.results.reduce(
+    (latest, row) => Date.parse(row.expires_at) > Date.parse(latest) ? row.expires_at : latest,
+    now,
+  );
+  const startsAt = Date.parse(latestExpiry) > Date.parse(now) ? latestExpiry : now;
+  return {
+    startsAt,
+    expiresAt: entitlementExpiry(startsAt, durationUnit, durationValue),
+    effectiveTier: startsAt > now && active ? active.tier : tier,
+    upgradeActivatedImmediately: false,
+    timelineUpdates: [],
+  };
+}
+
+function timelineUpdateStatements(
+  db: D1Database,
+  plan: EntitlementActivationPlan,
+  now: string,
+): D1PreparedStatement[] {
+  return plan.timelineUpdates.flatMap((update) => {
+    const statements: D1PreparedStatement[] = [];
+    if (update.pauseAt) {
+      statements.push(db.prepare(`
+        UPDATE entitlements SET starts_at = ?, expires_at = ?, paused_at = ?,
+          paused_remaining_seconds = ?, paused_by_entitlement_id = COALESCE(?, paused_by_entitlement_id),
+          resume_at = ?, renewal_reminder_status = 'PENDING',
+          renewal_reminder_message_id = NULL, renewal_reminder_sent_at = NULL,
+          renewal_reminder_last_error_code = NULL,
+          version = version + 1, updated_at = ?
+        WHERE id = ? AND status = 'ACTIVE' AND version = ?
+      `).bind(
+        update.startsAt,
+        update.expiresAt,
+        update.pauseAt,
+        update.remainingSeconds,
+        update.pausedByEntitlementId,
+        update.resumeAt,
+        now,
+        update.row.id,
+        update.row.version,
+      ));
+    } else {
+      statements.push(db.prepare(`
+        UPDATE entitlements SET starts_at = ?, expires_at = ?,
+          renewal_reminder_status = 'PENDING',
+          renewal_reminder_message_id = NULL, renewal_reminder_sent_at = NULL,
+          renewal_reminder_last_error_code = NULL,
+          version = version + 1, updated_at = ?
+        WHERE id = ? AND status = 'ACTIVE' AND version = ?
+      `).bind(
+        update.startsAt,
+        update.expiresAt,
+        now,
+        update.row.id,
+        update.row.version,
+      ));
+    }
+    if (update.row.subscription_id) {
+      statements.push(db.prepare(`
+        UPDATE subscriptions SET current_period_start = ?, current_period_end = ?,
+          version = version + 1, updated_at = ?
+        WHERE id = ?
+      `).bind(
+        update.startsAt,
+        update.expiresAt,
+        now,
+        update.row.subscription_id,
+      ));
+    }
+    return statements;
+  });
+}
+
 async function grantManualMembership(
   request: Request,
   env: AdminEnv,
@@ -766,7 +1040,7 @@ async function grantManualMembership(
     };
   }
 
-  const [profile, product, currentEffective, sameTierEnd] = await Promise.all([
+  const [profile, product, previousEntitlements] = await Promise.all([
     getUserProfile(env.DB, userId),
     env.DB.prepare(`
       SELECT id, sku, display_name, tier, duration_unit, duration_value
@@ -780,28 +1054,11 @@ async function grantManualMembership(
       duration_value: number;
     }>(),
     env.DB.prepare(`
-      SELECT tier FROM entitlements
+      SELECT id, tier, starts_at, expires_at, paused_at, resume_at
+      FROM entitlements
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-        AND starts_at <= ? AND expires_at > ?
-      ORDER BY CASE tier
-        WHEN 'EXCLUSIVE_VIP' THEN 3
-        WHEN 'EXCLUSIVE_PREMIUM' THEN 2
-        ELSE 1
-      END DESC, expires_at DESC
-      LIMIT 1
-    `).bind(userId, isoNow(), isoNow()).first<{ tier: AccessTier }>(),
-    env.DB.prepare(`
-      SELECT MAX(expires_at) AS expires_at FROM entitlements
-      WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND tier = ? AND expires_at > ?
-    `).bind(
-      userId,
-      body.productSku.includes("-vip-")
-        ? "EXCLUSIVE_VIP"
-        : body.productSku.includes("-premium-")
-          ? "EXCLUSIVE_PREMIUM"
-          : "EXCLUSIVE_BASIC",
-      isoNow(),
-    ).first<{ expires_at: string | null }>(),
+      ORDER BY starts_at ASC
+    `).bind(userId).all(),
   ]);
   if (!profile) throw new ApiError(404, "PROFILE_NOT_FOUND");
   if (
@@ -812,16 +1069,16 @@ async function grantManualMembership(
   if (!product) throw new ApiError(404, "PRODUCT_NOT_AVAILABLE");
 
   const now = isoNow();
-  const startsAt = sameTierEnd?.expires_at && sameTierEnd.expires_at > now
-    ? sameTierEnd.expires_at
-    : now;
+  const startsAt = now;
   const expiresAt = entitlementExpiry(startsAt, product.duration_unit, product.duration_value);
-  const effectiveTier = startsAt > now && currentEffective
-    ? currentEffective.tier
-    : product.tier;
+  const effectiveTier = product.tier;
   const entitlementId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await env.DB.batch([
+    env.DB.prepare(`
+      DELETE FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+    `).bind(userId),
     env.DB.prepare(`
       INSERT INTO entitlements (
         id, appwrite_user_id, product_id, subscription_id, tier, status,
@@ -857,13 +1114,16 @@ async function grantManualMembership(
       action: "MEMBERSHIP_MANUALLY_GRANTED",
       targetType: "USER",
       targetId: userId,
-      previousState: { effectiveTier: currentEffective?.tier ?? null },
+      previousState: {
+        replacedEntitlements: previousEntitlements.results,
+      },
       newState: {
         tier: product.tier,
         productSku: product.sku,
         startsAt,
         expiresAt,
         effectiveTier,
+        replacementMode: "REPLACE_ACTIVE_AND_SCHEDULED",
       },
       reason,
       correlationId,
@@ -1028,45 +1288,21 @@ async function manuallyActivatePaymentOrder(
     throw new ApiError(409, "PAYMENT_ORDER_USER_NOT_ELIGIBLE");
   }
 
-  const lookupAt = isoNow();
-  const active = await env.DB.prepare(`
-    SELECT
-      MAX(expires_at) AS expires_at,
-      (
-        SELECT tier FROM entitlements current
-        WHERE current.appwrite_user_id = ?
-          AND current.status = 'ACTIVE'
-          AND current.starts_at <= ? AND current.expires_at > ?
-        ORDER BY CASE current.tier
-          WHEN 'EXCLUSIVE_VIP' THEN 3
-          WHEN 'EXCLUSIVE_PREMIUM' THEN 2
-          ELSE 1
-        END DESC, current.expires_at DESC
-        LIMIT 1
-      ) AS current_tier
-    FROM entitlements
-    WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-  `).bind(
-    subscription.appwrite_user_id,
-    lookupAt,
-    lookupAt,
-    subscription.appwrite_user_id,
-  ).first<{ expires_at: string | null; current_tier: AccessTier | null }>();
   const settledAt = isoNow();
-  const startsAt = active?.expires_at && Date.parse(active.expires_at) > Date.parse(settledAt)
-    ? active.expires_at
-    : settledAt;
-  const expiresAt = entitlementExpiry(
-    startsAt,
+  const entitlementId = crypto.randomUUID();
+  const activationPlan = await planEntitlementActivation(
+    env.DB,
+    subscription.appwrite_user_id,
+    subscription.tier,
     subscription.duration_unit,
     subscription.duration_value,
+    entitlementId,
+    settledAt,
   );
+  const { startsAt, expiresAt } = activationPlan;
   const transactionId = crypto.randomUUID();
-  const entitlementId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
-  const desiredTier = startsAt > settledAt && active?.current_tier
-    ? active.current_tier
-    : subscription.tier;
+  const desiredTier = activationPlan.effectiveTier;
   const desiredLabel = accessLabelForTier(desiredTier);
   const settlementMarker = `ADMIN_MANUAL_SUPPORT:${transactionId}`;
   const payloadHash = await sha256Hex(JSON.stringify({
@@ -1081,6 +1317,10 @@ async function manuallyActivatePaymentOrder(
     transactionId,
     startsAt,
     expiresAt,
+    upgradeActivatedImmediately: activationPlan.upgradeActivatedImmediately,
+    pausedEntitlementIds: activationPlan.timelineUpdates
+      .filter((update) => update.pausedByEntitlementId === entitlementId)
+      .map((update) => update.row.id),
     source: "ADMIN",
   });
 
@@ -1100,6 +1340,7 @@ async function manuallyActivatePaymentOrder(
       subscription.id,
       subscription.version,
     ),
+    ...timelineUpdateStatements(env.DB, activationPlan, settledAt),
     env.DB.prepare(`
       INSERT INTO bank_transactions (
         id, source, external_transaction_id, amount_minor, currency,
@@ -1308,28 +1549,13 @@ async function importN26Csv(
       SELECT bt.id AS existing_transaction_id,
         s.id AS subscription_id, s.appwrite_user_id, s.status,
         s.amount_minor, s.currency, p.id AS product_id, p.tier,
-        p.duration_unit, p.duration_value,
-        (
-          SELECT MAX(e.expires_at) FROM entitlements e
-          WHERE e.appwrite_user_id = s.appwrite_user_id AND e.status = 'ACTIVE'
-        ) AS active_expires_at,
-        (
-          SELECT e.tier FROM entitlements e
-          WHERE e.appwrite_user_id = s.appwrite_user_id
-            AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
-          ORDER BY CASE e.tier
-            WHEN 'EXCLUSIVE_VIP' THEN 3
-            WHEN 'EXCLUSIVE_PREMIUM' THEN 2
-            ELSE 1
-          END DESC, e.expires_at DESC
-          LIMIT 1
-        ) AS active_tier
+        p.duration_unit, p.duration_value
       FROM (SELECT 1) seed
       LEFT JOIN bank_transactions bt ON bt.external_transaction_id = ?
       LEFT JOIN subscriptions s ON s.transfer_reference = ?
       LEFT JOIN products p ON p.id = s.product_id
       LIMIT 1
-    `).bind(startedAt, startedAt, externalTransactionId, transferPurpose || "").first<{
+    `).bind(externalTransactionId, transferPurpose || "").first<{
       existing_transaction_id: string | null;
       subscription_id: string | null;
       appwrite_user_id: string | null;
@@ -1340,8 +1566,6 @@ async function importN26Csv(
       tier: "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP" | null;
       duration_unit: "DAYS" | "MONTHS" | null;
       duration_value: number | null;
-      active_expires_at: string | null;
-      active_tier: AccessTier | null;
     }>();
     if (lookup?.existing_transaction_id) {
       summary.duplicates += 1;
@@ -1397,22 +1621,21 @@ async function importN26Csv(
     }
 
     const settledAt = isoNow();
-    const startsAt = lookup?.active_expires_at &&
-      Date.parse(lookup.active_expires_at) > Date.parse(settledAt)
-      ? lookup.active_expires_at
-      : settledAt;
-    const expiresAt = entitlementExpiry(
-      startsAt,
+    const entitlementId = crypto.randomUUID();
+    const activationPlan = await planEntitlementActivation(
+      env.DB,
+      subscription.appwrite_user_id,
+      subscription.tier,
       subscription.duration_unit,
       subscription.duration_value,
+      entitlementId,
+      settledAt,
     );
-    const entitlementId = crypto.randomUUID();
+    const { startsAt, expiresAt } = activationPlan;
     const attemptId = crypto.randomUUID();
-    const desiredTier = startsAt > settledAt && lookup?.active_tier
-      ? lookup.active_tier
-      : subscription.tier;
+    const desiredTier = activationPlan.effectiveTier;
     const desiredLabel = accessLabelForTier(desiredTier);
-    await env.DB.batch([
+    const activationResults = await env.DB.batch([
       env.DB.prepare(`
         INSERT INTO bank_transactions (
           id, source, external_transaction_id, amount_minor, currency,
@@ -1444,6 +1667,7 @@ async function importN26Csv(
         settledAt,
         subscription.id,
       ),
+      ...timelineUpdateStatements(env.DB, activationPlan, settledAt),
       env.DB.prepare(`
         INSERT INTO entitlements (
           id, appwrite_user_id, product_id, subscription_id, tier, status,
@@ -1485,12 +1709,24 @@ async function importN26Csv(
         targetType: "SUBSCRIPTION",
         targetId: subscription.id,
         previousState: { status: subscription.status },
-        newState: { status: "ACTIVE", transactionId, startsAt, expiresAt },
+        newState: {
+          status: "ACTIVE",
+          transactionId,
+          startsAt,
+          expiresAt,
+          upgradeActivatedImmediately: activationPlan.upgradeActivatedImmediately,
+          pausedEntitlementIds: activationPlan.timelineUpdates
+            .filter((update) => update.pausedByEntitlementId === entitlementId)
+            .map((update) => update.row.id),
+        },
         reason: "Exact N26 CSV match by payment purpose, EUR amount, and pending order",
         correlationId,
         now: settledAt,
       }),
     ]);
+    if (activationResults.some((result) => (result.meta.changes ?? 0) !== 1)) {
+      throw new ApiError(503, "PAYMENT_ACTIVATION_INCOMPLETE");
+    }
     usersToSync.set(subscription.appwrite_user_id, { attemptId, desiredLabel });
     entitlementsToNotify.push(entitlementId);
     summary.matched += 1;
@@ -2213,6 +2449,7 @@ async function unrestrictUser(
   const activeEntitlement = await env.DB.prepare(`
     SELECT tier FROM entitlements
     WHERE appwrite_user_id = ? AND status = 'ACTIVE' AND expires_at > ?
+      AND starts_at <= ? AND paused_at IS NULL
     ORDER BY CASE tier
       WHEN 'EXCLUSIVE_VIP' THEN 3
       WHEN 'EXCLUSIVE_PREMIUM' THEN 2
@@ -2220,7 +2457,7 @@ async function unrestrictUser(
       ELSE 0
     END DESC, expires_at DESC
     LIMIT 1
-  `).bind(userId, now).first<{ tier: AccessTier }>();
+  `).bind(userId, now, now).first<{ tier: AccessTier }>();
   try {
     await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId,
@@ -2736,6 +2973,19 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
       administrator.userId,
       validateUserId(decodeURIComponent(userDevicePath[1]!)),
       userDevicePath[2]!,
+      decodeURIComponent(userDevicePath[3]!),
+      correlationId,
+    );
+  } else if (
+    request.method === "PATCH" &&
+    userDevicePath &&
+    userDevicePath[2] === "registered"
+  ) {
+    result = await setUserDeviceLock(
+      request,
+      env,
+      administrator.userId,
+      validateUserId(decodeURIComponent(userDevicePath[1]!)),
       decodeURIComponent(userDevicePath[3]!),
       correlationId,
     );

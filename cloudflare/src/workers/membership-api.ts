@@ -27,6 +27,7 @@ import {
 import { authorizeProtectedContent } from "../shared/policy";
 import { assertMediaSignature } from "../shared/media";
 import {
+  deleteAppwriteSession,
   revokeAppwriteSessions,
   sendTransactionalEmail,
   updateAppwriteUserName,
@@ -42,7 +43,7 @@ import type {
   UserProfileRow,
 } from "../shared/types";
 
-const AGE_INSTRUCTIONS_VERSION = "manual-age-v5";
+const AGE_INSTRUCTIONS_VERSION = "manual-age-v6";
 const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-28";
 type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
 type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
@@ -211,12 +212,20 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       SELECT tier, expires_at
       FROM entitlements
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-        AND starts_at <= ? AND expires_at > ?
+        AND starts_at <= ? AND expires_at > ? AND paused_at IS NULL
       ORDER BY CASE tier
         WHEN 'EXCLUSIVE_VIP' THEN 3
         WHEN 'EXCLUSIVE_PREMIUM' THEN 2
         ELSE 1
       END DESC, expires_at DESC
+      LIMIT 1
+    ),
+    paused_entitlement AS (
+      SELECT tier, expires_at, resume_at
+      FROM entitlements
+      WHERE appwrite_user_id = ? AND status = 'ACTIVE'
+        AND paused_at IS NOT NULL AND expires_at > ?
+      ORDER BY resume_at ASC, expires_at ASC
       LIMIT 1
     ),
     latest_age_case AS (
@@ -236,6 +245,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       p.country_code,
       p.region_code, p.privacy_regime, p.privacy_notice_acknowledged_at,
       e.tier AS entitlement_tier, e.expires_at AS entitlement_expires_at,
+      pe.tier AS paused_entitlement_tier,
+      pe.expires_at AS paused_entitlement_expires_at,
+      pe.resume_at AS paused_entitlement_resume_at,
       (SELECT COUNT(*) FROM registered_devices d
         WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
       a.id AS age_case_id, a.manual_review_status, a.upload_expires_at,
@@ -247,9 +259,10 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
         WHERE u.age_case_id = a.id AND u.deleted_at IS NULL) AS evidence_kinds
     FROM user_profiles p
     LEFT JOIN active_entitlement e ON 1 = 1
+    LEFT JOIN paused_entitlement pe ON 1 = 1
     LEFT JOIN latest_age_case a ON 1 = 1
     WHERE p.appwrite_user_id = ?
-  `).bind(userId, now, now, userId, userId).first<{
+  `).bind(userId, now, now, userId, now, userId, userId).first<{
     account_status: string;
     email_verified: number;
     age_status: string;
@@ -264,6 +277,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     privacy_notice_acknowledged_at: string | null;
     entitlement_tier: string | null;
     entitlement_expires_at: string | null;
+    paused_entitlement_tier: string | null;
+    paused_entitlement_expires_at: string | null;
+    paused_entitlement_resume_at: string | null;
     active_device_count: number;
     age_case_id: string | null;
     manual_review_status: string | null;
@@ -329,9 +345,20 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
         },
       ],
     },
-    entitlement: row.entitlement_tier && row.entitlement_expires_at
-      ? { active: true, tier: row.entitlement_tier, expiresAt: row.entitlement_expires_at }
-      : { active: false, tier: null, expiresAt: null },
+    entitlement: {
+      ...(row.entitlement_tier && row.entitlement_expires_at
+        ? { active: true, tier: row.entitlement_tier, expiresAt: row.entitlement_expires_at }
+        : { active: false, tier: null, expiresAt: null }),
+      paused: row.paused_entitlement_tier &&
+        row.paused_entitlement_expires_at &&
+        row.paused_entitlement_resume_at
+        ? {
+          tier: row.paused_entitlement_tier,
+          resumesAt: row.paused_entitlement_resume_at,
+          expiresAt: row.paused_entitlement_expires_at,
+        }
+        : null,
+    },
     devices: {
       active: Number(row.active_device_count),
       limit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
@@ -1860,6 +1887,7 @@ async function premiumTelegramPerk(
       AND e.status = 'ACTIVE'
       AND e.starts_at <= ?
       AND e.expires_at > ?
+      AND e.paused_at IS NULL
     WHERE p.appwrite_user_id = ?
     ORDER BY e.expires_at DESC
     LIMIT 1
@@ -1905,6 +1933,7 @@ async function vipWhatsappPerk(
       AND e.status = 'ACTIVE'
       AND e.starts_at <= ?
       AND e.expires_at > ?
+      AND e.paused_at IS NULL
     WHERE p.appwrite_user_id = ?
     ORDER BY e.expires_at DESC
     LIMIT 1
@@ -2051,7 +2080,7 @@ async function registerDevice(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactObjectKeys(body, ["deviceToken", "displayName"]);
+  exactObjectKeys(body, ["deviceToken", "displayName", "sessionId"]);
   const deviceToken = validateDeviceToken(
     typeof body.deviceToken === "string" ? body.deviceToken : null,
   );
@@ -2061,6 +2090,11 @@ async function registerDevice(
     displayName.trim().length < 1 ||
     displayName.length > 80
   )) throw new ApiError(400, "INVALID_DEVICE_NAME");
+  const sessionId = body.sessionId == null ? null : body.sessionId;
+  if (
+    sessionId !== null &&
+    (typeof sessionId !== "string" || !/^[A-Za-z0-9._-]{1,36}$/.test(sessionId))
+  ) throw new ApiError(400, "INVALID_SESSION_ID");
   const profile = await getUserProfile(env.DB, userId);
   if (!profile || !["EMAIL_PENDING", "ACTIVE"].includes(profile.account_status)) {
     throw new ApiError(403, "ACCOUNT_NOT_ACTIVE");
@@ -2069,10 +2103,18 @@ async function registerDevice(
   const existing = await getRegisteredDevice(env.DB, userId, tokenHash);
   const now = isoNow();
   if (existing?.status === "ACTIVE") {
+    if (sessionId) {
+      await env.DB.prepare(`
+        UPDATE registered_devices SET appwrite_session_id = ?,
+          version = version + 1, updated_at = ?
+        WHERE id = ? AND status = 'ACTIVE'
+          AND COALESCE(appwrite_session_id, '') <> ?
+      `).bind(sessionId, now, existing.id, sessionId).run();
+    }
     await touchRegisteredDevice(env.DB, existing.id, existing.last_seen_at, now);
     return { status: "ACTIVE", deviceId: existing.id, existing: true };
   }
-  if (existing?.status === "REVOKED") throw new ApiError(409, "DEVICE_CREDENTIAL_REVOKED");
+  if (existing?.status === "REVOKED") throw new ApiError(409, "DEVICE_LOCKED");
 
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
@@ -2085,9 +2127,10 @@ async function registerDevice(
   const result = await env.DB.prepare(`
     INSERT INTO registered_devices (
       id, appwrite_user_id, device_token_hash, registration_idempotency_key,
-      display_name, status, first_seen_at, last_seen_at, created_at, updated_at
+      display_name, appwrite_session_id, status,
+      first_seen_at, last_seen_at, created_at, updated_at
     )
-    SELECT ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?
+    SELECT ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?
     WHERE (
       SELECT COUNT(*) FROM registered_devices
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
@@ -2098,6 +2141,7 @@ async function registerDevice(
     tokenHash,
     idempotencyKey,
     typeof displayName === "string" ? displayName.trim() : null,
+    sessionId,
     now,
     now,
     now,
@@ -2146,7 +2190,7 @@ async function listDevices(
   };
 }
 
-async function revokeDevice(
+async function removeDevice(
   request: Request,
   env: MembershipEnv,
   userId: string,
@@ -2157,31 +2201,90 @@ async function revokeDevice(
   const token = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(token);
   const device = await env.DB.prepare(`
-    SELECT id, status, device_token_hash
+    SELECT id, status, device_token_hash, appwrite_session_id
     FROM registered_devices
     WHERE id = ? AND appwrite_user_id = ?
   `).bind(deviceId, userId).first<{
     id: string;
     status: "ACTIVE" | "REVOKED";
     device_token_hash: string;
+    appwrite_session_id: string | null;
   }>();
   if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
-  const now = isoNow();
-  if (device.status === "ACTIVE") {
-    await env.DB.prepare(`
-      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
-        version = version + 1, updated_at = ?
-      WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
-    `).bind(now, now, device.id, userId).run();
+  if (device.appwrite_session_id) {
+    await deleteAppwriteSession(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      device.appwrite_session_id,
+    );
   }
+  await env.DB.prepare(`
+    DELETE FROM registered_devices
+    WHERE id = ? AND appwrite_user_id = ?
+  `).bind(device.id, userId).run();
   return {
-    status: "REVOKED",
+    status: "REMOVED",
     deviceId: device.id,
     current: device.device_token_hash === tokenHash,
   };
 }
 
-async function revokeCurrentDevice(
+async function setDeviceLock(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+  deviceId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) throw new ApiError(400, "INVALID_DEVICE_ID");
+  const body = await readJsonBody<unknown>(
+    request,
+    parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+  );
+  exactObjectKeys(body, ["action"]);
+  if (body.action !== "LOCK" && body.action !== "UNLOCK") {
+    throw new ApiError(400, "INVALID_DEVICE_ACTION");
+  }
+  requireIdempotencyKey(request);
+  const token = validateDeviceToken(request.headers.get("X-Device-Token"));
+  const tokenHash = await sha256Hex(token);
+  const device = await env.DB.prepare(`
+    SELECT id, status, device_token_hash, appwrite_session_id
+    FROM registered_devices
+    WHERE id = ? AND appwrite_user_id = ?
+  `).bind(deviceId, userId).first<{
+    id: string;
+    status: "ACTIVE" | "REVOKED";
+    device_token_hash: string;
+    appwrite_session_id: string | null;
+  }>();
+  if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
+  const current = device.device_token_hash === tokenHash;
+  if (body.action === "UNLOCK") {
+    await env.DB.prepare(`
+      DELETE FROM registered_devices
+      WHERE id = ? AND appwrite_user_id = ? AND status = 'REVOKED'
+    `).bind(device.id, userId).run();
+    return { status: "UNLOCKED", deviceId: device.id, current };
+  }
+  const now = isoNow();
+  await env.DB.prepare(`
+    UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
+      version = version + 1, updated_at = ?
+    WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
+  `).bind(now, now, device.id, userId).run();
+  if (device.appwrite_session_id) {
+    await deleteAppwriteSession(
+      env.IDENTITY_PROJECTION,
+      env.LABEL_SYNC_SERVICE_SECRET,
+      userId,
+      device.appwrite_session_id,
+    );
+  }
+  return { status: "LOCKED", deviceId: device.id, current };
+}
+
+async function removeCurrentDevice(
   request: Request,
   env: MembershipEnv,
   userId: string,
@@ -2190,15 +2293,10 @@ async function revokeCurrentDevice(
   const tokenHash = await sha256Hex(token);
   const device = await getRegisteredDevice(env.DB, userId, tokenHash);
   if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
-  if (device.status === "ACTIVE") {
-    const now = isoNow();
-    await env.DB.prepare(`
-      UPDATE registered_devices SET status = 'REVOKED', revoked_at = ?,
-        version = version + 1, updated_at = ?
-      WHERE id = ? AND status = 'ACTIVE'
-    `).bind(now, now, device.id).run();
-  }
-  return { status: "REVOKED", deviceId: device.id };
+  await env.DB.prepare(`
+    DELETE FROM registered_devices WHERE id = ? AND appwrite_user_id = ?
+  `).bind(device.id, userId).run();
+  return { status: "REMOVED", deviceId: device.id };
 }
 
 async function listContent(
@@ -2299,7 +2397,7 @@ async function commentContext(
       SELECT id, tier, status, starts_at, expires_at
       FROM entitlements
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-        AND starts_at <= ? AND expires_at > ?
+        AND starts_at <= ? AND expires_at > ? AND paused_at IS NULL
       ORDER BY CASE tier
         WHEN 'EXCLUSIVE_VIP' THEN 3
         WHEN 'EXCLUSIVE_PREMIUM' THEN 2
@@ -2915,7 +3013,10 @@ async function exportPrivacyData(
     `).bind(userId),
     env.DB.prepare(`
       SELECT tier, status, starts_at, expires_at, revoked_at, revocation_reason,
-        activation_email_status, activation_email_sent_at, created_at, updated_at
+        paused_at, resume_at, paused_remaining_seconds,
+        activation_email_status, activation_email_sent_at,
+        renewal_reminder_status, renewal_reminder_sent_at,
+        created_at, updated_at
       FROM entitlements WHERE appwrite_user_id = ? ORDER BY created_at DESC
     `).bind(userId),
     env.DB.prepare(`
@@ -3225,9 +3326,11 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/devices") {
     result = await listDevices(request, env, identity.userId);
   } else if (request.method === "DELETE" && devicePath) {
-    result = await revokeDevice(request, env, identity.userId, devicePath[1]!);
+    result = await removeDevice(request, env, identity.userId, devicePath[1]!);
+  } else if (request.method === "PATCH" && devicePath) {
+    result = await setDeviceLock(request, env, identity.userId, devicePath[1]!);
   } else if (request.method === "DELETE" && requestUrl.pathname === "/v1/devices/current") {
-    result = await revokeCurrentDevice(request, env, identity.userId);
+    result = await removeCurrentDevice(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/content") {
     result = await listContent(request, env, identity.userId);
   } else if (request.method === "GET" && contentCommentsPath) {

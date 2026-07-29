@@ -98,21 +98,20 @@ const copy = {
     due: "Zahlbar bis",
     paymentPending: "Sobald dein Zahlungseingang bestätigt wurde, wird dein Zugang automatisch freigeschaltet. Den aktuellen Status findest du jederzeit unter „Bestellungen“.",
     ageTitle: "Sichere Altersverifikation",
-    ageText: "Ein kurzer, persönlich geprüfter Prozess schützt deine Identität und hält den Zugang konsequent bei Erwachsenen.",
+    ageText: "Deine einmalige, persönlich geprüfte Altersverifikation schützt dich und unsere Community. Alle Nachweise werden ausschließlich für diese Entscheidung verarbeitet.",
     ageKicker: "PRIVATE IDENTITY REVIEW",
-    ageAssuranceTitle: "Was mit deinen Nachweisen geschieht",
-    ageAssuranceText: "Die Dateien werden über HTTPS in einen privaten, nicht öffentlich erreichbaren Prüfbereich übertragen. Zugriff hat ausschließlich der autorisierte Admin zur Entscheidung.",
-    ageDeletionText: "Nach Freigabe oder Ablehnung werden Ausweisbilder und Video sofort gelöscht. Erfolgt binnen 48 Stunden keine Entscheidung, werden die Nachweise ebenfalls gelöscht und die Prüfung muss neu gestartet werden.",
+    ageAssuranceTitle: "Vertraulich von der Aufnahme bis zur Löschung",
+    ageAssuranceText: "Deine Live-Aufnahmen werden verschlüsselt über HTTPS in einen privaten EU-Prüfbereich übertragen. Nur der autorisierte Prüfer erhält zeitlich begrenzten Zugriff.",
+    ageDeletionText: "Nach Freigabe oder Ablehnung werden alle Nachweise sofort gelöscht. Ohne Entscheidung erfolgt die automatische Löschung spätestens 48 Stunden nach Einreichung; anschließend ist eine neue Prüfung erforderlich.",
     ageCloudflareBadge: "Geschützt auf Cloudflare",
     agePrivateBadge: "Privater EU-Speicher",
-    ageDeleteBadge: "Sofortige Löschung nach Entscheidung / spätestens 48h",
+    ageDeleteBadge: "Nachweis-Löschung ≤ 48h",
     ageSecurityDetails: "Technische Sicherheitsdetails",
     ageSecurityItems: [
       "Verschlüsselte HTTPS-Übertragung direkt an den geschützten Worker.",
       "Separater, nicht öffentlich erreichbarer Cloudflare-R2-Bucket mit EU-Jurisdiktion.",
-      "Keine Freigabelinks und kein direkter Browserzugriff auf gespeicherte Nachweise.",
-      "Ausweisbilder und Video werden unmittelbar nach Freigabe oder Ablehnung technisch gelöscht.",
-      "Ohne Admin-Entscheidung werden Nachweise nach 48 Stunden automatisch gelöscht; eine neue Prüfung ist erforderlich.",
+      "Keine öffentlichen URLs, Freigabelinks, Werbenutzung oder Profilbildung.",
+      "Jeder Zugriff im Admin-Bereich ist authentifiziert und wird protokolliert.",
     ],
     ageSteps: ["Dokument wählen", "Live-Challenge aufnehmen", "Persönliche Prüfung"],
     documentType: "Dokumentart",
@@ -137,12 +136,17 @@ const copy = {
       "Decke nicht benötigte Angaben vor der Aufnahme ab: Anschrift, Ausweis-/Seriennummer, CAN/Zugangsnummer, maschinenlesbare Zone, Unterschrift, Größe und Augenfarbe.",
       "Sorge für helles, gleichmäßiges Licht. Gesicht und Dokument müssen scharf, vollständig und ohne Spiegelung sichtbar sein; Filter, Sonnenbrille, Maske und weitere Personen sind unzulässig.",
     ],
-    watermarkNote: "Die Website entfernt Bildmetadaten, verkleinert sehr große Aufnahmen und fügt außerhalb des Dokuments den Hinweis „KOPIE – NUR ALTERSPRÜFUNG“ mit Datum und Seite hinzu.",
-    uploadPhotoHint: "Direkt fotografieren oder vorhandene Aufnahme auswählen · Metadaten werden entfernt",
+    watermarkNote: "Live-Fotos werden ohne Gerätemetadaten verarbeitet, bei Bedarf verkleinert und außerhalb des Dokuments mit „KOPIE – NUR ALTERSPRÜFUNG“, Datum und Seite gekennzeichnet.",
+    livePhotoHint: "Ausschließlich jetzt live fotografieren · bestehende Dateien können nicht ausgewählt werden",
+    photoCameraStart: "Live-Kamera öffnen",
+    photoCapture: "Foto jetzt aufnehmen",
+    photoAgain: "Foto neu aufnehmen",
+    photoReady: "Live-Foto aufgenommen",
+    captureOnlyNotice: "Aus Sicherheitsgründen ist die Auswahl vorhandener Dateien deaktiviert. Nimm jede erforderliche Dokumentseite jetzt live auf.",
     consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und bestätige die ausschließlich für Alters- und Identitätsprüfung erforderliche Verarbeitung. Die Datenschutzhinweise und sofortige Löschung nach der Entscheidung habe ich gelesen.",
     beginVerification: "Sichere Prüfung starten",
     challengeTitle: "Deine persönliche Live-Challenge",
-    agePrivacy: "Kein Tracking, keine Werbung, kein Profiling und keine Weiterverwendung deiner Nachweise.",
+    agePrivacy: "Weitere Informationen zu Zweck, Löschung und deinen Datenschutzrechten:",
     submitAge: "Geschützt übermitteln",
     ageSubmitted: "Deine Nachweise sind sicher eingegangen und warten auf die persönliche Prüfung.",
     reviewReady: "Zur Prüfung eingereicht",
@@ -156,7 +160,7 @@ const copy = {
     expires: "Gültig bis",
     noMembership: "Keine aktive Mitgliedschaft",
     adminRedirect: "Admin-Zugang wird geöffnet…",
-    fileRequired: "Bitte reiche alle für die gewählte Dokumentart erforderlichen Nachweise vollständig ein.",
+    fileRequired: "Bitte nimm alle erforderlichen Dokumentseiten und das Live-Video vollständig in diesem Prozess auf.",
     logout: "Abmelden",
     loading: "Wird verarbeitet…",
   },
@@ -204,21 +208,20 @@ const copy = {
     due: "Pay by",
     paymentPending: "Your access activates as soon as payment is confirmed. You can check the current status at any time under Orders.",
     ageTitle: "Secure age verification",
-    ageText: "A short, personally reviewed process protects your identity and keeps access strictly limited to adults.",
+    ageText: "Your one-time, personally reviewed age verification protects you and our community. Evidence is processed solely to make this decision.",
     ageKicker: "PRIVATE IDENTITY REVIEW",
-    ageAssuranceTitle: "What happens to your evidence",
-    ageAssuranceText: "Files travel over HTTPS into a private review area that is never publicly accessible. Only the authorised admin can access them to make a decision.",
-    ageDeletionText: "ID images and video are deleted immediately after approval or rejection. If no decision is made within 48 hours, the evidence is also deleted and verification must be restarted.",
+    ageAssuranceTitle: "Confidential from capture to deletion",
+    ageAssuranceText: "Your live captures are encrypted over HTTPS and transferred to a private EU review area. Only the authorised reviewer receives time-limited access.",
+    ageDeletionText: "All evidence is deleted immediately after approval or rejection. Without a decision it is deleted automatically no later than 48 hours after submission; verification must then be restarted.",
     ageCloudflareBadge: "Protected on Cloudflare",
     agePrivateBadge: "Private EU storage",
-    ageDeleteBadge: "Decision / 48h deletion",
+    ageDeleteBadge: "Evidence deletion ≤ 48h",
     ageSecurityDetails: "Technical security details",
     ageSecurityItems: [
       "Encrypted HTTPS transfer directly to the protected Worker.",
       "Separate, non-public Cloudflare R2 bucket with EU jurisdiction.",
-      "No share links and no direct browser access to stored evidence.",
-      "ID images and video are technically deleted immediately after approval or rejection.",
-      "Without an admin decision, evidence is deleted automatically after 48 hours and a new review is required.",
+      "No public URLs, share links, advertising use or profiling.",
+      "Every admin access is authenticated and logged.",
     ],
     ageSteps: ["Choose document", "Record live challenge", "Personal review"],
     documentType: "Document type",
@@ -243,12 +246,17 @@ const copy = {
       "Cover data not needed for review before capture: address, document/serial number, CAN/access number, machine-readable zone, signature, height and eye colour.",
       "Use bright, even light. Face and document must be sharp, complete and glare-free; filters, sunglasses, masks and other people are not permitted.",
     ],
-    watermarkNote: "The website removes image metadata, scales down very large images and adds a dated “COPY – AGE VERIFICATION ONLY” label outside the document image.",
-    uploadPhotoHint: "Take a photo now or choose an existing image · metadata is removed",
+    watermarkNote: "Live photos are processed without device metadata, scaled down where necessary and marked outside the document with a dated “COPY – AGE VERIFICATION ONLY” label and page reference.",
+    livePhotoHint: "Live camera capture only · existing files cannot be selected",
+    photoCameraStart: "Open live camera",
+    photoCapture: "Take photo now",
+    photoAgain: "Retake photo",
+    photoReady: "Live photo captured",
+    captureOnlyNotice: "For security, selecting existing files is disabled. Capture every required document side live now.",
     consentText: "I am at least 18, use my own valid document and confirm the processing strictly necessary for age and identity review. I have read the privacy notice and immediate-deletion information.",
     beginVerification: "Start secure verification",
     challengeTitle: "Your personal live challenge",
-    agePrivacy: "No tracking, advertising, profiling or secondary use of your evidence.",
+    agePrivacy: "More about purpose, deletion and your privacy rights:",
     submitAge: "Submit securely",
     ageSubmitted: "Your evidence arrived securely and is waiting for personal review.",
     reviewReady: "Submitted for review",
@@ -262,7 +270,7 @@ const copy = {
     expires: "Valid until",
     noMembership: "No active membership",
     adminRedirect: "Opening admin access…",
-    fileRequired: "Please provide every item required for the selected document type.",
+    fileRequired: "Please capture every required document side and the live video within this process.",
     logout: "Log out",
     loading: "Processing…",
   },
@@ -367,7 +375,7 @@ function VerificationAssurance({ ui }) {
     <div className="verification-assurance__content">
       <h3>{ui.ageAssuranceTitle}</h3>
       <p>{ui.ageAssuranceText}</p>
-      <p className="verification-deletion-notice"><strong>{ui.ageDeleteBadge}:</strong> {ui.ageDeletionText}</p>
+      <p className="verification-deletion-notice">{ui.ageDeletionText}</p>
       <div className="verification-trust-badges" aria-label={ui.ageSecurityDetails}>
         <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M8 8h8M9 16h6" /></svg>{ui.ageCloudflareBadge}</span>
         <span>{ui.agePrivateBadge}</span>
@@ -381,12 +389,94 @@ function VerificationAssurance({ ui }) {
   </aside>;
 }
 
-function EvidenceUpload({ label, complete, name, required, hint, ...props }) {
-  return <label className={`evidence-upload${complete ? " is-complete" : ""}`}>
-    <span className="evidence-upload__status" aria-hidden="true">{complete ? "✓" : "+"}</span>
-    <span className="evidence-upload__copy"><strong>{label}</strong><small>{hint}</small></span>
-    <input name={name} type="file" required={required} {...props} />
-  </label>;
+function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [error, setError] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraReady(false);
+  };
+
+  useEffect(() => {
+    if (!value) {
+      setPreviewUrl("");
+      return undefined;
+    }
+    const url = URL.createObjectURL(value);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [value]);
+
+  useEffect(() => () => stopStream(), []);
+
+  const startCamera = async () => {
+    setError("");
+    onChange(null);
+    stopStream();
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("CAMERA_UNAVAILABLE");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraReady(true);
+    } catch {
+      stopStream();
+      setError(ui.cameraError);
+    }
+  };
+
+  const capturePhoto = async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return;
+    const scale = Math.min(1, 1920 / video.videoWidth, 1920 / video.videoHeight);
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) return;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    if (blob) {
+      onChange(new File([blob], `live-id-${side}.jpg`, { type: "image/jpeg" }));
+      stopStream();
+    }
+  };
+
+  if (complete) {
+    return <div className="live-photo-capture is-complete">
+      <div className="live-photo-capture__head"><span aria-hidden="true">✓</span><div><strong>{label}</strong><small>{ui.photoReady}</small></div></div>
+    </div>;
+  }
+
+  return <div className={`live-photo-capture${value ? " is-complete" : ""}`}>
+    <div className="live-photo-capture__head"><span aria-hidden="true">{value ? "✓" : side === "front" ? "01" : "02"}</span><div><strong>{label}</strong><small>{ui.livePhotoHint}</small></div></div>
+    {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
+    <div className="camera-frame" hidden={!cameraReady && !previewUrl}>
+      <video ref={videoRef} muted playsInline hidden={!cameraReady} />
+      {previewUrl && !cameraReady && <img src={previewUrl} alt="" />}
+    </div>
+    {!cameraReady && !value && <button className="secondary-action" type="button" disabled={disabled} onClick={startCamera}>{ui.photoCameraStart}</button>}
+    {cameraReady && <button className="primary-action" type="button" disabled={disabled} onClick={capturePhoto}>{ui.photoCapture}</button>}
+    {value && <button className="secondary-action" type="button" disabled={disabled} onClick={startCamera}>{ui.photoAgain}</button>}
+    <canvas ref={canvasRef} hidden />
+  </div>;
 }
 
 function ageDocumentOptions(countryCode, ui) {
@@ -892,6 +982,8 @@ export default function App() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [activeGalleryTier, setActiveGalleryTier] = useState("FREE");
   const [activePostIndex, setActivePostIndex] = useState(0);
+  const [documentFront, setDocumentFront] = useState(null);
+  const [documentBack, setDocumentBack] = useState(null);
   const [liveVideo, setLiveVideo] = useState(null);
   const [ageSession, setAgeSession] = useState(null);
   const [ageDocumentType, setAgeDocumentType] = useState("NATIONAL_ID");
@@ -927,8 +1019,8 @@ export default function App() {
     : 0;
   const activePost = activeGalleryGroup?.items[normalizedPostIndex] || null;
 
-  const refresh = async () => {
-    const current = await getCurrentUser();
+  const refresh = async (sessionUser = null) => {
+    const current = sessionUser || await getCurrentUser();
     setUser(current);
     if (!current) {
       setMembership(null);
@@ -942,7 +1034,7 @@ export default function App() {
       await registerCurrentDevice();
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language, t.genericError));
-      if (["DEVICE_LIMIT_EXCEEDED", "DEVICE_CREDENTIAL_REVOKED"].includes(error?.code)) {
+      if (["DEVICE_LIMIT_EXCEEDED", "DEVICE_LOCKED", "DEVICE_CREDENTIAL_REVOKED"].includes(error?.code)) {
         await logout().catch(() => null);
         setUser(null);
         setMembership(null);
@@ -1013,6 +1105,12 @@ export default function App() {
     }
     setAgeDocumentType(profile?.countryCode === "US" ? "DRIVING_LICENCE" : "NATIONAL_ID");
   }, [activeAgeCase?.documentType, profile?.countryCode]);
+
+  useEffect(() => {
+    setDocumentFront(null);
+    setDocumentBack(null);
+    setLiveVideo(null);
+  }, [ageDocumentType]);
 
   useEffect(() => {
     getProducts(language).then((result) => {
@@ -1208,8 +1306,8 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      await work();
-      const current = await refresh();
+      const result = await work();
+      const current = await refresh(result?.sessionReady ? result.user : null);
       if (
         current &&
         !current.labels?.includes("admin") &&
@@ -1280,7 +1378,6 @@ export default function App() {
   const submitAge = async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
     const uploadedKinds = new Set(activeAgeCase?.evidenceKinds || []);
     const requiredKinds = new Set(
       activeAgeCase?.requiredEvidence ||
@@ -1288,8 +1385,6 @@ export default function App() {
         ? ["DOCUMENT_FRONT", "VIDEO"]
         : ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"]),
     );
-    const documentFront = data.get("documentFront");
-    const documentBack = data.get("documentBack");
     if (
       (requiredKinds.has("DOCUMENT_FRONT") && !uploadedKinds.has("DOCUMENT_FRONT") && (!(documentFront instanceof File) || !documentFront.size)) ||
       (requiredKinds.has("DOCUMENT_BACK") && !uploadedKinds.has("DOCUMENT_BACK") && (!(documentBack instanceof File) || !documentBack.size)) ||
@@ -1316,6 +1411,8 @@ export default function App() {
       await submitAgeVerificationCase(ageCase.caseId);
       await refresh();
       form.reset();
+      setDocumentFront(null);
+      setDocumentBack(null);
       setLiveVideo(null);
       setAgeSession(null);
       setNotice(ui.ageSubmitted);
@@ -1828,6 +1925,10 @@ export default function App() {
             <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
             <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
           </div>
+          {entitlement?.paused && <div className="membership-pause-notice">
+            <MembershipMark tier={entitlement.paused.tier} />
+            <div><strong>{language === "de" ? "Membership pausiert – Restlaufzeit bleibt erhalten" : "Membership paused — remaining time is preserved"}</strong><p>{language === "de" ? "Wird automatisch fortgesetzt am" : "Automatically resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div>
+          </div>}
           {profile && !profile.privacyProfileComplete && <button
             className="privacy-completion-card"
             type="button"
@@ -1913,6 +2014,7 @@ export default function App() {
         </div>}
         {dashboardTab === "access" && <div className="access-perks">
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
+          {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{entitlement.paused.tier.replace("EXCLUSIVE_", "Exclusive ")} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
           {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>Private Telegram Channel</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
@@ -1961,26 +2063,25 @@ export default function App() {
         <button className="primary-action verification-primary" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button>
       </form> : <form className="auth-panel verification-upload" onSubmit={submitAge}>
         <div className="verification-document-badge"><span>01</span><div><strong>{ui.documentType}</strong><small>{ageDocumentOptions(profile?.countryCode, ui).find((option) => option.value === ageDocumentType)?.label}</small></div></div>
-        <VerificationRules ui={ui} />
-        <p className="upload-note">{ui.agePrivacy}</p>
+        <p className="upload-note">{ui.captureOnlyNotice}</p>
         <p className="eyebrow">{ui.challengeTitle}</p>
-        <EvidenceUpload
+        <LivePhotoCapture
           label={ageDocumentType === "PASSPORT" ? ui.passportFront : ui.documentFront}
-          hint={ui.uploadPhotoHint}
           complete={activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")}
-          name="documentFront"
-          accept="image/jpeg,image/png,image/webp"
-          capture="environment"
-          required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_FRONT")}
+          value={documentFront}
+          onChange={setDocumentFront}
+          ui={ui}
+          disabled={busy}
+          side="front"
         />
-        {(activeAgeCase?.requiredEvidence || []).includes("DOCUMENT_BACK") && <EvidenceUpload
+        {(activeAgeCase?.requiredEvidence || []).includes("DOCUMENT_BACK") && <LivePhotoCapture
           label={ui.documentBack}
-          hint={ui.uploadPhotoHint}
           complete={activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")}
-          name="documentBack"
-          accept="image/jpeg,image/png,image/webp"
-          capture="environment"
-          required={!activeAgeCase?.evidenceKinds?.includes("DOCUMENT_BACK")}
+          value={documentBack}
+          onChange={setDocumentBack}
+          ui={ui}
+          disabled={busy}
+          side="back"
         />}
         {activeAgeCase?.evidenceKinds?.includes("VIDEO")
           ? <p className="live-recorder__ready">✓ {ui.videoReady}</p>

@@ -23,7 +23,7 @@ const account = new Account(client);
 const deviceStorageKey = "jason-shadow-device-token-v1";
 const adminSessionStorageKey = "shadows-temptation-admin-session-v1";
 const appwriteFallbackCookieKey = "cookieFallback";
-export const ageInstructionsVersion = "manual-age-v5";
+export const ageInstructionsVersion = "manual-age-v6";
 let adminSessionPromise = null;
 
 export class CloudflareApiError extends Error {
@@ -229,7 +229,7 @@ export async function registerAccount({
   locale = "de",
 }) {
   const user = await createAccount(email, password, name);
-  await createEmailPasswordSession(email, password);
+  const session = await createEmailPasswordSession(email, password);
   await updatePrivacyProfile({
     countryCode,
     regionCode: countryCode === "US" ? regionCode : null,
@@ -239,15 +239,22 @@ export async function registerAccount({
     locale,
   });
   await requestEmailVerification(locale);
-  await registerCurrentDevice();
-  return user;
+  await registerCurrentDevice(undefined, session.$id);
+  return {
+    user: await getCurrentUser() || user,
+    sessionReady: true,
+  };
 }
 
 export async function login(email, password) {
   const session = await createEmailPasswordSession(email, password);
   try {
-    await registerCurrentDevice();
-    return session;
+    await registerCurrentDevice(undefined, session.$id);
+    return {
+      session,
+      user: await getCurrentUser(),
+      sessionReady: true,
+    };
   } catch (error) {
     try {
       await account.deleteSession({ sessionId: "current" });
@@ -365,14 +372,30 @@ function currentDeviceName() {
     : "Browser";
   return `${platform} · ${browser}`.slice(0, 80);
 }
-export const registerCurrentDevice = (displayName = currentDeviceName()) => apiRequest(
+export const registerCurrentDevice = (
+  displayName = currentDeviceName(),
+  sessionId = null,
+) => apiRequest(
   "/v1/devices/register",
-  { method: "POST", json: { deviceToken: getDeviceToken(), displayName }, idempotent: true },
+  {
+    method: "POST",
+    json: { deviceToken: getDeviceToken(), displayName, sessionId },
+    idempotent: true,
+  },
 );
 export const getRegisteredDevices = () => apiRequest("/v1/devices", { device: true });
 export const revokeRegisteredDevice = (deviceId) => apiRequest(
   `/v1/devices/${encodeURIComponent(deviceId)}`,
   { method: "DELETE", json: {}, idempotent: true, device: true },
+);
+export const setRegisteredDeviceLock = (deviceId, locked) => apiRequest(
+  `/v1/devices/${encodeURIComponent(deviceId)}`,
+  {
+    method: "PATCH",
+    json: { action: locked ? "LOCK" : "UNLOCK" },
+    idempotent: true,
+    device: true,
+  },
 );
 export const getContentItems = () => apiRequest("/v1/content", { device: true });
 export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURIComponent(slug)}`, {
@@ -434,6 +457,15 @@ export const adminListUserDevices = (userId) => apiRequest(
 export const adminRevokeUserDevice = (userId, kind, targetId) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(kind)}/${encodeURIComponent(targetId)}`,
   { admin: true, method: "DELETE", json: {}, idempotent: true },
+);
+export const adminSetUserDeviceLock = (userId, targetId, locked) => apiRequest(
+  `/v1/users/${encodeURIComponent(userId)}/devices/registered/${encodeURIComponent(targetId)}`,
+  {
+    admin: true,
+    method: "PATCH",
+    json: { action: locked ? "LOCK" : "UNLOCK" },
+    idempotent: true,
+  },
 );
 export const adminGetUserStatus = (userId) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}/status`, { admin: true },

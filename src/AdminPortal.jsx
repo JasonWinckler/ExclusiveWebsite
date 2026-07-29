@@ -18,6 +18,7 @@ import {
   adminListUserDevices,
   adminListUsers,
   adminRevokeUserDevice,
+  adminSetUserDeviceLock,
   adminDecidePrivacyRequest,
   adminModerateContentComment,
   adminRestrictUser,
@@ -511,16 +512,16 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     if (!productSku || reason.length < 3) return;
     const product = membershipProducts.find((item) => item.sku === productSku);
     if (!window.confirm(language === "de"
-      ? `${product?.displayName || productSku} manuell und ohne Zahlung vergeben? Die Aktion wird protokolliert.`
-      : `Grant ${product?.displayName || productSku} manually without a payment? This action is audited.`)) return;
+      ? `${product?.displayName || productSku} manuell und ohne Zahlung vergeben? Die bisherige aktive oder vorgemerkte Membership wird vollständig ersetzt. Die Aktion wird protokolliert.`
+      : `Grant ${product?.displayName || productSku} manually without payment? This fully replaces any active or scheduled membership. The action is audited.`)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await adminGrantMembership(profile.appwrite_user_id, productSku, reason);
       setNotice(language === "de"
-        ? "Die Membership wurde manuell vergeben und der Zugriff synchronisiert."
-        : "The membership was granted manually and access was synchronised.");
+        ? "Die bisherige Membership wurde ersetzt, die neue Membership vergeben und der Zugriff synchronisiert."
+        : "The previous membership was replaced, the new membership was granted and access was synchronised.");
       setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: "" }));
       await loadUsers();
     } catch (requestError) {
@@ -553,6 +554,29 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       await adminRevokeUserDevice(profile.appwrite_user_id, kind, targetId);
       setUserDevices(await adminListUserDevices(profile.appwrite_user_id));
       setNotice(language === "de" ? "Gerät wurde entfernt." : "Device was removed.");
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeUserDeviceLock = async (profile, device, locked) => {
+    if (!window.confirm(locked
+      ? (language === "de"
+        ? "Dieses Gerät sperren? Eine erneute Anmeldung bleibt blockiert, bis es wieder entsperrt wird."
+        : "Lock this device? New sign-ins remain blocked until it is unlocked.")
+      : (language === "de"
+        ? "Dieses Gerät entsperren und eine spätere Anmeldung wieder erlauben?"
+        : "Unlock this device and allow it to sign in again?"))) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminSetUserDeviceLock(profile.appwrite_user_id, device.id, locked);
+      setUserDevices(await adminListUserDevices(profile.appwrite_user_id));
+      setNotice(locked
+        ? (language === "de" ? "Gerät wurde gesperrt." : "Device was locked.")
+        : (language === "de" ? "Gerät wurde entsperrt." : "Device was unlocked."));
     } catch (requestError) {
       setError(friendlyErrorMessage(requestError, language, t.genericError));
     } finally {
@@ -682,10 +706,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
                 </div>)
                 : <p>{language === "de" ? "Keine Login-Sitzungen." : "No login sessions."}</p>}
               <h4>{language === "de" ? "Registrierte Inhaltsgeräte" : "Registered content devices"}</h4>
-              {(userDevices.registeredDevices || []).filter((device) => device.status === "ACTIVE").length
-                ? userDevices.registeredDevices.filter((device) => device.status === "ACTIVE").map((device) => <div className="admin-device-row" key={device.id}>
-                  <span><strong>{device.display_name || (language === "de" ? "Persönliches Gerät" : "Personal device")}</strong><small>{formatDate(device.last_seen_at, language)}</small></span>
-                  <button className="danger-action" type="button" disabled={busy} onClick={() => removeUserDevice(profile, "registered", device.id)}>{language === "de" ? "Entfernen" : "Remove"}</button>
+              {(userDevices.registeredDevices || []).length
+                ? userDevices.registeredDevices.map((device) => <div className={`admin-device-row${device.status === "REVOKED" ? " is-locked" : ""}`} key={device.id}>
+                  <span><strong>{device.display_name || (language === "de" ? "Persönliches Gerät" : "Personal device")}</strong><small>{device.status === "REVOKED" ? (language === "de" ? "Gesperrt" : "Locked") : formatDate(device.last_seen_at, language)}</small></span>
+                  <div className="device-card__actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => changeUserDeviceLock(profile, device, device.status === "ACTIVE")}>{device.status === "ACTIVE" ? (language === "de" ? "Sperren" : "Lock") : (language === "de" ? "Entsperren" : "Unlock")}</button><button className="danger-action" type="button" disabled={busy} onClick={() => removeUserDevice(profile, "registered", device.id)}>{language === "de" ? "Entfernen" : "Remove"}</button></div>
                 </div>)
                 : <p>{language === "de" ? "Keine registrierten Geräte." : "No registered devices."}</p>}
             </div>}

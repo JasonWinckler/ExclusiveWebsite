@@ -94,6 +94,7 @@ export async function getActiveEntitlement(
       AND status = 'ACTIVE'
       AND starts_at <= ?
       AND expires_at > ?
+      AND paused_at IS NULL
     ORDER BY CASE tier
       WHEN 'EXCLUSIVE_VIP' THEN 3
       WHEN 'EXCLUSIVE_PREMIUM' THEN 2
@@ -162,7 +163,7 @@ export async function getAccessContext(
       SELECT id, tier, status, starts_at, expires_at
       FROM entitlements
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-        AND starts_at <= ? AND expires_at > ?
+        AND starts_at <= ? AND expires_at > ? AND paused_at IS NULL
       ORDER BY CASE tier
         WHEN 'EXCLUSIVE_VIP' THEN 3
         WHEN 'EXCLUSIVE_PREMIUM' THEN 2

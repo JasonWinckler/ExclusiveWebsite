@@ -5,7 +5,10 @@ import {
   syncAppwriteLabel,
   updateAppwriteUserName,
 } from "../shared/identity-service";
-import { sendMembershipActivationConfirmation } from "../shared/membership-email";
+import {
+  sendMembershipActivationConfirmation,
+  sendMembershipRenewalReminder,
+} from "../shared/membership-email";
 import { deletionBlockers } from "../shared/policy";
 import type {
   MaintenanceEnv,
@@ -132,9 +135,25 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
       )
     `).bind(authTokenHistoryCutoff, batchSize),
   ]);
+  const resumableEntitlements = await env.DB.prepare(`
+    SELECT id FROM entitlements
+    WHERE status = 'ACTIVE' AND paused_at IS NOT NULL
+      AND resume_at IS NOT NULL AND resume_at <= ? AND expires_at > ?
+    ORDER BY resume_at ASC
+    LIMIT ?
+  `).bind(now, now, batchSize).all<{ id: string }>();
+  for (const entitlement of resumableEntitlements.results) {
+    await env.DB.prepare(`
+      UPDATE entitlements SET paused_at = NULL, paused_remaining_seconds = NULL,
+        paused_by_entitlement_id = NULL, resume_at = NULL,
+        version = version + 1, updated_at = ?
+      WHERE id = ? AND status = 'ACTIVE'
+        AND paused_at IS NOT NULL AND resume_at <= ?
+    `).bind(now, entitlement.id, now).run();
+  }
   const expiringEntitlements = await env.DB.prepare(`
     SELECT id, appwrite_user_id FROM entitlements
-    WHERE status = 'ACTIVE' AND expires_at <= ? LIMIT ?
+    WHERE status = 'ACTIVE' AND paused_at IS NULL AND expires_at <= ? LIMIT ?
   `).bind(now, batchSize).all<{ id: string; appwrite_user_id: string }>();
   for (const entitlement of expiringEntitlements.results) {
     await env.DB.prepare(`
@@ -144,7 +163,7 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
     const effective = await env.DB.prepare(`
       SELECT tier FROM entitlements
       WHERE appwrite_user_id = ? AND status = 'ACTIVE'
-        AND starts_at <= ? AND expires_at > ?
+        AND starts_at <= ? AND expires_at > ? AND paused_at IS NULL
       ORDER BY CASE tier
         WHEN 'EXCLUSIVE_VIP' THEN 3
         WHEN 'EXCLUSIVE_PREMIUM' THEN 2
@@ -646,6 +665,28 @@ async function retryMembershipActivationEmails(
   }
 }
 
+async function sendMembershipRenewalReminders(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<void> {
+  const reminderWindowEnd = new Date(Date.parse(now) + 7 * 86_400_000).toISOString();
+  const entitlements = await env.DB.prepare(`
+    SELECT e.id
+    FROM entitlements e
+    JOIN user_profiles u ON u.appwrite_user_id = e.appwrite_user_id
+    WHERE e.status = 'ACTIVE' AND e.paused_at IS NULL
+      AND e.starts_at <= ? AND e.expires_at > ? AND e.expires_at <= ?
+      AND e.renewal_reminder_status IN ('PENDING', 'FAILED')
+      AND u.account_status = 'ACTIVE' AND u.email_verified = 1
+    ORDER BY e.expires_at ASC
+    LIMIT ?
+  `).bind(now, now, reminderWindowEnd, batchSize).all<{ id: string }>();
+  for (const entitlement of entitlements.results) {
+    await sendMembershipRenewalReminder(env, entitlement.id);
+  }
+}
+
 async function applyAuditRetention(
   env: MaintenanceEnv,
   ownerId: string,
@@ -683,6 +724,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
     await retryLabelSync(env, now, batchSize);
     await retryUsernameSync(env, now, batchSize);
     await retryMembershipActivationEmails(env, batchSize);
+    await sendMembershipRenewalReminders(env, now, batchSize);
     await discoverInactiveAccounts(
       env,
       now,

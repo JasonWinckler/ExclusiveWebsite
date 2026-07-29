@@ -250,9 +250,11 @@ describe("browser and repository security contract", () => {
     const frontend = read("src/App.jsx");
     const mobile = read("assets/css/adult-mobile.css");
     expect(frontend).toContain("Privater EU-Speicher");
-    expect(frontend).toContain("Sofortige Löschung");
+    expect(frontend).toContain("Nachweis-Löschung ≤ 48h");
     expect(frontend).toContain("Cloudflare-R2-Bucket mit EU-Jurisdiktion");
-    expect(frontend).toContain("<EvidenceUpload");
+    expect(frontend).toContain("<LivePhotoCapture");
+    expect(frontend).toContain("existing files cannot be selected");
+    expect(frontend).not.toContain('type="file" required={required}');
     expect(mobile).toContain("max-height: 100dvh");
     expect(mobile).toContain(".verification-primary");
     expect(mobile).toContain(".camera-frame");
@@ -282,8 +284,10 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain("DEVICE_LIMIT_EXCEEDED");
     expect(admin).toContain("const userDevicesPath");
     expect(admin).toContain("const userDevicePath");
-    expect(admin).toContain("USER_DEVICE_REVOKED");
+    expect(admin).toContain("USER_DEVICE_REMOVED");
+    expect(admin).toContain("USER_DEVICE_LOCKED");
     expect(frontend).toContain("removeRegistered");
+    expect(frontend).toContain("changeDeviceLock");
     expect(frontend).toContain("removeSession");
     expect(frontend).toContain('import React, { useCallback, useEffect, useState } from "react"');
   });
@@ -293,7 +297,7 @@ describe("browser and repository security contract", () => {
     const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
     const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
     const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
-    expect(membership).toContain('const AGE_INSTRUCTIONS_VERSION = "manual-age-v5"');
+    expect(membership).toContain('const AGE_INSTRUCTIONS_VERSION = "manual-age-v6"');
     expect(membership).toContain("100_000 +");
     expect(membership).toContain("crypto.getRandomValues");
     expect(membershipConfig).toMatch(/"AGE_REVIEW_WINDOW_HOURS": "48"/);

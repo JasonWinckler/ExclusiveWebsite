@@ -68,6 +68,7 @@ async function appwriteRequest(
   env: IdentityProjectionEnv,
   path: string,
   init: RequestInit = {},
+  acceptedStatuses: readonly number[] = [],
 ): Promise<Response> {
   if (!env.APPWRITE_PROJECT_ID || !env.APPWRITE_SERVER_API_KEY) {
     throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
@@ -89,7 +90,7 @@ async function appwriteRequest(
   } catch {
     throw new ApiError(503, "APPWRITE_UNAVAILABLE");
   }
-  if (!response.ok && response.status !== 204) {
+  if (!response.ok && response.status !== 204 && !acceptedStatuses.includes(response.status)) {
     throw new ApiError(503, "APPWRITE_OPERATION_FAILED");
   }
   return response;
@@ -286,6 +287,7 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       env,
       `/users/${encodedUserId}/sessions/${encodeURIComponent(body.sessionId)}`,
       { method: "DELETE" },
+      [404],
     );
     return jsonResponse({ ok: true });
   }

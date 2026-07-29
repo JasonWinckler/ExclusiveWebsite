@@ -401,6 +401,15 @@
   min-width: 0;
   padding: 14px 12px;
 }
+.live-photo-capture {
+  min-width: 0;
+  padding: 14px 12px;
+}
+.live-photo-capture > .primary-action,
+.live-photo-capture > .secondary-action {
+  width: 100%;
+  justify-content: center;
+}
 .live-recorder__head {
   align-items: flex-start;
   gap: 10px;
