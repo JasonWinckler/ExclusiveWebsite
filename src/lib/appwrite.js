@@ -347,13 +347,23 @@ export const createMfaLoginChallenge = async (factor = "totp") => {
 };
 export const completeMfaLoginChallenge = async (challengeId, otp) => {
   const session = await account.updateMFAChallenge({ challengeId, otp });
-  const user = await account.get();
-  await registerCurrentDevice(undefined, session.$id);
-  return {
-    session,
-    user,
-    sessionReady: true,
-  };
+  try {
+    const user = await account.get();
+    await registerCurrentDevice(undefined, session.$id);
+    return {
+      session,
+      user,
+      sessionReady: true,
+    };
+  } catch (error) {
+    try {
+      await account.deleteSession({ sessionId: "current" });
+    } catch {
+      // Preserve the original device-policy error.
+    }
+    clearAppwriteFallbackSession();
+    throw error;
+  }
 };
 export const requestEmailVerification = (locale = "de") => apiRequest(
   "/v1/auth/email-verification/request",
