@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://fra.cloud.appwrite.io wss://fra.cloud.appwrite.io https://exclusive-membership-api.jason-winckler-business.workers.dev https://exclusive-admin-api.jason-winckler-business.workers.dev; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' 'sha256-Razw49ehUY2dSns45/CzaqzFBg6pXj20FqLjUGcg+M8='; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://fra.cloud.appwrite.io wss://fra.cloud.appwrite.io https://exclusive-membership-api.jason-winckler-business.workers.dev https://exclusive-admin-api.jason-winckler-business.workers.dev; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' 'sha256-adofnCj9lar+Ny3x/d+DBmd6wCLUwK/aobtFTh3Xm5A=' 'sha256-dVKIk+/34xpGAs8YZEylHlxKHjk3xbFyqpicZ0dDKAs=' 'sha256-qSdaVK8va1cGoEuWBCCpLpk9BvpFp8rZfo43rTQKE8c='; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), browsing-topics=()
   Referrer-Policy: strict-origin-when-cross-origin

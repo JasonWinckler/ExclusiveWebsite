@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import DeviceManager from "./DeviceManager";
+import MfaPanel from "./MfaPanel";
 import PrivacyPanel from "./PrivacyPanel";
 import {
   cancelPrivacyRequest,
   completeEmailVerification,
   completeLegacyEmailVerification,
   completeLegacyPasswordReset,
+  completeMfaLoginChallenge,
   completePasswordReset,
   createAgeVerificationCase,
   createContentComment,
+  createMfaLoginChallenge,
   createSepaOrder,
   deleteContentComment,
   fetchContentItem,
@@ -102,11 +105,11 @@ const copy = {
     due: "Zahlbar bis",
     paymentPending: "Sobald dein Zahlungseingang bestätigt wurde, wird dein Zugang automatisch freigeschaltet. Den aktuellen Status findest du jederzeit unter „Bestellungen“.",
     ageTitle: "Sichere Altersverifikation",
-    ageText: "Deine einmalige, persönlich geprüfte Altersverifikation schützt dich und unsere Community. Alle Nachweise werden ausschließlich für diese Entscheidung verarbeitet.",
+    ageText: "Bestätige einmalig, dass du mindestens 18 Jahre alt bist. Deine Nachweise werden persönlich und ausschließlich für diese Entscheidung geprüft.",
     ageKicker: "PRIVATE IDENTITY REVIEW",
     ageAssuranceTitle: "Vertraulich von der Aufnahme bis zur Löschung",
-    ageAssuranceText: "Deine Live-Aufnahmen werden verschlüsselt über HTTPS in einen privaten EU-Prüfbereich übertragen. Nur der autorisierte Prüfer erhält zeitlich begrenzten Zugriff.",
-    ageDeletionText: "Nach Freigabe oder Ablehnung werden alle Nachweise sofort gelöscht. Ohne Entscheidung erfolgt die automatische Löschung spätestens 48 Stunden nach Einreichung; anschließend ist eine neue Prüfung erforderlich.",
+    ageAssuranceText: "Deine Live-Aufnahmen gelangen verschlüsselt in einen privaten EU-Prüfbereich. Zugriff erhält nur der autorisierte Prüfer.",
+    ageDeletionText: "Nach der Entscheidung werden alle Nachweise sofort gelöscht, ohne Entscheidung spätestens nach 48 Stunden.",
     ageCloudflareBadge: "Geschützt auf Cloudflare",
     agePrivateBadge: "Privater EU-Speicher",
     ageDeleteBadge: "Nachweis-Löschung ≤ 48h",
@@ -135,19 +138,18 @@ const copy = {
     cameraError: "Die Kamera konnte nicht gestartet werden. Erlaube den Kamerazugriff und nutze einen aktuellen Browser über HTTPS.",
     verificationRules: "So gelingt deine Prüfung auf Anhieb",
     rules: [
-      "Verwende ausschließlich deinen eigenen, gültigen amtlichen Lichtbildausweis im Original – keine Kopie, kein Screenshot und kein Bild eines Bildschirms.",
-      "Gut sichtbar bleiben müssen: Name, Foto, Geburtsdatum, Dokumentart, Ausstellungsland und Gültigkeitsdatum.",
-      "Decke nicht benötigte Angaben vor der Aufnahme ab: Anschrift, Ausweis-/Seriennummer, CAN/Zugangsnummer, maschinenlesbare Zone, Unterschrift, Größe und Augenfarbe.",
-      "Sorge für helles, gleichmäßiges Licht. Gesicht und Dokument müssen scharf, vollständig und ohne Spiegelung sichtbar sein; Filter, Sonnenbrille, Maske und weitere Personen sind unzulässig.",
+      "Nutze deinen eigenen gültigen Lichtbildausweis im Original – keine Kopie oder Bildschirmaufnahme.",
+      "Name, Foto, Geburtsdatum, Dokumentart, Ausstellungsland und Gültigkeit müssen lesbar sein. Andere Angaben darfst du abdecken.",
+      "Achte auf gleichmäßiges Licht und ein scharfes Bild ohne Spiegelung, Filter oder weitere Personen.",
     ],
-    watermarkNote: "Live-Fotos werden ohne Gerätemetadaten verarbeitet, bei Bedarf verkleinert und außerhalb des Dokuments mit „KOPIE – NUR ALTERSPRÜFUNG“, Datum und Seite gekennzeichnet.",
+    watermarkNote: "Live-Fotos werden ohne Gerätemetadaten verarbeitet und als Kopie ausschließlich für die Altersprüfung gekennzeichnet.",
     livePhotoHint: "Ausschließlich jetzt live fotografieren · bestehende Dateien können nicht ausgewählt werden",
     photoCameraStart: "Live-Kamera öffnen",
     photoCapture: "Foto jetzt aufnehmen",
     photoAgain: "Foto neu aufnehmen",
     photoReady: "Live-Foto aufgenommen",
     captureOnlyNotice: "Aus Sicherheitsgründen ist die Auswahl vorhandener Dateien deaktiviert. Nimm jede erforderliche Dokumentseite jetzt live auf.",
-    consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und bestätige die ausschließlich für Alters- und Identitätsprüfung erforderliche Verarbeitung. Die Datenschutzhinweise und sofortige Löschung nach der Entscheidung habe ich gelesen.",
+    consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und habe die Datenschutz- und Löschhinweise gelesen.",
     beginVerification: "Sichere Prüfung starten",
     challengeTitle: "Deine persönliche Live-Challenge",
     agePrivacy: "Weitere Informationen zu Zweck, Löschung und deinen Datenschutzrechten:",
@@ -212,11 +214,11 @@ const copy = {
     due: "Pay by",
     paymentPending: "Your access activates as soon as payment is confirmed. You can check the current status at any time under Orders.",
     ageTitle: "Secure age verification",
-    ageText: "Your one-time, personally reviewed age verification protects you and our community. Evidence is processed solely to make this decision.",
+    ageText: "Confirm once that you are at least 18. Your evidence is personally reviewed and processed only for this decision.",
     ageKicker: "PRIVATE IDENTITY REVIEW",
     ageAssuranceTitle: "Confidential from capture to deletion",
-    ageAssuranceText: "Your live captures are encrypted over HTTPS and transferred to a private EU review area. Only the authorised reviewer receives time-limited access.",
-    ageDeletionText: "All evidence is deleted immediately after approval or rejection. Without a decision it is deleted automatically no later than 48 hours after submission; verification must then be restarted.",
+    ageAssuranceText: "Your live captures are encrypted and transferred to a private EU review area. Only the authorised reviewer receives access.",
+    ageDeletionText: "All evidence is deleted immediately after the decision, or automatically within 48 hours if no decision is made.",
     ageCloudflareBadge: "Protected on Cloudflare",
     agePrivateBadge: "Private EU storage",
     ageDeleteBadge: "Evidence deletion ≤ 48h",
@@ -245,19 +247,18 @@ const copy = {
     cameraError: "The camera could not be started. Allow camera access and use a current browser over HTTPS.",
     verificationRules: "Get approved on your first attempt",
     rules: [
-      "Use only your own valid government-issued photo ID in its physical original form—no copy, screenshot or image shown on another screen.",
-      "Keep visible: name, portrait, date of birth, document type, issuing country and expiry date.",
-      "Cover data not needed for review before capture: address, document/serial number, CAN/access number, machine-readable zone, signature, height and eye colour.",
-      "Use bright, even light. Face and document must be sharp, complete and glare-free; filters, sunglasses, masks and other people are not permitted.",
+      "Use your own valid government-issued photo ID in its physical original form—never a copy or screen capture.",
+      "Keep your name, portrait, date of birth, document type, issuing country and expiry date readable. You may cover other details.",
+      "Use even light and keep the image sharp and glare-free, without filters or other people.",
     ],
-    watermarkNote: "Live photos are processed without device metadata, scaled down where necessary and marked outside the document with a dated “COPY – AGE VERIFICATION ONLY” label and page reference.",
+    watermarkNote: "Live photos are processed without device metadata and marked as a copy solely for age verification.",
     livePhotoHint: "Live camera capture only · existing files cannot be selected",
     photoCameraStart: "Open live camera",
     photoCapture: "Take photo now",
     photoAgain: "Retake photo",
     photoReady: "Live photo captured",
     captureOnlyNotice: "For security, selecting existing files is disabled. Capture every required document side live now.",
-    consentText: "I am at least 18, use my own valid document and confirm the processing strictly necessary for age and identity review. I have read the privacy notice and immediate-deletion information.",
+    consentText: "I am at least 18, use my own valid document and have read the privacy and deletion information.",
     beginVerification: "Start secure verification",
     challengeTitle: "Your personal live challenge",
     agePrivacy: "More about purpose, deletion and your privacy rights:",
@@ -811,7 +812,6 @@ function MembershipSelector({ products, language, ui, onChoose }) {
   const saving = regularTotal && regularTotal > selected.amountMinor
     ? Math.round((1 - selected.amountMinor / regularTotal) * 100)
     : 0;
-  const progress = products.length > 1 ? (selectedIndex / (products.length - 1)) * 100 : 0;
 
   return <div className="membership-selector">
     <div className="membership-selector__summary" key={selected.sku} aria-live="polite">
@@ -836,9 +836,10 @@ function MembershipSelector({ products, language, ui, onChoose }) {
         value={selectedIndex}
         onChange={(event) => setSelectedIndex(Number(event.target.value))}
         aria-label={language === "de" ? "Laufzeit wählen" : "Choose membership term"}
-        style={{ "--slider-progress": `${progress}%` }}
+        data-progress-index={selectedIndex}
+        data-term-count={products.length}
       />
-      <div className="membership-slider__labels" style={{ "--term-count": products.length }}>
+      <div className="membership-slider__labels" data-term-count={products.length}>
         {products.map((product, index) => <button
           type="button"
           className={index === selectedIndex ? "is-active" : ""}
@@ -1042,6 +1043,8 @@ export default function App() {
   const [ageDocumentType, setAgeDocumentType] = useState("NATIONAL_ID");
   const [orders, setOrders] = useState([]);
   const [dashboardTab, setDashboardTab] = useState("overview");
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [mfaFactor, setMfaFactor] = useState("totp");
   const [privacy, setPrivacy] = useState(null);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [registrationCountry, setRegistrationCountry] = useState("DE");
@@ -1216,7 +1219,21 @@ export default function App() {
           }
         }
       } catch (error) {
-        setNotice(friendlyErrorMessage(error, language, t.genericError));
+        if (error?.type === "user_more_factors_required") {
+          try {
+            const challenge = await createMfaLoginChallenge("totp");
+            setMfaChallenge(challenge);
+            setMfaFactor("totp");
+            setNotice("");
+            setModal("mfa");
+          } catch (challengeError) {
+            setNotice(friendlyErrorMessage(challengeError, language, t.genericError));
+            setMode("login");
+            setModal("auth");
+          }
+        } else {
+          setNotice(friendlyErrorMessage(error, language, t.genericError));
+        }
       } finally {
         setBusy(false);
       }
@@ -1355,6 +1372,23 @@ export default function App() {
     setModal("auth");
   };
 
+  const beginMfaSignIn = async (factor = "totp") => {
+    setBusy(true);
+    setNotice("");
+    try {
+      const challenge = await createMfaLoginChallenge(factor);
+      setMfaChallenge(challenge);
+      setMfaFactor(factor);
+      setModal("mfa");
+      return challenge;
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const run = async (work, success, nextModal) => {
     setBusy(true);
     setNotice("");
@@ -1400,7 +1434,41 @@ export default function App() {
         t.passwordChanged,
         "auth",
       );
-    } else run(() => login(data.email, data.password), t.loginSuccess, "account");
+    } else {
+      setBusy(true);
+      setNotice("");
+      login(data.email, data.password).then(async (result) => {
+        if (result?.mfaRequired) {
+          await beginMfaSignIn("totp");
+          return;
+        }
+        await refresh(result?.user || null);
+        setNotice(t.loginSuccess);
+        setModal("account");
+      }).catch((error) => {
+        setNotice(friendlyErrorMessage(error, language, t.genericError));
+      }).finally(() => setBusy(false));
+    }
+  };
+
+  const finishMfaSignIn = async (event) => {
+    event.preventDefault();
+    const value = String(new FormData(event.currentTarget).get("otp") || "").trim();
+    if (!mfaChallenge?.$id) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await completeMfaLoginChallenge(mfaChallenge.$id, value);
+      await refresh(result.user);
+      setMfaChallenge(null);
+      setMfaFactor("totp");
+      setNotice(t.loginSuccess);
+      setModal("account");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -1418,6 +1486,8 @@ export default function App() {
       setComments([]);
       setMediaBySlug({});
       setAgeSession(null);
+      setMfaChallenge(null);
+      setMfaFactor("totp");
       setMode("login");
       setModal("auth");
       setNotice(t.logoutSuccess);
@@ -1881,7 +1951,7 @@ export default function App() {
       </> : <>
       <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" width="1536" height="652" decoding="async" fetchPriority="high" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" width="1536" height="1536" decoding="async" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
-      <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
+      <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={t.stepVerifyText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
       <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       <section id="exclusive" className="section preview-section"><div className="section-heading"><p className="eyebrow">{t.curatedLabel}</p><h2>{t.exclusiveHeading}</h2><p>{ui.galleryText}</p></div><LockedGalleryShowcase language={language} signedIn={false} onAction={() => openAuth("register")} /></section>
       <section id="access" className="section access-section"><div><p className="eyebrow">{t.readyLabel}</p><h2>{t.readyTitle}</h2><p>{t.readyText}</p></div><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.openDashboard : t.createAccount}</button><button className="secondary-action" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.viewStatus : t.login}</button></div></section>
@@ -1958,6 +2028,57 @@ export default function App() {
       </form>
     </Modal>}
 
+    {modal === "mfa" && <Modal
+      title={language === "de" ? "Anmeldung bestätigen" : "Confirm sign-in"}
+      eyebrow={language === "de" ? "ZWEITER SICHERHEITSFAKTOR" : "SECOND SECURITY FACTOR"}
+      onClose={() => {
+        logout().catch(() => null);
+        setMfaChallenge(null);
+        setMfaFactor("totp");
+        setMode("login");
+        setModal("auth");
+      }}
+      t={t}
+    >
+      <p className="modal-intro">{mfaFactor === "recovery"
+        ? (language === "de"
+          ? "Gib einen deiner einmal verwendbaren Wiederherstellungscodes ein."
+          : "Enter one of your single-use recovery codes.")
+        : (language === "de"
+          ? "Öffne deine Authenticator-App und gib den aktuellen sechsstelligen Code ein."
+          : "Open your authenticator app and enter the current six-digit code.")}</p>
+      {notice && <p className="form-notice" role="status">{notice}</p>}
+      <form className="auth-panel mfa-login" onSubmit={finishMfaSignIn}>
+        <Field
+          label={mfaFactor === "recovery"
+            ? (language === "de" ? "Wiederherstellungscode" : "Recovery code")
+            : (language === "de" ? "6-stelliger Sicherheitscode" : "6-digit security code")}
+          name="otp"
+          type="text"
+          inputMode={mfaFactor === "recovery" ? "text" : "numeric"}
+          autoComplete="one-time-code"
+          pattern={mfaFactor === "recovery" ? "[A-Za-z0-9-]{6,32}" : "[0-9]{6}"}
+          minLength="6"
+          maxLength={mfaFactor === "recovery" ? "32" : "6"}
+          required
+          autoFocus
+        />
+        <button className="primary-action" disabled={busy}>
+          {busy ? ui.loading : (language === "de" ? "Sicher anmelden" : "Sign in securely")}
+        </button>
+      </form>
+      <button
+        className="text-button mfa-factor-switch"
+        type="button"
+        disabled={busy}
+        onClick={() => beginMfaSignIn(mfaFactor === "recovery" ? "totp" : "recovery")}
+      >
+        {mfaFactor === "recovery"
+          ? (language === "de" ? "Code aus Authenticator-App verwenden" : "Use authenticator app")
+          : (language === "de" ? "Wiederherstellungscode verwenden" : "Use a recovery code")}
+      </button>
+    </Modal>}
+
     {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? entitlement.tier : ageStatus} onClose={() => setModal(null)} t={t} wide>
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {!user ? <button className="primary-action" onClick={() => openAuth("login")}>{t.login}</button> : <div className="account-dashboard">
@@ -1968,6 +2089,7 @@ export default function App() {
             ["orders", language === "de" ? "Bestellungen" : "Orders"],
             ["access", language === "de" ? "Zugang & Perks" : "Access & perks"],
             ["devices", language === "de" ? "Geräte" : "Devices"],
+            ["security", language === "de" ? "Sicherheit" : "Security"],
             ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
           ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
         </div>
@@ -2077,6 +2199,11 @@ export default function App() {
           language={language}
           onCurrentRevoked={handleLogout}
         />}
+        {dashboardTab === "security" && <MfaPanel
+          language={language}
+          user={user}
+          onUserUpdate={setUser}
+        />}
         {dashboardTab === "privacy" && <PrivacyPanel
           language={language}
           privacy={privacy}
@@ -2117,7 +2244,6 @@ export default function App() {
         <button className="primary-action verification-primary" type="submit" disabled={busy}>{busy ? ui.loading : ui.beginVerification}</button>
       </form> : <form className="auth-panel verification-upload" onSubmit={submitAge}>
         <div className="verification-document-badge"><span>01</span><div><strong>{ui.documentType}</strong><small>{ageDocumentOptions(profile?.countryCode, ui).find((option) => option.value === ageDocumentType)?.label}</small></div></div>
-        <p className="upload-note">{ui.captureOnlyNotice}</p>
         <p className="eyebrow">{ui.challengeTitle}</p>
         <LivePhotoCapture
           label={ageDocumentType === "PASSPORT" ? ui.passportFront : ui.documentFront}

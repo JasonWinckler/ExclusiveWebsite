@@ -221,8 +221,8 @@ describe("browser and repository security contract", () => {
   it("keeps login and logout feedback distinct", () => {
     const translations = read("assets/js/translations.js");
     const frontend = read("src/App.jsx");
-    expect(translations).toContain("loginSuccess: 'You are now logged in.'");
-    expect(translations).toContain("logoutSuccess: 'You are now logged out.'");
+    expect(translations).toContain('loginSuccess: "You are now signed in."');
+    expect(translations).toContain('logoutSuccess: "You are now signed out."');
     expect(frontend).toContain("const handleLogout = async () =>");
     expect(frontend).toContain("setNotice(t.logoutSuccess)");
     expect(frontend).toContain("onClick={handleLogout}");

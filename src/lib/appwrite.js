@@ -1,4 +1,10 @@
-import { Account, Client, ID } from "appwrite";
+import {
+  Account,
+  AuthenticationFactor,
+  AuthenticatorType,
+  Client,
+  ID,
+} from "appwrite";
 
 export const appwriteConfig = Object.freeze({
   endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1",
@@ -249,13 +255,21 @@ export async function registerAccount({
 export async function login(email, password) {
   const session = await createEmailPasswordSession(email, password);
   try {
+    const user = await account.get();
     await registerCurrentDevice(undefined, session.$id);
     return {
       session,
-      user: await getCurrentUser(),
+      user,
       sessionReady: true,
     };
   } catch (error) {
+    if (error?.type === "user_more_factors_required") {
+      return {
+        session,
+        mfaRequired: true,
+        sessionReady: false,
+      };
+    }
     try {
       await account.deleteSession({ sessionId: "current" });
     } catch {
@@ -294,6 +308,53 @@ export function getAdminSessionExpiry() {
 }
 export const getLoginSessions = () => account.listSessions();
 export const revokeLoginSession = (sessionId) => account.deleteSession({ sessionId });
+export const getMfaStatus = async () => {
+  const [user, factors] = await Promise.all([
+    account.get(),
+    account.listMFAFactors(),
+  ]);
+  return {
+    enabled: Boolean(user.mfa),
+    factors,
+    user,
+  };
+};
+export const beginTotpEnrollment = () => account.createMFAAuthenticator({
+  type: AuthenticatorType.Totp,
+});
+export const confirmTotpEnrollment = async (otp) => {
+  await account.updateMFAAuthenticator({
+    type: AuthenticatorType.Totp,
+    otp,
+  });
+  const recovery = await account.createMFARecoveryCodes();
+  const user = await account.updateMFA({ mfa: true });
+  return {
+    user,
+    recoveryCodes: recovery.recoveryCodes || [],
+  };
+};
+export const disableTotpMfa = async () => {
+  const user = await account.updateMFA({ mfa: false });
+  await account.deleteMFAAuthenticator({ type: AuthenticatorType.Totp });
+  return user;
+};
+export const createMfaLoginChallenge = async (factor = "totp") => {
+  const authenticationFactor = factor === "recovery"
+    ? AuthenticationFactor.Recoverycode
+    : AuthenticationFactor.Totp;
+  return account.createMFAChallenge({ factor: authenticationFactor });
+};
+export const completeMfaLoginChallenge = async (challengeId, otp) => {
+  const session = await account.updateMFAChallenge({ challengeId, otp });
+  const user = await account.get();
+  await registerCurrentDevice(undefined, session.$id);
+  return {
+    session,
+    user,
+    sessionReady: true,
+  };
+};
 export const requestEmailVerification = (locale = "de") => apiRequest(
   "/v1/auth/email-verification/request",
   { method: "POST", json: { locale }, idempotent: true },
