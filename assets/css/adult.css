@@ -1340,6 +1340,34 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .membership-pause-notice .membership-mark { flex:0 0 auto; }
 .membership-pause-notice strong,.membership-pause-notice p { display:block;margin:0; }
 .membership-pause-notice p { margin-top:4px;color:var(--muted);line-height:1.5; }
+.verification-deletion-receipt {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:16px;
+  align-items:start;
+  padding:20px;
+  border:1px solid rgba(130,255,180,.34);
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 0 0,rgba(130,255,180,.1),transparent 45%),
+    linear-gradient(145deg,rgba(30,95,65,.12),rgba(255,255,255,.025));
+}
+.verification-deletion-receipt__mark {
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  border:1px solid rgba(130,255,180,.52);
+  border-radius:50%;
+  color:#a8ffcc;
+  font-size:1.2rem;
+  font-weight:900;
+  box-shadow:0 0 24px rgba(130,255,180,.12);
+}
+.verification-deletion-receipt .eyebrow { margin:0 0 5px;color:#a8ffcc; }
+.verification-deletion-receipt h3 { margin:0 0 7px; }
+.verification-deletion-receipt p:not(.eyebrow) { margin:0;color:var(--muted);line-height:1.55; }
+.verification-deletion-receipt small { display:block;margin-top:10px;color:var(--gold);font-weight:800;letter-spacing:.04em;overflow-wrap:anywhere; }
 .perk-access-card.is-paused { border-color:rgba(240,180,109,.34);background:rgba(240,180,109,.06); }
 .admin-device-toggle { margin-top:14px; }
 .admin-session-timer { display:inline-flex;margin-top:8px;color:var(--gold);font-weight:800;letter-spacing:.04em; }
@@ -1350,6 +1378,7 @@ button:disabled { opacity: .58; cursor: not-allowed; }
   .device-card__actions button { flex:1; }
   .device-manager__groups { grid-template-columns:1fr; }
   .liveness-code-card strong,.admin-liveness-code strong { font-size:clamp(1.8rem,12vw,2.8rem);letter-spacing:.14em; }
+  .verification-deletion-receipt { grid-template-columns:1fr;padding:17px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .post-carousel__slide,
@@ -2719,4 +2748,14 @@ button:disabled { opacity: .58; cursor: not-allowed; }
     text-align: center;
   }
   .admin-panel--wide { grid-column: auto; }
+}
+
+body.adult-site a:focus-visible,
+body.adult-site button:focus-visible,
+body.adult-site input:focus-visible,
+body.adult-site select:focus-visible,
+body.adult-site textarea:focus-visible,
+body.adult-site summary:focus-visible {
+  outline:3px solid rgba(248,215,164,.72);
+  outline-offset:3px;
 }

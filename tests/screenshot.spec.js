@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 
 const pages = [
   { path: '/', name: 'home' },
+  { path: '/de/', name: 'seo-de' },
+  { path: '/en/', name: 'seo-en' },
   { path: '/linktree/', name: 'linktree' },
   { path: '/impressum/', name: 'impressum' },
   { path: '/datenschutz/', name: 'datenschutz' },
@@ -101,5 +103,41 @@ test.describe('legal notices', () => {
     await expect(page.getByRole('heading', { name: /rechtliches, klar gegliedert/i })).toBeVisible();
     await page.goto('/legal/eu/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#privacy')).toContainText(/DSGVO/);
+  });
+
+  test('localized search landing pages expose unique, crawlable copy', async ({ page }) => {
+    await page.goto('/de/', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/Exklusive Inhalte für Erwachsene/);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+    await expect(page.getByRole('heading', { name: /wo verlangen zur versuchung wird/i })).toBeVisible();
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/de/');
+
+    await page.goto('/en/', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/Exclusive Adult Content/);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.getByRole('heading', { name: /where desire becomes temptation/i })).toBeVisible();
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/en/');
+  });
+
+  test('dialogs trap keyboard focus and restore it when closed', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const trigger = page.getByRole('button', { name: 'Register' }).first();
+    await trigger.focus();
+    await trigger.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.getByRole('button', { name: /close dialog/i })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+
+  test('mobile home has no horizontal document overflow', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium-mobile');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
   });
 });

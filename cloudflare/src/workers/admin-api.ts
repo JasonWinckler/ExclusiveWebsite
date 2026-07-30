@@ -570,7 +570,9 @@ async function decideAgeCase(
     const requiredChecklist = ageCase.document_type === "PASSPORT"
       ? AGE_APPROVAL_CHECKLIST.filter((item) => item !== "DOCUMENT_BACK_LEGIBLE")
       : [...AGE_APPROVAL_CHECKLIST];
-    const versionChecklist = ageCase.instructions_version === "manual-age-v5"
+    const versionChecklist = ["manual-age-v5", "manual-age-v6"].includes(
+      ageCase.instructions_version,
+    )
       ? requiredChecklist
       : requiredChecklist.filter((item) => item !== "LIVENESS_CODE_MATCHES");
     const submitted = new Set(checklist);

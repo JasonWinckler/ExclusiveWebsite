@@ -209,7 +209,10 @@ describe("browser and repository security contract", () => {
     );
     expect(modalComponent).toContain("const onCloseRef = useRef(onClose)");
     expect(modalComponent).toContain("closeRef.current?.focus({ preventScroll: true })");
-    expect(modalComponent).toContain("event.key === \"Escape\" && onCloseRef.current()");
+    expect(modalComponent).toContain('if (event.key === "Escape")');
+    expect(modalComponent).toContain("onCloseRef.current()");
+    expect(modalComponent).toContain('event.key !== "Tab"');
+    expect(modalComponent).toContain("previouslyFocused.focus({ preventScroll: true })");
     expect(modalComponent).not.toMatch(
       /closeRef\.current\?\.focus[\s\S]*?document\.body\.classList\.remove[\s\S]*?\}, \[onClose\]\);/,
     );
@@ -294,10 +297,16 @@ describe("browser and repository security contract", () => {
 
   it("uses a cryptographic six-digit paper challenge and expires unreviewed evidence", () => {
     const membership = read("cloudflare/src/workers/membership-api.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const adminPortal = read("src/AdminPortal.jsx");
     const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
     const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
     const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
     expect(membership).toContain('const AGE_INSTRUCTIONS_VERSION = "manual-age-v6"');
+    expect(admin).toContain('"manual-age-v5", "manual-age-v6"');
+    expect(adminPortal).toContain('"manual-age-v5", "manual-age-v6"');
+    expect(membership).toContain("evidenceDeletedAt: row.evidence_deleted_at");
+    expect(membership).toContain("deletionReceiptReference:");
     expect(membership).toContain("100_000 +");
     expect(membership).toContain("crypto.getRandomValues");
     expect(membershipConfig).toMatch(/"AGE_REVIEW_WINDOW_HOURS": "48"/);

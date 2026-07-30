@@ -48,7 +48,11 @@ import {
 import { friendlyErrorMessage } from "./lib/error-messages";
 
 const languageKey = "jason-shadow-membership-language";
-const initialLanguage = () => localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
+const initialLanguage = () => {
+  const requested = new URLSearchParams(location.search).get("lang");
+  if (requested === "de" || requested === "en") return requested;
+  return localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
+};
 const sensitiveMediaKey = "jason-shadow-sensitive-media-blur-v1";
 const initialSensitiveMediaBlur = () => localStorage.getItem(sensitiveMediaKey) === "true";
 const AdminPortal = React.lazy(() => import("./AdminPortal"));
@@ -389,6 +393,27 @@ function VerificationAssurance({ ui }) {
   </aside>;
 }
 
+function VerificationDeletionReceipt({ verification, language }) {
+  if (!verification?.evidenceDeletedAt) return null;
+  const deletedAt = new Intl.DateTimeFormat(
+    language === "de" ? "de-DE" : "en-GB",
+    { dateStyle: "medium", timeStyle: "short" },
+  ).format(new Date(verification.evidenceDeletedAt));
+  return <aside className="verification-deletion-receipt" role="status">
+    <div className="verification-deletion-receipt__mark" aria-hidden="true">✓</div>
+    <div>
+      <p className="eyebrow">{language === "de" ? "LÖSCHBESTÄTIGUNG" : "DELETION CONFIRMATION"}</p>
+      <h3>{language === "de" ? "Deine Prüfnachweise wurden gelöscht" : "Your verification evidence has been deleted"}</h3>
+      <p>{language === "de"
+        ? `Die privaten Bild- und Videoaufnahmen wurden am ${deletedAt} vollständig aus dem Prüfbereich entfernt. Gespeichert bleiben nur die Prüfentscheidung und der notwendige Nachweis der Löschung.`
+        : `The private image and video captures were fully removed from the review area on ${deletedAt}. Only the verification decision and the necessary deletion record remain.`}</p>
+      {verification.deletionReceiptReference && <small>
+        {language === "de" ? "Löschreferenz" : "Deletion reference"}: {verification.deletionReceiptReference}
+      </small>}
+    </div>
+  </aside>;
+}
+
 function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -431,11 +456,14 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      const video = videoRef.current;
+      if (!video) throw new Error("CAMERA_PREVIEW_UNAVAILABLE");
+      video.srcObject = stream;
       setCameraReady(true);
+      // Mobile browsers may expire the original tap while showing the
+      // permission prompt. Keep the valid stream and let autoplay resume once
+      // the preview becomes visible instead of reporting a false denial.
+      void video.play().catch(() => undefined);
     } catch {
       stopStream();
       setError(ui.cameraError);
@@ -469,7 +497,7 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
     <div className="live-photo-capture__head"><span aria-hidden="true">{value ? "✓" : side === "front" ? "01" : "02"}</span><div><strong>{label}</strong><small>{ui.livePhotoHint}</small></div></div>
     {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
     <div className="camera-frame" hidden={!cameraReady && !previewUrl}>
-      <video ref={videoRef} muted playsInline hidden={!cameraReady} />
+      <video ref={videoRef} muted playsInline autoPlay hidden={!cameraReady} />
       {previewUrl && !cameraReady && <img src={previewUrl} alt="" />}
     </div>
     {!cameraReady && !value && <button className="secondary-action" type="button" disabled={disabled} onClick={startCamera}>{ui.photoCameraStart}</button>}
@@ -547,21 +575,46 @@ function LockedGalleryShowcase({ language, signedIn, onAction }) {
 
 function Modal({ title, eyebrow, onClose, children, t, wide = false }) {
   const closeRef = useRef(null);
+  const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
   useEffect(() => {
+    const previouslyFocused = document.activeElement;
     closeRef.current?.focus({ preventScroll: true });
-    const key = (event) => event.key === "Escape" && onCloseRef.current();
+    const key = (event) => {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => !element.hasAttribute("hidden"));
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener("keydown", key);
     document.body.classList.add("modal-open");
     return () => {
       document.removeEventListener("keydown", key);
       document.body.classList.remove("modal-open");
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus({ preventScroll: true });
     };
   }, []);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`process-modal${wide ? " process-modal--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="modal-title"><button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label={t.close}>×</button><p className="eyebrow">{eyebrow}</p><h2 id="modal-title">{title}</h2>{children}</section></div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={dialogRef} className={`process-modal${wide ? " process-modal--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="modal-title"><button ref={closeRef} className="modal-close" type="button" onClick={onClose} aria-label={t.close}>×</button><p className="eyebrow">{eyebrow}</p><h2 id="modal-title">{title}</h2>{children}</section></div>;
 }
 
 function QrImage({ payload, alt }) {
@@ -628,12 +681,12 @@ function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, challenge
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      const video = videoRef.current;
+      if (!video) throw new Error("CAMERA_PREVIEW_UNAVAILABLE");
+      video.srcObject = stream;
       setCameraReady(true);
       setSeconds(0);
+      void video.play().catch(() => undefined);
     } catch {
       stopStream();
       setError(ui.cameraError);
@@ -695,7 +748,7 @@ function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, challenge
     </div>}
     <ol className="challenge-list">{challenge.map((step) => <li key={step}>{(challengeLabels[language] || challengeLabels.de)[step] || step}</li>)}</ol>
     {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
-    <div className="camera-frame">{previewUrl && !cameraReady ? <video src={previewUrl} controls playsInline /> : <video ref={videoRef} muted playsInline />}</div>
+    <div className="camera-frame">{previewUrl && !cameraReady ? <video src={previewUrl} controls playsInline /> : <video ref={videoRef} muted playsInline autoPlay />}</div>
     <div className="camera-actions">
       {!cameraReady && !value && <button className="secondary-action" type="button" disabled={disabled} onClick={startCamera}>{ui.cameraStart}</button>}
       {cameraReady && !recording && <button className="primary-action" type="button" disabled={disabled} onClick={startRecording}>{ui.recordStart}</button>}
@@ -1752,9 +1805,9 @@ export default function App() {
     <main id="top">
       {user ? <>
         <section className="hero adult-hero member-hero">
-          <div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div>
+          <div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" width="1536" height="652" decoding="async" fetchPriority="high" /><div className="hero-media__shade" /></div>
           <div className="hero-content adult-hero__content">
-            <img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" />
+            <img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" width="1536" height="1536" decoding="async" />
             <p className="eyebrow">{language === "de" ? "DEIN PRIVATER BEREICH" : "YOUR PRIVATE SPACE"}</p>
             <h1>{language === "de" ? `Willkommen, ${user.name || "du"}` : `Welcome, ${user.name || "you"}`}</h1>
             <p className="tagline">{ageStatus === "APPROVED"
@@ -1826,7 +1879,7 @@ export default function App() {
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       </> : <>
-      <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
+      <section className="hero adult-hero"><div className="hero-media" aria-hidden="true"><img src="/linktree/uploads/banner.png" alt="" width="1536" height="652" decoding="async" fetchPriority="high" /><div className="hero-media__shade" /></div><div className="hero-content adult-hero__content"><img className="avatar hero-avatar" src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" width="1536" height="1536" decoding="async" /><p className="eyebrow">{t.adultsOnly}</p><h1>{t.heroTitle}</h1><p className="tagline">{t.heroText}</p><div className="hero-actions"><button className="primary-action" type="button" onClick={() => user ? setModal("account") : openAuth("register")}>{user ? t.account : t.register}</button><a className="secondary-action" href="#experience">{t.explore}</a></div><p className="trust-line"><span>18+</span> {t.trustLine}</p></div></section>
       <section id="experience" className="section intro-section"><div className="section-heading"><p className="eyebrow">{t.profileEyebrow}</p><h2>{t.introTitle}</h2><p>{t.bio}</p></div><div className="editorial-grid"><LockedCard t={t} wide /><div className="editorial-copy"><p className="eyebrow">{t.privateLabel}</p><h2>{t.privateTitle}</h2><p>{t.privateText}</p><a href="#membership" className="text-link">{t.discoverAccess} →</a></div></div></section>
       <section id="membership" className="section membership-section"><div className="section-heading"><p className="eyebrow">{t.accessPath}</p><h2>{t.howItWorks}</h2><p>{t.processIntro}</p></div><div className="tier-list"><Tier number="01" title={t.stepAccount} text={t.stepAccountText} /><Tier number="02" title={t.stepVerify} text={ui.ageText} featured /><Tier number="03" title={t.stepAccess} text={t.stepAccessText} /></div></section>
       <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
@@ -1925,6 +1978,7 @@ export default function App() {
             <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
             <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
           </div>
+          <VerificationDeletionReceipt verification={ageRequest} language={language} />
           {entitlement?.paused && <div className="membership-pause-notice">
             <MembershipMark tier={entitlement.paused.tier} />
             <div><strong>{language === "de" ? "Membership pausiert – Restlaufzeit bleibt erhalten" : "Membership paused — remaining time is preserved"}</strong><p>{language === "de" ? "Wird automatisch fortgesetzt am" : "Automatically resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div>
@@ -2047,7 +2101,7 @@ export default function App() {
       wide
     >
       <p className="modal-intro verification-lead">{ui.ageText}</p>
-      <VerificationJourney ui={ui} activeStep={activeAgeCase?.caseId ? 2 : 1} />
+      <VerificationJourney ui={ui} activeStep={activeAgeCase?.reviewStatus === "READY_FOR_REVIEW" ? 3 : activeAgeCase?.caseId ? 2 : 1} />
       <VerificationAssurance ui={ui} />
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {!activeAgeCase?.caseId ? <form className="auth-panel verification-start" onSubmit={beginAgeVerification}>

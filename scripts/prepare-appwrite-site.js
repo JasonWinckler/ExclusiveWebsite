@@ -3,6 +3,8 @@ import { cp, mkdir, rm } from "node:fs/promises";
 const siteEntries = [
   "assets",
   "datenschutz",
+  "de",
+  "en",
   "impressum",
   "legal",
   "linktree",

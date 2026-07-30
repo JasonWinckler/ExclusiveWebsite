@@ -630,7 +630,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const selectedEvidence = selectedCase?.evidence || [];
   const requiredReviewItems = Object.keys(approvalChecklist[language] || approvalChecklist.de)
     .filter((item) => selectedCase?.case?.document_type !== "PASSPORT" || item !== "DOCUMENT_BACK_LEGIBLE")
-    .filter((item) => selectedCase?.case?.instructions_version === "manual-age-v5" || item !== "LIVENESS_CODE_MATCHES");
+    .filter((item) =>
+      ["manual-age-v5", "manual-age-v6"].includes(selectedCase?.case?.instructions_version) ||
+      item !== "LIVENESS_CODE_MATCHES");
   const selectedChallenge = useMemo(() => {
     try {
       const parsed = JSON.parse(selectedCase?.case?.liveness_challenge_json || "[]");

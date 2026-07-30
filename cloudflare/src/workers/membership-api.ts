@@ -237,6 +237,13 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       WHERE appwrite_user_id = ? AND status = 'PENDING'
       ORDER BY created_at DESC
       LIMIT 1
+    ),
+    latest_age_decision AS (
+      SELECT id, decided_at, evidence_deleted_at
+      FROM age_verification_cases
+      WHERE appwrite_user_id = ? AND decided_at IS NOT NULL
+      ORDER BY decided_at DESC
+      LIMIT 1
     )
     SELECT
       p.account_status, p.email_verified, p.age_status, p.display_name,
@@ -254,6 +261,7 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       a.review_expires_at,
       a.instructions_version, a.liveness_challenge_json,
       a.verification_route, a.document_type, a.country_code_snapshot,
+      ad.id AS receipt_case_id, ad.decided_at, ad.evidence_deleted_at,
       (SELECT GROUP_CONCAT(u.evidence_kind, ',')
         FROM age_verification_uploads u
         WHERE u.age_case_id = a.id AND u.deleted_at IS NULL) AS evidence_kinds
@@ -261,8 +269,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     LEFT JOIN active_entitlement e ON 1 = 1
     LEFT JOIN paused_entitlement pe ON 1 = 1
     LEFT JOIN latest_age_case a ON 1 = 1
+    LEFT JOIN latest_age_decision ad ON 1 = 1
     WHERE p.appwrite_user_id = ?
-  `).bind(userId, now, now, userId, now, userId, userId).first<{
+  `).bind(userId, now, now, userId, now, userId, userId, userId).first<{
     account_status: string;
     email_verified: number;
     age_status: string;
@@ -285,6 +294,9 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     manual_review_status: string | null;
     upload_expires_at: string | null;
     review_expires_at: string | null;
+    receipt_case_id: string | null;
+    decided_at: string | null;
+    evidence_deleted_at: string | null;
     instructions_version: string | null;
     liveness_challenge_json: string | null;
     verification_route: AgeVerificationRoute | null;
@@ -327,6 +339,11 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       reviewStatus: row.manual_review_status,
       uploadExpiresAt: row.upload_expires_at,
       reviewExpiresAt: row.review_expires_at,
+      decidedAt: row.decided_at,
+      evidenceDeletedAt: row.evidence_deleted_at,
+      deletionReceiptReference: row.evidence_deleted_at && row.receipt_case_id
+        ? `AV-${row.receipt_case_id.replaceAll("-", "").slice(0, 10).toUpperCase()}`
+        : null,
       instructionsVersion: row.instructions_version,
       livenessChallenge: parsedChallenge.steps,
       livenessCode: parsedChallenge.code,
