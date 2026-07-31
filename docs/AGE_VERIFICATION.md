@@ -46,16 +46,22 @@ Dokument- und Bewegungsprüfung.
   entfernt.
 - Reviewer-Zuordnung, Freitextbegründung und Länder-Snapshot werden spätestens
   30 Tage nach der Entscheidung minimiert.
+- Nach erfolgreicher Freigabe und bestätigter Dateilöschung erhält der Nutzer
+  eine lokalisierte Löschbestätigung per E-Mail.
+- Löschzeitpunkt und Löschreferenz sind anschließend ausschließlich in der
+  persönlichen Datenschutz-Datenkopie enthalten, nicht dauerhaft in der
+  normalen Profilübersicht.
 - Auditereignisse werden höchstens 730 Tage gespeichert; Ereignisse zu einem
   gelöschten Konto höchstens 30 Tage nach dessen Löschung.
 
 Die vollständige Bewertung steht in der
 [Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md).
 
-## Rechtlicher Status
+## Betreiberverantwortung
 
 Der Prozess ist eigenbetrieben, manuell und ohne Drittanbieter für die
-Identitätsentscheidung. Er ist nicht als KJM-zertifiziert oder automatisch
-rechtskonform zu bezeichnen. Vor einer entsprechenden Aussage sind
-fachanwaltliche Prüfung und gegebenenfalls eine KJM-Positivbewertung
-erforderlich.
+Identitätsentscheidung. Jason Winckler trägt als Seitenbetreiber die
+Verantwortung für Auswahl, Betrieb, manuelle Entscheidungen, Löschkontrollen
+und die regelmäßige Anpassung des Verfahrens. Die dafür umgesetzten
+technischen und organisatorischen Maßnahmen sowie verbleibende Risiken sind in
+der Datenschutz-Folgenabschätzung dokumentiert.

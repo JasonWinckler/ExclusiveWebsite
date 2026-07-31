@@ -8,7 +8,8 @@ This repository contains the production React frontend and Cloudflare membership
 backend for a single-creator adult membership application. Appwrite owns
 authentication; Cloudflare Workers, D1 and private R2 own membership, age
 review, SEPA orders, protected content and administration. Keep production
-behavior conservative and never claim legal or certification approval.
+behavior conservative and document operator responsibility and implemented
+technical safeguards accurately.
 
 ## Content and safety rules
 - Do not commit adult media, customer data, identity documents, challenge videos, secrets, real bank details, production `.env` files, databases, or backups.

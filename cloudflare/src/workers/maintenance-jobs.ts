@@ -9,6 +9,9 @@ import {
   sendMembershipActivationConfirmation,
   sendMembershipRenewalReminder,
 } from "../shared/membership-email";
+import {
+  sendAgeVerificationDeletionConfirmation,
+} from "../shared/age-verification-email";
 import { deletionBlockers } from "../shared/policy";
 import type {
   MaintenanceEnv,
@@ -699,6 +702,33 @@ async function retryMembershipActivationEmails(
   }
 }
 
+async function retryAgeDeletionConfirmationEmails(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<void> {
+  const staleAttempt = new Date(Date.parse(now) - 15 * 60_000).toISOString();
+  const cases = await env.DB.prepare(`
+    SELECT c.id
+    FROM age_verification_cases c
+    JOIN user_profiles u ON u.appwrite_user_id = c.appwrite_user_id
+    WHERE c.status = 'APPROVED' AND c.evidence_deleted_at IS NOT NULL
+      AND (
+        c.deletion_confirmation_email_status IN ('PENDING', 'FAILED')
+        OR (
+          c.deletion_confirmation_email_status = 'SENDING'
+          AND c.deletion_confirmation_email_attempted_at <= ?
+        )
+      )
+      AND u.account_status = 'ACTIVE' AND u.email_verified = 1
+    ORDER BY c.updated_at ASC
+    LIMIT ?
+  `).bind(staleAttempt, batchSize).all<{ id: string }>();
+  for (const ageCase of cases.results) {
+    await sendAgeVerificationDeletionConfirmation(env, ageCase.id);
+  }
+}
+
 async function sendMembershipRenewalReminders(
   env: MaintenanceEnv,
   now: string,
@@ -793,6 +823,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
   try {
     await expireRecords(env, now, batchSize);
     await cleanupRetainedEvidence(env, now, batchSize);
+    await retryAgeDeletionConfirmationEmails(env, now, batchSize);
     await cleanupAgeDecisionMetadata(env, now, batchSize);
     await cleanupRetiredContentMedia(env, now, batchSize);
     await retryLabelSync(env, now, batchSize);

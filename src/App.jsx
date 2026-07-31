@@ -394,27 +394,6 @@ function VerificationAssurance({ ui }) {
   </aside>;
 }
 
-function VerificationDeletionReceipt({ verification, language }) {
-  if (!verification?.evidenceDeletedAt) return null;
-  const deletedAt = new Intl.DateTimeFormat(
-    language === "de" ? "de-DE" : "en-GB",
-    { dateStyle: "medium", timeStyle: "short" },
-  ).format(new Date(verification.evidenceDeletedAt));
-  return <aside className="verification-deletion-receipt" role="status">
-    <div className="verification-deletion-receipt__mark" aria-hidden="true">✓</div>
-    <div>
-      <p className="eyebrow">{language === "de" ? "LÖSCHBESTÄTIGUNG" : "DELETION CONFIRMATION"}</p>
-      <h3>{language === "de" ? "Deine Prüfnachweise wurden gelöscht" : "Your verification evidence has been deleted"}</h3>
-      <p>{language === "de"
-        ? `Die privaten Bild- und Videoaufnahmen wurden am ${deletedAt} vollständig aus dem Prüfbereich entfernt. Gespeichert bleiben nur die Prüfentscheidung und der notwendige Nachweis der Löschung.`
-        : `The private image and video captures were fully removed from the review area on ${deletedAt}. Only the verification decision and the necessary deletion record remain.`}</p>
-      {verification.deletionReceiptReference && <small>
-        {language === "de" ? "Löschreferenz" : "Deletion reference"}: {verification.deletionReceiptReference}
-      </small>}
-    </div>
-  </aside>;
-}
-
 function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -2100,7 +2079,6 @@ export default function App() {
             <article><span>{language === "de" ? "Altersprüfung" : "Age verification"}</span><strong>{reviewPending ? ui.reviewReady : ageStatus}</strong></article>
             <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
           </div>
-          <VerificationDeletionReceipt verification={ageRequest} language={language} />
           {entitlement?.paused && <div className="membership-pause-notice">
             <MembershipMark tier={entitlement.paused.tier} />
             <div><strong>{language === "de" ? "Membership pausiert – Restlaufzeit bleibt erhalten" : "Membership paused — remaining time is preserved"}</strong><p>{language === "de" ? "Wird automatisch fortgesetzt am" : "Automatically resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div>

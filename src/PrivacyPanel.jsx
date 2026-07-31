@@ -155,14 +155,14 @@ export default function PrivacyPanel({
         <ul className="privacy-feature-list">
           <li>{de ? "Profil- und Datenschutzeinstellungen" : "Profile and privacy settings"}</li>
           <li>{de ? "Bestellungen, Rechnungen und Zugänge" : "Orders, invoices and access records"}</li>
-          <li>{de ? "Verifikationsstatus, Geräte und Kommentare" : "Verification status, devices and comments"}</li>
+          <li>{de ? "Verifikationsstatus, Löschbestätigungen, Geräte und Kommentare" : "Verification status, deletion receipts, devices and comments"}</li>
         </ul>
         <button className="primary-action" type="button" disabled={busy || !profile.complete} onClick={onExport}>
           {de ? "Meine Daten herunterladen" : "Download my data"}
         </button>
         <p className="privacy-fineprint">{de
-          ? "Sicherheitsgeheimnisse, fremde Daten und bereits gelöschte Altersnachweise sind nicht enthalten."
-          : "Security secrets, third-party data and already-deleted age evidence are excluded."}</p>
+          ? "Private Prüfdateien sind nicht enthalten. Nach ihrer Löschung enthält die Datenkopie stattdessen den Löschvermerk und die zugehörige Referenz."
+          : "Private review files are not included. After deletion, the data copy contains the deletion record and its reference instead."}</p>
       </section>
     </div>
 

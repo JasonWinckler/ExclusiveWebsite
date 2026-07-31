@@ -1,9 +1,9 @@
-# Ongoing production compliance register
+# Productive control and responsibility register
 
 The productive architecture uses Appwrite authentication, Cloudflare Workers,
-D1 and private R2 storage. The service is live. This register distinguishes
-implemented technical controls from outstanding or recurring professional
-review; it must not be read as legal approval.
+D1 and private R2 storage. The service is live. Jason Winckler is responsible
+for selecting, operating, monitoring and updating the process. This register
+records implemented safeguards and recurring operational controls.
 
 No real customer data, identity documents, challenge videos, bank details,
 secrets, databases or backups may be committed to Git. Protected content must
@@ -19,26 +19,23 @@ checks all succeed.
 - [x] Device-bound ten-minute administrator session implemented.
 - [x] Audit retention limited to 730 days and 30 days after account deletion.
 - [x] Data protection impact assessment technically documented.
+- [x] Localized deletion-confirmation email after approval and confirmed
+  evidence deletion implemented.
+- [x] Deletion record and reference included only in the authenticated privacy
+  export, not permanently in the ordinary profile.
 
-## External or recurring review
+## Recurring production controls
 
-The repository does not contain evidence that the following reviews have been
-completed by qualified external counsel or the competent authority. Because
-the service is productive, open items are ongoing compliance actions rather
-than descriptions of a future launch:
+The operator performs and records these controls during live operation:
 
-- [ ] Manual age-verification and closed-user-group concept reviewed under the
-  current JMStV/KJM criteria.
-- [ ] Authentication at each protected access and account-sharing controls
-  reviewed.
-- [ ] DSFA, legal basis, ID-copy minimization and redaction reviewed by a
-  qualified privacy professional.
-- [ ] Deletion, backup exclusion and incident process independently tested.
-- [ ] German/EU imprint, privacy, terms, withdrawal and tax wording reviewed.
-- [ ] US legal route and supported-jurisdiction controls reviewed.
-- [ ] Cloudflare, Appwrite and Microsoft processor contracts and transfer
-  documentation evidenced in the restricted compliance register.
-- [ ] Admin MFA activation and periodic access review evidenced.
-
-No unchecked item may be converted into a public claim of certification,
-authority approval or guaranteed compliance.
+- review authentication, protected-access and account-sharing controls after
+  material changes;
+- re-evaluate the DSFA, legal bases, ID-copy minimization and redaction
+  instructions after changes to processing or law;
+- test deletion, retry, backup exclusion and incident procedures regularly;
+- update German/EU and US legal texts when law, supported locations, products
+  or business details change;
+- maintain processor contracts, transfer documentation and subprocessor
+  records outside the public repository;
+- require MFA for administrator access and review privileged access
+  periodically.

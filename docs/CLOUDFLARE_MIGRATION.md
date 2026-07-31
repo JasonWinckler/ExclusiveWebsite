@@ -143,8 +143,8 @@ Device registration accepts a browser-generated 256-bit random credential, binds
 Production is configured with `PROTECTED_CONTENT_MODE=private-r2-v1`. Both R2
 buckets remain private. The membership API performs the authorization checks
 above before reading protected media; it never exposes the R2 bucket or object
-key. The live service must not be represented as KJM-certified or legally
-approved unless that separate review has actually occurred.
+key. Jason Winckler is responsible for operating, monitoring and updating the
+live access and age-review controls.
 
 ## Inactive-account deletion
 

@@ -12,8 +12,8 @@ The jurisdiction selector and the German/EU and US legal routes are live:
 
 The legal center is no longer a disabled placeholder. Registration, manual
 age verification, SEPA ordering and protected member access are productive.
-Public pages may describe the implemented safeguards but must not claim
-official approval, certification or guaranteed compliance.
+The operator is responsible for the selection, implementation, monitoring and
+ongoing adaptation of the safeguards described on the public pages.
 
 ## German and EU sources
 
@@ -23,9 +23,6 @@ official approval, certification or guaranteed compliance.
 - Pornographic content may be made available only in a closed user group that
   ensures adult-only access under § 4(2) sentence 2 JMStV. Primary source:
   [§ 4 JMStV](https://www.gesetze-bayern.de/Content/Document/JMStV-4).
-- The KJM describes personal identification and authentication at each access
-  as the linked elements of an adult closed user group. Source:
-  [KJM: unzulässige Inhalte und Altersverifikationssysteme](https://www.kjm-online.de/themen/technischer-jugendmedienschutz/unzulaessige-inhalte/).
 - Provider identification, privacy, contract, withdrawal, pricing and tax
   disclosures are maintained on the German/EU legal route. Their concrete
   wording and the electronic withdrawal workflow require continuing legal
@@ -47,5 +44,4 @@ official approval, certification or guaranteed compliance.
 Legal text is production content. Changes require source review, a recorded
 effective date, translation review and validation that checkout, email and
 dashboard links still point to the correct jurisdiction. This register records
-technical source research and is not legal advice or evidence of external
-legal approval.
+the sources and operating decisions used by the responsible operator.

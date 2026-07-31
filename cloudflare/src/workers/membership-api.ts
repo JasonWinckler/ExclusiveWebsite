@@ -35,6 +35,7 @@ import {
   updateAppwriteUserPassword,
   verifyAppwriteUserEmail,
 } from "../shared/identity-service";
+import { ageDeletionReceiptReference } from "../shared/age-verification-email";
 import { sha256Hex, validateDeviceToken } from "../shared/security";
 import type {
   AgeEvidenceKind,
@@ -237,13 +238,6 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       WHERE appwrite_user_id = ? AND status = 'PENDING'
       ORDER BY created_at DESC
       LIMIT 1
-    ),
-    latest_age_decision AS (
-      SELECT id, decided_at, evidence_deleted_at
-      FROM age_verification_cases
-      WHERE appwrite_user_id = ? AND decided_at IS NOT NULL
-      ORDER BY decided_at DESC
-      LIMIT 1
     )
     SELECT
       p.account_status, p.email_verified, p.age_status, p.display_name,
@@ -261,7 +255,6 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       a.review_expires_at,
       a.instructions_version, a.liveness_challenge_json,
       a.verification_route, a.document_type, a.country_code_snapshot,
-      ad.id AS receipt_case_id, ad.decided_at, ad.evidence_deleted_at,
       (SELECT GROUP_CONCAT(u.evidence_kind, ',')
         FROM age_verification_uploads u
         WHERE u.age_case_id = a.id AND u.deleted_at IS NULL) AS evidence_kinds
@@ -269,9 +262,8 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     LEFT JOIN active_entitlement e ON 1 = 1
     LEFT JOIN paused_entitlement pe ON 1 = 1
     LEFT JOIN latest_age_case a ON 1 = 1
-    LEFT JOIN latest_age_decision ad ON 1 = 1
     WHERE p.appwrite_user_id = ?
-  `).bind(userId, now, now, userId, now, userId, userId, userId).first<{
+  `).bind(userId, now, now, userId, now, userId, userId).first<{
     account_status: string;
     email_verified: number;
     age_status: string;
@@ -294,9 +286,6 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
     manual_review_status: string | null;
     upload_expires_at: string | null;
     review_expires_at: string | null;
-    receipt_case_id: string | null;
-    decided_at: string | null;
-    evidence_deleted_at: string | null;
     instructions_version: string | null;
     liveness_challenge_json: string | null;
     verification_route: AgeVerificationRoute | null;
@@ -339,11 +328,6 @@ async function statusResponse(env: MembershipEnv, userId: string): Promise<Recor
       reviewStatus: row.manual_review_status,
       uploadExpiresAt: row.upload_expires_at,
       reviewExpiresAt: row.review_expires_at,
-      decidedAt: row.decided_at,
-      evidenceDeletedAt: row.evidence_deleted_at,
-      deletionReceiptReference: row.evidence_deleted_at && row.receipt_case_id
-        ? `AV-${row.receipt_case_id.replaceAll("-", "").slice(0, 10).toUpperCase()}`
-        : null,
       instructionsVersion: row.instructions_version,
       livenessChallenge: parsedChallenge.steps,
       livenessCode: parsedChallenge.code,
@@ -3037,7 +3021,7 @@ async function exportPrivacyData(
       FROM entitlements WHERE appwrite_user_id = ? ORDER BY created_at DESC
     `).bind(userId),
     env.DB.prepare(`
-      SELECT status, threshold, review_method, manual_review_status,
+      SELECT id, status, threshold, review_method, manual_review_status,
         instructions_version, verification_route, document_type,
         country_code_snapshot, consented_at, submitted_at, decided_at,
         upload_expires_at, expires_at, retention_until, evidence_deleted_at,
@@ -3080,6 +3064,20 @@ async function exportPrivacyData(
   );
   headers.set("Cache-Control", "private, no-store");
   headers.set("X-Request-Id", correlationId);
+  const ageVerificationHistory = results[3]!.results.map((entry) => {
+    const row = entry as Record<string, unknown> & {
+      id?: unknown;
+      evidence_deleted_at?: unknown;
+    };
+    const { id, ...exported } = row;
+    return {
+      ...exported,
+      deletionReceiptReference:
+        typeof id === "string" && typeof row.evidence_deleted_at === "string"
+          ? ageDeletionReceiptReference(id)
+          : null,
+    };
+  });
   const payload = {
     format: "shadows-temptation-personal-data-export-v1",
     generatedAt: isoNow(),
@@ -3087,13 +3085,14 @@ async function exportPrivacyData(
     profile: results[0]!.results[0] ?? null,
     ordersAndInvoices: results[1]!.results,
     accessEntitlements: results[2]!.results,
-    ageVerificationHistory: results[3]!.results,
+    ageVerificationHistory,
     registeredDevices: results[4]!.results,
     comments: results[5]!.results,
     privacyRequests: results[6]!.results,
     matchedPayments: results[7]!.results,
     notes: [
       "Age-verification media is not included in this export.",
+      "For approved cases, the deletion record and deletion reference are included after evidence deletion.",
       "Evidence media is deleted after approval; legally required transaction records may be retained.",
       "Security secrets, token hashes, internal fraud signals and data about other people are excluded.",
     ],

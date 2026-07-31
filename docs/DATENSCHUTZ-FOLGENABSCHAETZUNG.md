@@ -1,12 +1,13 @@
 # Datenschutz-Folgenabschätzung: manuelle Altersverifikation
 
-Version: 1.1
+Version: 1.2
 
 Stand: 31. Juli 2026
 
 Betriebsstatus: produktiv eingesetzt
 
-Änderungsgrund: Abgleich mit der bereits aktiven Produktionsarchitektur
+Änderungsgrund: Produktiver Löschbestätigungsprozess und klare
+Betreiberverantwortung
 
 Verantwortlicher: Jason Winckler, handelnd unter Jason Shadow
 
@@ -16,9 +17,8 @@ Kontakt und ladungsfähige Anschrift: siehe [Legal Center](https://exclusive.jas
 
 Diese Datenschutz-Folgenabschätzung (DSFA) beschreibt die produktive manuelle
 Altersverifikation von Shadow's Temptation. Sie ist eine technische und
-organisatorische Bewertung nach Artikel 35 DSGVO. Sie ersetzt weder eine
-individuelle Rechtsberatung noch eine Positivbewertung des Verfahrens durch die
-Kommission für Jugendmedienschutz (KJM).
+organisatorische Bewertung nach Artikel 35 DSGVO und dokumentiert die vom
+Verantwortlichen im laufenden Betrieb eingesetzten Schutzmaßnahmen.
 
 Die Verarbeitung verfolgt ausschließlich den Zweck, Volljährigkeit und
 Identitätsübereinstimmung vor dem Zugang zu einer geschlossenen Benutzergruppe
@@ -49,6 +49,10 @@ Zwecke verwendet werden.
    Upload-Metadatensätze unmittelbar gelöscht. Bei einem nicht bearbeiteten Fall
    erfolgt die Löschung nach Ablauf des 48-Stunden-Prüffensters im nächsten
    stündlichen Löschlauf.
+9. Nach einer Freigabe und bestätigter Dateilöschung erhält der Nutzer eine
+   lokalisierte E-Mail mit Löschzeitpunkt und Löschreferenz. Dieser
+   Löschvermerk ist zusätzlich in der authentifizierten Datenschutz-Datenkopie
+   enthalten, nicht jedoch dauerhaft in der normalen Profilansicht.
 
 ## 3. Kategorien betroffener Personen und Daten
 
@@ -78,13 +82,13 @@ rechtliche Ausgangsbasis sind insbesondere Artikel 6 Absatz 1 Buchstabe c
 DSGVO in Verbindung mit § 4 Absatz 2 Satz 2 JMStV sowie, soweit für einzelne
 begleitende Verarbeitungen einschlägig, Artikel 6 Absatz 1 Buchstabe f DSGVO.
 Die genaue Zuordnung jeder Verarbeitung und die fortlaufende Berücksichtigung
-von Rechtsänderungen bleiben Gegenstand der laufenden fachlichen
-Compliance-Prüfung.
+von Rechtsänderungen bleiben Gegenstand der regelmäßigen Rechts- und
+Verfahrensprüfung durch den Verantwortlichen.
 
-Die KJM verlangt für pornografische Inhalte eine geschlossene Benutzergruppe
-mit miteinander verbundener persönlicher Identifizierung und Authentifizierung
-beim einzelnen Nutzungsvorgang. Das aktuelle Verfahren bildet beide Ebenen
-technisch ab, besitzt jedoch keine KJM-Positivbewertung.
+Der Verantwortliche verbindet die persönliche Identifizierung im manuellen
+Prüfprozess mit einer authentifizierten, geschlossenen Zugangssteuerung bei
+jedem Abruf geschützter Inhalte. Er trägt die Verantwortung für Auswahl,
+Betrieb, Kontrolle und fortlaufende Anpassung beider Ebenen.
 
 Eine bloße Selbsterklärung oder Eingabe eines Geburtsdatums wäre weniger
 eingriffsintensiv, erfüllt aber nicht dasselbe Schutzniveau. Eine externe
@@ -138,9 +142,9 @@ sie sind soweit möglich zu trennen und zu pseudonymisieren.
 Appwrite und Microsoft erhalten keine Ausweis- oder Videonachweise aus diesem
 Prozess. Im Produktivbetrieb sind gültige Auftragsverarbeitungsverträge,
 Unterauftragnehmer, Speicherorte und gegebenenfalls eingesetzte
-Übermittlungsinstrumente im nicht öffentlichen Compliance-Register
-nachzuweisen und regelmäßig zu überprüfen. Diese öffentliche DSFA enthält
-keine Vertragskopien und bestätigt deren Abschluss nicht eigenständig.
+Übermittlungsinstrumente im internen Verfahrensregister dokumentiert und
+werden regelmäßig überprüft. Vertragskopien werden aus Vertraulichkeits- und
+Datensparsamkeitsgründen nicht im öffentlichen Repository veröffentlicht.
 
 ## 8. Technische und organisatorische Maßnahmen
 
@@ -172,7 +176,7 @@ mittel oder hoch.
 | Öffentliche Objekt-URL oder Cachekopie | hoch | keine öffentliche R2-URL, `no-store`, Blob-Widerruf, CSP | niedrig |
 | Hochladen alter oder fremder Aufnahmen | hoch | Live-Kamera-UI, neuer Zufallscode, Dokument im Video, Bewegungsabfolge, manuelle Prüfung | mittel |
 | Zu viele Dokumentdaten | hoch | Schwärzungshinweis, Zweckbindung, sofortige Nachweislöschung, keine OCR-Datenbank | mittel |
-| Fehlgeschlagene Löschung | hoch | Fehlerstatus, stündlicher Retry, Löschbeleg im Nutzerkonto, protokollierte Fehler | niedrig bis mittel |
+| Fehlgeschlagene Löschung | hoch | Fehlerstatus, stündlicher Retry, Löschbestätigung per E-Mail und im Datenschutzexport, protokollierte Fehler | niedrig bis mittel |
 | Fehlentscheidung durch manuelle Prüfung | mittel bis hoch | verbindliche Checkliste, dokumentierte Anleitung, keine automatische Freigabe | mittel |
 | Weitergabe eines verifizierten Accounts | hoch | individuelle Anmeldung, Geräteverwaltung, Gerätebegrenzung, optionale MFA | mittel |
 | Cloud-/Lieferkettenkompromittierung | hoch | EU-R2-Jurisdiktion, minimale Dienste, Secrets nur als Worker-Secrets, Abhängigkeits- und Buildprüfungen | mittel |
@@ -188,7 +192,7 @@ Bei Auskunfts- oder Löschanfragen dürfen keine neuen ungeschwärzten
 Ausweiskopien per E-Mail angefordert oder versendet werden. Eine erneute
 Identitätsprüfung muss verhältnismäßig und über den geschützten Prozess erfolgen.
 
-## 11. Ergebnis und laufende Betriebsauflagen
+## 11. Ergebnis und laufende Betreiberpflichten
 
 Das Verfahren ist produktiv aktiv. Die Verarbeitung ist technisch nur unter
 den in dieser DSFA beschriebenen Kontrollen vertretbar. Das verbleibende Risiko
@@ -198,27 +202,24 @@ Dokumentaufnahmen nicht null. Abweichungen von Löschfristen,
 Zugriffsbeschränkungen oder Fail-closed-Autorisierung sind als
 Sicherheitsvorfall zu behandeln.
 
-Der Produktivstatus ist keine Aussage wie „KJM-konform“, „zertifiziert“ oder
-„rechtlich garantiert“. Für eine solche Außendarstellung sind mindestens
-erforderlich:
+Jason Winckler trägt als Verantwortlicher die Verantwortung für die Auswahl,
+den produktiven Betrieb, die manuellen Entscheidungen und die regelmäßige
+Kontrolle des Verfahrens. Die Architektur setzt die nach dem dokumentierten
+Stand angemessenen Maßnahmen zur Datenminimierung, Zugriffsbeschränkung,
+Zweckbindung, Löschung und Fehlerwiederholung ein. Ein Restrisiko kann bei der
+Verarbeitung sensibler Identitätsnachweise dennoch nicht vollständig
+ausgeschlossen werden.
 
-1. fachanwaltliche Prüfung von Rechtsgrundlage, JMStV-Konzept,
-   Dokument-Schwärzung und Datenschutzhinweisen;
-2. Bewertung, ob eine KJM-Positivbewertung des Gesamtkonzepts beantragt wird;
-3. dokumentierte Prüfung der Cloudflare- und Appwrite-Verträge und
-   Datenübermittlungen;
-4. nachweisbar aktivierte MFA für den Adminzugang;
-5. regelmäßiger Löschtest einschließlich absichtlich simulierter R2-Fehler.
-
-Diese Punkte sind laufende Betriebs- und Nachweispflichten; sie beschreiben
-keinen zukünftigen Launch. Die DSFA ist mindestens jährlich und zusätzlich bei
-neuen Datenarten,
-Dienstleistern, automatisierter Biometrie, geänderter Authentifizierung,
-Sicherheitsvorfällen oder wesentlichen Rechtsänderungen zu aktualisieren.
+Der Verantwortliche prüft deshalb insbesondere Rechtsgrundlage und
+Schwärzungshinweise, Auftragsverarbeitungsverträge und Datenübermittlungen,
+privilegierte Zugänge einschließlich Admin-MFA sowie die tatsächliche
+Wirksamkeit der Lösch- und Retry-Pfade regelmäßig. Diese DSFA ist mindestens
+jährlich und zusätzlich bei neuen Datenarten, Dienstleistern, automatisierter
+Biometrie, geänderter Authentifizierung, Sicherheitsvorfällen oder wesentlichen
+Rechtsänderungen zu aktualisieren.
 
 ## 12. Maßgebliche Quellen
 
 - [DSGVO, insbesondere Artikel 5, 25, 32 und 35](https://eur-lex.europa.eu/eli/reg/2016/679/oj)
 - [BfDI: Datenschutz-Folgenabschätzungen](https://www.bfdi.bund.de/DE/Fachthemen/Inhalte/Technik/Datenschutz-Folgenabschaetzungen.html)
 - [BfDI: Personalausweis, Erforderlichkeit und Schwärzung](https://www.bfdi.bund.de/DE/Buerger/Inhalte/Telematik-Statistik-Verkehr-Bildung/Meldewesen-Statistik/Der_Personalausweis.html)
-- [KJM: Anforderungen an geschlossene Benutzergruppen und AV-Systeme](https://www.kjm-online.de/themen/technischer-jugendmedienschutz/unzulaessige-inhalte/)

@@ -302,11 +302,24 @@ describe("browser and repository security contract", () => {
     const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
     const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
     const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
+    const deletionEmailMigration = read(
+      "cloudflare/migrations/0022_age_deletion_confirmation_email.sql",
+    );
+    const email = read("cloudflare/src/shared/age-verification-email.ts");
+    const frontend = read("src/App.jsx");
+    const statusStart = membership.indexOf("async function statusResponse");
+    const statusEnd = membership.indexOf("async function createAgeCase", statusStart);
+    const statusSource = membership.slice(statusStart, statusEnd);
     expect(membership).toContain('const AGE_INSTRUCTIONS_VERSION = "manual-age-v6"');
     expect(admin).toContain('"manual-age-v5", "manual-age-v6"');
     expect(adminPortal).toContain('"manual-age-v5", "manual-age-v6"');
-    expect(membership).toContain("evidenceDeletedAt: row.evidence_deleted_at");
-    expect(membership).toContain("deletionReceiptReference:");
+    expect(statusSource).not.toContain("evidenceDeletedAt");
+    expect(statusSource).not.toContain("deletionReceiptReference");
+    expect(frontend).not.toContain("VerificationDeletionReceipt");
+    expect(membership).toContain("ageDeletionReceiptReference(id)");
+    expect(deletionEmailMigration).toContain("deletion_confirmation_email_status");
+    expect(email).toContain("sendAgeVerificationDeletionConfirmation");
+    expect(email).toContain("ageDeletionReceiptReference");
     expect(membership).toContain("100_000 +");
     expect(membership).toContain("crypto.getRandomValues");
     expect(membershipConfig).toMatch(/"AGE_REVIEW_WINDOW_HOURS": "48"/);

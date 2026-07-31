@@ -20,13 +20,12 @@ Verification, password-reset and invoice messages use the established Shadow's T
 
 Only an Appwrite user carrying the `admin` label and a device-bound admin session valid for at most ten minutes can review a case. The evidence endpoint additionally requires a pending, review-ready and unexpired case. Every evidence read is audited and uses `Cache-Control: no-store`. The admin browser closes the local preview when the tab is hidden or after two minutes.
 
-Evidence and its upload metadata are deleted immediately after a decision. Unreviewed evidence is deleted after the 48-hour review deadline in the next hourly maintenance run. The paper challenge and full checklist are cleared with the decision; reviewer identity, free-text reason and country snapshot are minimized after 30 days.
+Evidence and its upload metadata are deleted immediately after a decision. Unreviewed evidence is deleted after the 48-hour review deadline in the next hourly maintenance run. The paper challenge and full checklist are cleared with the decision; reviewer identity, free-text reason and country snapshot are minimized after 30 days. After an approved decision and confirmed evidence deletion, the user receives a localized deletion-confirmation email. The same deletion record and reference are included in the authenticated privacy data export, but are not displayed permanently in the ordinary profile view.
 
-This productive internal workflow is not a claim of automatic KJM approval or
-legal sufficiency for every jurisdiction. The current assessment is documented
+Jason Winckler is responsible for selection, operation, manual decisions and
+regular control of this productive internal workflow. The implemented
+technical and organizational safeguards and the remaining risks are documented
 in [DATENSCHUTZ-FOLGENABSCHAETZUNG.md](DATENSCHUTZ-FOLGENABSCHAETZUNG.md).
-Youth-protection, privacy and KJM reviews remain ongoing compliance tasks and
-must be completed before the process is represented as legally approved.
 
 ## SEPA
 

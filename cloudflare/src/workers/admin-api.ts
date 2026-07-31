@@ -28,6 +28,9 @@ import {
 import {
   sendMembershipActivationConfirmation,
 } from "../shared/membership-email";
+import {
+  sendAgeVerificationDeletionConfirmation,
+} from "../shared/age-verification-email";
 import { assertMediaSignature } from "../shared/media";
 import { sha256Hex, validateDeviceToken } from "../shared/security";
 import type { AdminEnv, AgeEvidenceRow } from "../shared/types";
@@ -610,7 +613,12 @@ async function decideAgeCase(
         liveness_challenge_json = '[]', review_checklist_json = NULL,
         decision_metadata_erasure_due_at = ?,
         expires_at = ?, retention_until = ?, label_sync_status = 'PENDING',
-        label_sync_last_error_code = NULL, version = version + 1, updated_at = ?
+        label_sync_last_error_code = NULL, version = version + 1, updated_at = ?,
+        deletion_confirmation_email_status = ?,
+        deletion_confirmation_email_message_id = NULL,
+        deletion_confirmation_email_attempted_at = NULL,
+        deletion_confirmation_email_sent_at = NULL,
+        deletion_confirmation_email_last_error_code = NULL
       WHERE id = ? AND version = ? AND status = 'PENDING'
         AND manual_review_status = 'READY_FOR_REVIEW'
     `).bind(
@@ -623,6 +631,7 @@ async function decideAgeCase(
       approvalExpiresAt,
       retentionUntil,
       now,
+      body.decision === "APPROVED" ? "PENDING" : "NOT_APPLICABLE",
       ageCase.id,
       ageCase.version,
     ),
@@ -713,6 +722,19 @@ async function decideAgeCase(
       requestId: correlationId,
     });
   }
+  let deletionConfirmationEmailStatus:
+    "SENT" | "FAILED" | "ALREADY_SENT" | "NOT_ELIGIBLE" = "NOT_ELIGIBLE";
+  if (body.decision === "APPROVED" && evidenceDeletionStatus !== "RETRY_REQUIRED") {
+    try {
+      deletionConfirmationEmailStatus =
+        await sendAgeVerificationDeletionConfirmation(env, ageCase.id);
+    } catch {
+      deletionConfirmationEmailStatus = "FAILED";
+      logEvent("error", "age_deletion_confirmation_email_failed", {
+        requestId: correlationId,
+      });
+    }
+  }
   return {
     caseId: ageCase.id,
     userId: ageCase.appwrite_user_id,
@@ -720,6 +742,7 @@ async function decideAgeCase(
     expiresAt: approvalExpiresAt,
     evidenceRetentionUntil: retentionUntil,
     evidenceDeletionStatus,
+    deletionConfirmationEmailStatus,
     labelSyncStatus,
   };
 }
