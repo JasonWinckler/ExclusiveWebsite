@@ -1,6 +1,9 @@
-# Cloudflare membership migration
+# Cloudflare production architecture
 
-## Target ownership
+This file records the completed migration and the active production operating
+model.
+
+## Production ownership
 
 Appwrite owns only:
 
@@ -9,7 +12,11 @@ Appwrite owns only:
 - Auth user ID, email, display name and server-maintained labels;
 - final Auth user deletion requested by the cleanup Worker.
 
-Cloudflare Workers and D1 own age-verification state, provider webhooks, checkout sessions, products, subscriptions, entitlements, protected-content authorization, registered devices, administrative review, audit records, retention and inactive-account deletion.
+Cloudflare Pages, Workers and D1 own frontend delivery, manual
+age-verification state, SEPA orders, products, subscriptions, entitlements,
+protected-content authorization, registered devices, administrative review,
+audit records, transactional-email coordination, retention and account
+deletion.
 
 D1 is canonical for payment and entitlement. Appwrite labels are projections only:
 
@@ -18,22 +25,29 @@ D1 is canonical for payment and entitlement. Appwrite labels are projections onl
 - `age_rejected`
 - `active_free`
 - `active_exclusive`
-- `admin` (temporary administrator gate; use an Appwrite Team when multiple roles are needed)
+- `admin`
 
-The browser cannot write labels. The private `identity-projection` Worker is the only component with an Appwrite server key. It has no `workers.dev` route and is reachable only through service bindings. Label projection and account lifecycle use different internal secrets, so a webhook Worker cannot invoke session revocation or user deletion.
+The browser cannot write labels. The private `identity-projection` Worker is
+the only component with an Appwrite server key. It has no `workers.dev` route
+and is reachable only through service bindings. Label projection and account
+lifecycle use different internal secrets, so a public Worker cannot invoke
+session revocation or user deletion without the narrow internal capability.
 
 ## Workers
 
 | Worker | Public surface | Privileges |
 |---|---|---|
-| `membership-api` | Authenticated member routes | Appwrite JWT validation, D1, age/payment session creation |
-| `admin-api` | Authenticated admin routes | D1, private label-sync service binding |
-| `age-verification-webhooks` | Public provider webhook | Age webhook secret, D1, private label-sync service binding |
-| `payment-webhooks` | Public provider webhook | Payment webhook secret, D1, private label-sync service binding |
-| `maintenance-jobs` | Cron only | D1, provider deletion, private Appwrite deletion service binding |
-| `identity-projection` | Service binding only | Narrow Appwrite server key for user read, labels, sessions and deletion |
+| `membership-api` | Authenticated member routes | Appwrite JWT validation, D1, manual age cases, SEPA orders and private content |
+| `admin-api` | Authenticated admin routes | D1, age review, N26 CSV settlement, user/content administration |
+| `maintenance-jobs` | Hourly Cron and private service binding | D1, R2 deletion, expiry, retention and private Appwrite lifecycle calls |
+| `identity-projection` | Service binding only | Scoped Appwrite operations and Microsoft Graph transactional email |
 
-Public webhook handlers do not contain administrator or user-deletion handlers. Structured logs include only event code, route and correlation ID—never JWTs, API keys, bank data, identity media, raw webhooks or unnecessary personal data.
+Legacy provider-adapter source may remain for rollback analysis, but the
+productive `manual-r2-v1` and `epc-qr-credit-transfer-v1` paths do not depend
+on external provider callbacks. No public handler contains administrator or user-deletion
+operations. Structured logs include only event code, route and correlation
+ID—never JWTs, API keys, bank data, identity media or unnecessary personal
+data.
 
 ## D1 schema
 
@@ -53,7 +67,12 @@ Migration `cloudflare/migrations/0001_initial.sql` creates:
 - `label_sync_attempts`
 - `maintenance_locks`
 
-Provider event IDs and retry idempotency keys are unique. Statuses use explicit checks. User, status, expiry, retention and cleanup columns are indexed. Optimistic versions protect mutable state. Audit events reject updates and ordinary deletes. The maintenance lock is the only authorized deletion path: events expire after at most 730 days, or at most 30 days after the affected subject or administrator account is deleted.
+External transaction references and retry idempotency keys are unique. Statuses
+use explicit checks. User, status, expiry, retention and cleanup columns are
+indexed. Optimistic versions protect mutable state. Audit events reject updates
+and ordinary deletes. The maintenance lock is the only authorized deletion
+path: events expire after at most 730 days, or at most 30 days after the
+affected subject or administrator account is deleted.
 
 ## Authentication bridge
 
@@ -63,19 +82,28 @@ The API never accepts a body/query `userId`. Verified email is required before v
 
 References: [Appwrite JWT login](https://appwrite.io/docs/products/auth/jwt), [Appwrite REST authentication headers](https://appwrite.io/docs/apis/rest).
 
-## Webhook and replay recovery
+## SEPA settlement and idempotency
 
-The committed adapter verifies HMAC-SHA256 over `<timestamp>.<unmodified raw body>`, enforces a five-minute tolerance, hashes rather than stores raw payloads, and inserts the provider event ID under a unique constraint.
+Creating an order records the exact product, amount, billing snapshot, payment
+purpose and expiry before payment details are shown. It does not grant an
+entitlement.
 
-Duplicates return a successful no-op and increment `replay_count`. Older payment events cannot reactivate a terminal subscription. `PENDING` and `PROCESSING` SEPA states never create an entitlement. Appwrite label-sync failure is recorded separately and retried; D1 remains canonical.
+The admin-only N26 CSV import parses supported exports in memory and matches the
+exact normalized purpose and EUR amount to one pending order. Imported CSV
+files are not retained. External transaction IDs, import hashes and
+idempotency keys are unique, so replay does not create a second entitlement.
+Only a confirmed match or an explicit documented admin settlement can activate
+membership. `PENDING`, `PROCESSING`, expired and cancelled orders never grant
+access. D1 remains canonical if Appwrite label synchronization needs a retry.
 
-After selecting providers, replace the generic signature mapping with each provider’s native signature and event schema. Recovery steps:
+Recovery steps:
 
-1. verify the provider event ID and signature at the provider;
-2. inspect the normalized D1 event record, never request/store the raw credential payload;
-3. replay the provider event;
-4. confirm the duplicate no-op or corrected state transition;
-5. retry label synchronization from the admin API if D1 is correct and Appwrite projection is stale.
+1. verify the bank statement outside the application;
+2. inspect the normalized order and payment record without copying the raw CSV;
+3. re-import the statement or use the documented admin settlement path;
+4. confirm that the unique transaction reference produced only one transition;
+5. retry label synchronization if D1 is correct and the Appwrite projection is
+   stale.
 
 ## Secrets and rotation
 
@@ -84,19 +112,21 @@ Real values must be created with Cloudflare encrypted secrets, never committed:
 - `APPWRITE_ENDPOINT`
 - `APPWRITE_PROJECT_ID`
 - `APPWRITE_SERVER_API_KEY`
-- `AGE_VERIFICATION_API_KEY`
-- `AGE_VERIFICATION_WEBHOOK_SECRET`
-- `PAYMENT_PROVIDER_API_KEY`
-- `PAYMENT_WEBHOOK_SECRET`
 - `LABEL_SYNC_SERVICE_SECRET`
 - `ACCOUNT_LIFECYCLE_SERVICE_SECRET`
-- provider-specific account/signing identifiers
+- `GRAPH_TENANT_ID`
+- `GRAPH_CLIENT_ID`
+- `GRAPH_CLIENT_SECRET`
+- N26 beneficiary data and internal signing identifiers
 
-Use a dedicated Appwrite key with only the scopes needed to read users, replace labels, revoke sessions and delete users. Never reuse a project-administration key. If a key was exposed in chat, logs, repository history or a non-approved channel, rotate it before deployment.
+Use a dedicated Appwrite key with only the scopes needed to read users, replace
+labels, revoke sessions and delete users. Never reuse a project-administration
+key. If a key is exposed in chat, logs, repository history or a non-approved
+channel, rotate it immediately and redeploy affected Workers.
 
 Rotation order:
 
-1. create a replacement provider/Appwrite credential;
+1. create a replacement Appwrite, Microsoft or internal credential;
 2. add it as a new Worker secret;
 3. deploy and verify negative and positive paths;
 4. revoke the old credential;
@@ -110,7 +140,11 @@ Secrets must not appear in `VITE_*`, `.env.example`, Wrangler JSON, frontend bun
 
 Device registration accepts a browser-generated 256-bit random credential, binds its SHA-256 hash to the authenticated Appwrite user, and enforces at most three active credentials with a conditional D1 insert. The plaintext credential is never stored in D1 or logs. This limits registered browser credentials; it is not hardware attestation and must not be represented as such.
 
-Production is configured with `PROTECTED_CONTENT_MODE=private-r2-v1`. Both R2 buckets remain private. The membership API performs the authorization checks above before reading protected media; it never exposes the R2 bucket or object key. Public NSFW launch still requires the separate legal/KJM and security sign-off described in this document.
+Production is configured with `PROTECTED_CONTENT_MODE=private-r2-v1`. Both R2
+buckets remain private. The membership API performs the authorization checks
+above before reading protected media; it never exposes the R2 bucket or object
+key. The live service must not be represented as KJM-certified or legally
+approved unless that separate review has actually occurred.
 
 ## Inactive-account deletion
 
@@ -122,9 +156,17 @@ Production is configured with `PROTECTED_CONTENT_MODE=private-r2-v1`. Both R2 bu
 - no administrative, deletion-job or legal hold applies;
 - no completed deletion already exists.
 
-Stage one creates `DELETION_PENDING`, records the cutoff, reason, retention check and `scheduled_at`. Stage two runs after `DELETION_GRACE_DAYS`, rechecks every blocker, deletes provider cases where required, revokes D1 entitlements/devices, deletes the Appwrite Auth user through the private service Worker and then marks the job complete. Provider, D1 or Appwrite failure stops the job and keeps authorization closed.
+Stage one creates `DELETION_PENDING`, records the cutoff, reason, retention
+check and `scheduled_at`. Stage two runs after `DELETION_GRACE_DAYS`, rechecks
+every blocker, deletes remaining private evidence where required, revokes D1
+entitlements and devices, deletes the Appwrite Auth user through the private
+service Worker and then marks the job complete. R2, D1 or Appwrite failure stops
+the job and keeps authorization closed.
 
-## Deployment order
+## Production change and recovery order
+
+The resources below are already active. Use this order for schema changes,
+worker releases or environment reconstruction:
 
 1. Create the D1 database and the two private R2 buckets (`exclusive-content-media` and EU-jurisdiction `exclusive-age-evidence`).
 2. Apply D1 migrations and seed the fixed product catalogue.
@@ -132,18 +174,23 @@ Stage one creates `DELETION_PENDING`, records the cutoff, reason, retention chec
 4. Deploy the private `identity-projection` Worker without a public URL.
 5. Deploy `membership-api` with manual R2 age review, private R2 content delivery and EPC-QR SEPA orders.
 6. Deploy `admin-api` for age decisions, direct creator uploads and N26 CSV settlement matching.
-7. Deploy `maintenance-jobs`, add the daily Cron trigger and disable its public URL.
-8. Point the frontend API configuration at the membership and admin Workers and deploy through Appwrite Sites.
+7. Deploy `maintenance-jobs`, keep the hourly Cron trigger and no public route.
+8. Point the frontend API configuration at the membership and admin Workers and deploy through Cloudflare Pages from GitHub `main`.
 9. Run production positive and negative-path checks for authentication, age evidence, entitlements, settlement, content authorization and admin access.
-10. Disable old Appwrite Functions only after the replacement passes those checks.
-11. Remove obsolete TablesDB and Storage resources only after rollback and retention sign-off.
+10. Confirm that legacy Appwrite Functions remain outside the production call
+    graph.
+11. Remove an obsolete TablesDB, Storage or Function resource only after
+    inventory, retention and deletion review.
 
-Never remove the old server path before the replacement is deployed and validated. Export configuration/schema metadata only; never commit users, rows, files, identity data, secrets or backups.
+Export configuration/schema metadata only; never commit users, rows, files,
+identity data, secrets or backups.
 
 ## Incident response and rollback
 
-- Set provider modes to `disabled` and redeploy to stop new age/payment sessions.
-- Keep membership authorization fail-closed; never bypass D1 because Appwrite or a provider is unavailable.
+- Set age review or checkout mode to `disabled` and redeploy to stop new
+  sensitive cases or orders.
+- Keep membership authorization fail-closed; never bypass D1 because Appwrite,
+  R2 or an internal Worker is unavailable.
 - Revoke compromised credentials, replace Worker secrets and redeploy.
 - For a bad schema rollout, stop writes, restore through the approved Cloudflare backup/recovery procedure, then redeploy the last known-good Worker version.
 - If frontend rollout fails, restore the previous frontend while leaving Cloudflare authorization closed. Registration and recovery remain available through Appwrite.
@@ -153,9 +200,10 @@ Never remove the old server path before the replacement is deployed and validate
 
 As of July 2026, Workers Free includes 100,000 requests/day, 10 ms CPU per invocation, 128 MB memory, 50 external subrequests/invocation and five Cron Triggers/account. D1 Free includes 5 million rows read/day, 100,000 rows written/day and 5 GB total storage. Limits reset at 00:00 UTC; reaching D1 daily limits causes D1 errors, which this system treats as fail-closed.
 
-Upgrade before production if:
+Upgrade or apply traffic controls without delay if:
 
-- traffic or webhook retries can approach 70% of a daily request/read/write limit;
+- traffic, mail or order retries can approach 70% of a daily
+  request/read/write limit;
 - 10 ms CPU is insufficient for signature checks and state transitions;
 - authorization availability cannot tolerate the free plan’s hard daily cutoff;
 - operational requirements need more Cron triggers, longer CPU or paid support.

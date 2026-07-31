@@ -1,20 +1,51 @@
-# Legal notices source research
+# Legal source register
 
-These notes are implementation research only and are not legal advice. They explain why the static legal page remains a placeholder requiring professional review.
+Stand: 31. Juli 2026
 
-## United States oriented obligations
+## Production status
 
-- 18 U.S.C. § 2257 requires covered producers of sexually explicit visual depictions to create and maintain individually identifiable performer records. Source: Cornell Legal Information Institute, 18 U.S.C. § 2257, accessed 2026-07-24.
-- 18 U.S.C. § 2257A covers recordkeeping for simulated sexually explicit conduct. Source: U.S. Code, 18 U.S.C. § 2257A, accessed 2026-07-24.
-- FTC business guidance and negative-option materials emphasize clear, non-deceptive disclosures for pricing, material terms, cancellation and consumer consent. Sources: FTC Business Guidance and Federal Register Negative Option Rule materials, accessed 2026-07-24.
-- US state age-verification laws vary and may require geoblocking or jurisdiction-specific controls. Source: Free Speech Coalition age-verification FAQ, updated July 8, 2026, accessed 2026-07-24.
+The jurisdiction selector and the German/EU and US legal routes are live:
 
-## German / EU oriented obligations
+- `https://exclusive.jason-shadow.com/legal/`
+- `https://exclusive.jason-shadow.com/legal/eu/`
+- `https://exclusive.jason-shadow.com/legal/us/`
 
-- German-facing websites generally need provider identification / Impressum information and GDPR privacy disclosures; exact content depends on the operator. Source research included current German website compliance summaries and should be replaced by counsel-approved text.
-- Adult content must remain unavailable before a reviewed age-verification / closed-user-group process is activated; the site must not claim official approval or certification.
-- From June 19, 2026, German/EU consumer-distance workflows require an electronic withdrawal function for covered online contracts. Sources: Verbraucherzentrale overview and German/EU withdrawal-button legal commentary, accessed 2026-07-24.
+The legal center is no longer a disabled placeholder. Registration, manual
+age verification, SEPA ordering and protected member access are productive.
+Public pages may describe the implemented safeguards but must not claim
+official approval, certification or guaranteed compliance.
 
-## Implementation result
+## German and EU sources
 
-The repository therefore keeps all adult access, registration, manual AVS and payment actions disabled by feature flags and uses legal placeholders such as `[LEGAL_BUSINESS_NAME]` until reviewed.
+- The GDPR governs purpose limitation, data minimization, security, erasure and
+  the data-protection impact assessment. Primary source:
+  [Regulation (EU) 2016/679](https://eur-lex.europa.eu/eli/reg/2016/679/oj).
+- Pornographic content may be made available only in a closed user group that
+  ensures adult-only access under § 4(2) sentence 2 JMStV. Primary source:
+  [§ 4 JMStV](https://www.gesetze-bayern.de/Content/Document/JMStV-4).
+- The KJM describes personal identification and authentication at each access
+  as the linked elements of an adult closed user group. Source:
+  [KJM: unzulässige Inhalte und Altersverifikationssysteme](https://www.kjm-online.de/themen/technischer-jugendmedienschutz/unzulaessige-inhalte/).
+- Provider identification, privacy, contract, withdrawal, pricing and tax
+  disclosures are maintained on the German/EU legal route. Their concrete
+  wording and the electronic withdrawal workflow require continuing legal
+  review when law or business details change.
+
+## United States sources
+
+- Recordkeeping duties for covered producers of depictions of actual sexually
+  explicit conduct are addressed by
+  [18 U.S.C. § 2257](https://uscode.house.gov/view.xhtml?edition=prelim&req=granuleid%3AUSC-prelim-title18-section2257).
+- Federal and state consumer, privacy and age-assurance rules can differ by
+  transaction and user location. The US legal route therefore must be reviewed
+  whenever supported states, content categories or sales processes change.
+- This repository does not assert that the German manual verification process
+  independently satisfies every US state age-verification rule.
+
+## Maintenance rule
+
+Legal text is production content. Changes require source review, a recorded
+effective date, translation review and validation that checkout, email and
+dashboard links still point to the correct jurisdiction. This register records
+technical source research and is not legal advice or evidence of external
+legal approval.

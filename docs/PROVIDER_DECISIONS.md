@@ -1,6 +1,8 @@
 # Provider and processing decisions
 
-The production design deliberately uses no third-party age-verification or payment provider. Cloudflare supplies the runtime, D1 and private R2 storage; Appwrite supplies browser authentication and the public site.
+The production design deliberately uses no third-party age-verification or
+payment provider. Cloudflare supplies Pages delivery, Workers, D1 and private
+R2 storage; Appwrite supplies browser authentication.
 
 ## Transactional email
 
@@ -20,7 +22,11 @@ Only an Appwrite user carrying the `admin` label and a device-bound admin sessio
 
 Evidence and its upload metadata are deleted immediately after a decision. Unreviewed evidence is deleted after the 48-hour review deadline in the next hourly maintenance run. The paper challenge and full checklist are cleared with the decision; reviewer identity, free-text reason and country snapshot are minimized after 30 days.
 
-This is an internal workflow, not a claim of automatic KJM approval or legal sufficiency for every jurisdiction. The current assessment is documented in [DATENSCHUTZ-FOLGENABSCHAETZUNG.md](DATENSCHUTZ-FOLGENABSCHAETZUNG.md). Obtain German youth-protection/privacy counsel and complete the KJM, instruction and production security reviews before representing the process as legally approved.
+This productive internal workflow is not a claim of automatic KJM approval or
+legal sufficiency for every jurisdiction. The current assessment is documented
+in [DATENSCHUTZ-FOLGENABSCHAETZUNG.md](DATENSCHUTZ-FOLGENABSCHAETZUNG.md).
+Youth-protection, privacy and KJM reviews remain ongoing compliance tasks and
+must be completed before the process is represented as legally approved.
 
 ## SEPA
 

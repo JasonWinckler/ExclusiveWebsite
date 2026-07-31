@@ -1,15 +1,28 @@
-# Appwrite server Functions: legacy rollback status
+# Appwrite Server Functions: produktiver Legacy-Status
 
-Appwrite is now the authentication boundary only. The frontend must use Appwrite Accounts for registration, email verification, login, recovery and sessions; it must not use Functions, TablesDB or Storage for membership authorization or identity-document upload.
+Appwrite is the production authentication boundary. The frontend uses Appwrite
+Accounts for identity and sessions, while branded verification and recovery are
+coordinated through Cloudflare and the private Identity Worker. Appwrite
+Functions, TablesDB and Storage are not used for membership authorization or
+identity-document upload.
 
-The Function source under `appwrite/functions/` is retained temporarily for rollback inspection. It is not the target architecture.
+The source under `appwrite/functions/` is retained as historical rollback and
+migration material. It is not called by the production frontend and must not be
+re-enabled as an alternate authorization path.
 
-Do not remove deployed `account-provisioning` or `age-verification-finalize` until all of the following are true:
+The Cloudflare replacement has passed the production gates that originally
+controlled the migration:
 
-1. Production Cloudflare Workers and D1 migrations are deployed.
-2. Registration and login still work through Appwrite Auth.
-3. Membership status, hosted verification, verified payment webhooks, entitlement expiry and inactive deletion pass production checks.
-4. Negative authorization tests prove that labels, redirects and browser-submitted identifiers cannot grant access.
-5. Retention and rollback requirements for existing TablesDB rows and Storage files are resolved.
+1. Cloudflare Workers and D1 migrations are deployed.
+2. Registration and login use Appwrite Auth.
+3. Membership, manual age review, verified SEPA settlement, entitlement expiry
+   and deletion run through Cloudflare.
+4. Negative authorization tests prevent labels, redirects or browser-submitted
+   identifiers from granting access.
 
-After those gates pass, disable the old Functions first, monitor, then remove their deployments and obsolete environment variables. Remove obsolete TablesDB and Storage resources only after confirming that no production data needs migration or legally compliant deletion. Never remove Auth users, required Web platforms, verification redirects or recovery configuration.
+If obsolete Function deployments, TablesDB databases or Storage buckets still
+exist in Appwrite, treat their removal as a separate controlled cleanup:
+inventory first, confirm that the production frontend has no dependency,
+resolve retention or deletion duties, disable before deletion and record the
+result. Never remove Auth users, required Web platforms or the Appwrite
+configuration used by the private Identity Worker.

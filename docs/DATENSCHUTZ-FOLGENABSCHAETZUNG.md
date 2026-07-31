@@ -1,8 +1,12 @@
 # Datenschutz-Folgenabschätzung: manuelle Altersverifikation
 
-Version: 1.0
+Version: 1.1
 
 Stand: 31. Juli 2026
+
+Betriebsstatus: produktiv eingesetzt
+
+Änderungsgrund: Abgleich mit der bereits aktiven Produktionsarchitektur
 
 Verantwortlicher: Jason Winckler, handelnd unter Jason Shadow
 
@@ -68,12 +72,14 @@ bewertet werden.
 
 ## 4. Rechtsgrundlage und Erforderlichkeit
 
-Die konkrete Rechtsgrundlage ist vor Produktivbetrieb mit deutschem
-Medien- und Datenschutzrecht fachlich zu bestätigen. Als Ausgangspunkt kommen
-insbesondere die Erfüllung gesetzlicher Jugendschutzpflichten nach Artikel 6
-Absatz 1 Buchstabe c DSGVO in Verbindung mit § 4 Absatz 2 Satz 2 JMStV sowie,
-soweit einschlägig, berechtigte Interessen nach Artikel 6 Absatz 1 Buchstabe f
-DSGVO in Betracht.
+Der Verantwortliche betreibt das Verfahren zur Erfüllung der
+Jugendschutzpflichten für die geschlossene Benutzergruppe. Die dokumentierte
+rechtliche Ausgangsbasis sind insbesondere Artikel 6 Absatz 1 Buchstabe c
+DSGVO in Verbindung mit § 4 Absatz 2 Satz 2 JMStV sowie, soweit für einzelne
+begleitende Verarbeitungen einschlägig, Artikel 6 Absatz 1 Buchstabe f DSGVO.
+Die genaue Zuordnung jeder Verarbeitung und die fortlaufende Berücksichtigung
+von Rechtsänderungen bleiben Gegenstand der laufenden fachlichen
+Compliance-Prüfung.
 
 Die KJM verlangt für pornografische Inhalte eine geschlossene Benutzergruppe
 mit miteinander verbundener persönlicher Identifizierung und Authentifizierung
@@ -130,9 +136,11 @@ sie sind soweit möglich zu trennen und zu pseudonymisieren.
 - Appwrite ausschließlich für Authentifizierung und Sitzungen.
 
 Appwrite und Microsoft erhalten keine Ausweis- oder Videonachweise aus diesem
-Prozess. Vor Produktivbetrieb müssen gültige Auftragsverarbeitungsverträge,
+Prozess. Im Produktivbetrieb sind gültige Auftragsverarbeitungsverträge,
 Unterauftragnehmer, Speicherorte und gegebenenfalls eingesetzte
-Übermittlungsinstrumente dokumentiert und regelmäßig überprüft werden.
+Übermittlungsinstrumente im nicht öffentlichen Compliance-Register
+nachzuweisen und regelmäßig zu überprüfen. Diese öffentliche DSFA enthält
+keine Vertragskopien und bestätigt deren Abschluss nicht eigenständig.
 
 ## 8. Technische und organisatorische Maßnahmen
 
@@ -180,25 +188,31 @@ Bei Auskunfts- oder Löschanfragen dürfen keine neuen ungeschwärzten
 Ausweiskopien per E-Mail angefordert oder versendet werden. Eine erneute
 Identitätsprüfung muss verhältnismäßig und über den geschützten Prozess erfolgen.
 
-## 11. Ergebnis und Freigabebedingungen
+## 11. Ergebnis und laufende Betriebsauflagen
 
-Die Verarbeitung kann technisch nur unter den in dieser DSFA beschriebenen
-Kontrollen verantwortet werden. Das verbleibende Risiko ist insbesondere wegen
-des eigenentwickelten Identifizierungsverfahrens, möglicher Kontoweitergabe und
-der Sensibilität vollständiger Dokumentaufnahmen nicht null.
+Das Verfahren ist produktiv aktiv. Die Verarbeitung ist technisch nur unter
+den in dieser DSFA beschriebenen Kontrollen vertretbar. Das verbleibende Risiko
+ist insbesondere wegen des eigenentwickelten Identifizierungsverfahrens,
+möglicher Kontoweitergabe und der Sensibilität vollständiger
+Dokumentaufnahmen nicht null. Abweichungen von Löschfristen,
+Zugriffsbeschränkungen oder Fail-closed-Autorisierung sind als
+Sicherheitsvorfall zu behandeln.
 
-Vor einer Aussage wie „KJM-konform“, „zertifiziert“ oder „rechtlich garantiert“
-sind mindestens erforderlich:
+Der Produktivstatus ist keine Aussage wie „KJM-konform“, „zertifiziert“ oder
+„rechtlich garantiert“. Für eine solche Außendarstellung sind mindestens
+erforderlich:
 
 1. fachanwaltliche Prüfung von Rechtsgrundlage, JMStV-Konzept,
    Dokument-Schwärzung und Datenschutzhinweisen;
 2. Bewertung, ob eine KJM-Positivbewertung des Gesamtkonzepts beantragt wird;
 3. dokumentierte Prüfung der Cloudflare- und Appwrite-Verträge und
    Datenübermittlungen;
-4. verpflichtende MFA für den Adminzugang;
+4. nachweisbar aktivierte MFA für den Adminzugang;
 5. regelmäßiger Löschtest einschließlich absichtlich simulierter R2-Fehler.
 
-Die DSFA ist mindestens jährlich und zusätzlich bei neuen Datenarten,
+Diese Punkte sind laufende Betriebs- und Nachweispflichten; sie beschreiben
+keinen zukünftigen Launch. Die DSFA ist mindestens jährlich und zusätzlich bei
+neuen Datenarten,
 Dienstleistern, automatisierter Biometrie, geänderter Authentifizierung,
 Sicherheitsvorfällen oder wesentlichen Rechtsänderungen zu aktualisieren.
 

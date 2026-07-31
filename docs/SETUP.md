@@ -1,9 +1,12 @@
-# Production setup
+# Production configuration
+
+This document records the active production baseline. It is also the
+reconstruction checklist for preview or disaster-recovery environments.
 
 ## Appwrite
 
 Appwrite owns registration, login, E-Mail-Status, JWTs, MFA and Sitzungen.
-Required production settings:
+Active production requirements:
 
 - project endpoint `https://fra.cloud.appwrite.io/v1`;
 - production domain and deployment hosts as Web platforms;
@@ -18,7 +21,7 @@ canonical membership backend.
 
 ## Cloudflare
 
-Required resources:
+Active resources:
 
 - D1 membership database with every migration in `cloudflare/migrations`;
 - private R2 bucket `exclusive-age-evidence` with EU jurisdiction;
@@ -42,7 +45,7 @@ Production modes:
 The maintenance Worker runs hourly and enforces expirations, evidence deletion,
 decision-metadata minimization, email retries and audit retention.
 
-## Release validation
+## Change validation
 
 ```sh
 cd cloudflare
@@ -52,6 +55,6 @@ cd ..
 npm run build
 ```
 
-After deployment verify Worker health, D1 migrations, private R2 access,
+For every production change, verify Worker health, D1 migrations, private R2 access,
 registration/login, negative authorization paths, admin-session expiry,
 age-evidence deletion and account-erasure retention.
