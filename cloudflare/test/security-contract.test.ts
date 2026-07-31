@@ -320,6 +320,9 @@ describe("browser and repository security contract", () => {
     const legacySubjectMigration = read(
       "cloudflare/migrations/0020_backfill_legacy_audit_subjects.sql",
     );
+    const orphanedAuditMigration = read(
+      "cloudflare/migrations/0021_purge_orphaned_legacy_audits.sql",
+    );
     const admin = read("cloudflare/src/workers/admin-api.ts");
     const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
     const maintenanceConfig = read("cloudflare/wrangler.maintenance-jobs.jsonc");
@@ -330,6 +333,9 @@ describe("browser and repository security contract", () => {
     expect(legacySubjectMigration).toContain("APPWRITE_SESSION");
     expect(legacySubjectMigration).toContain("CONTENT_COMMENT");
     expect(legacySubjectMigration).toContain("audit-retention-delete");
+    expect(orphanedAuditMigration).toContain("DELETE FROM admin_audit_events");
+    expect(orphanedAuditMigration).toContain("subject_appwrite_user_id IS NULL");
+    expect(orphanedAuditMigration).toContain("NOT EXISTS");
     expect(maintenanceConfig).toMatch(/"AUDIT_RETENTION_DAYS": "730"/);
     expect(maintenance).toContain("parsePositiveInt(env.AUDIT_RETENTION_DAYS, 730, 730)");
     expect(maintenance).toContain("subject_erasure_due_at <= ?");
