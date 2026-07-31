@@ -33,6 +33,9 @@ const text = {
     resetSetup: "Einrichtung neu starten",
     incomplete: "Eine frühere Einrichtung wurde nicht abgeschlossen.",
     loading: "Sicherheitsstatus wird geladen …",
+    requiredEyebrow: "VERPFLICHTENDER ADMINSCHUTZ",
+    requiredIntro: "Bevor du den Admin-Bereich öffnen kannst, richte eine Authenticator-App ein. Diese zusätzliche Absicherung ist für jedes Admin-Konto verpflichtend.",
+    continueAdmin: "Recovery-Codes gesichert – Admin-Bereich öffnen",
   },
   en: {
     eyebrow: "OPTIONAL ACCOUNT PROTECTION",
@@ -59,16 +62,20 @@ const text = {
     resetSetup: "Restart setup",
     incomplete: "A previous setup was not completed.",
     loading: "Loading security status …",
+    requiredEyebrow: "REQUIRED ADMIN PROTECTION",
+    requiredIntro: "Before you can open the admin area, set up an authenticator app. This additional protection is required for every administrator account.",
+    continueAdmin: "Recovery codes saved — open admin area",
   },
 };
 
-export default function MfaPanel({ language, user, onUserUpdate }) {
+export default function MfaPanel({ language, user, onUserUpdate, required = false }) {
   const t = text[language] || text.de;
   const [status, setStatus] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
   const [qrCode, setQrCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState([]);
   const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+  const [pendingUser, setPendingUser] = useState(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(true);
@@ -140,7 +147,8 @@ export default function MfaPanel({ language, user, onUserUpdate }) {
         user: result.user,
       }));
       setEnrollment(null);
-      onUserUpdate?.(result.user);
+      setPendingUser(result.user);
+      if (!required) onUserUpdate?.(result.user);
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language));
     } finally {
@@ -195,9 +203,9 @@ export default function MfaPanel({ language, user, onUserUpdate }) {
       <div className="security-card__heading">
         <span className={`security-status-dot${status?.enabled ? " is-active" : ""}`} aria-hidden="true" />
         <div>
-          <p className="eyebrow">{t.eyebrow}</p>
+          <p className="eyebrow">{required ? t.requiredEyebrow : t.eyebrow}</p>
           <h3>{t.title}</h3>
-          <p>{t.intro}</p>
+          <p>{required ? t.requiredIntro : t.intro}</p>
         </div>
         <strong className={`status-chip${status?.enabled ? " is-active" : ""}`}>
           {status?.enabled ? t.active : t.inactive}
@@ -264,15 +272,20 @@ export default function MfaPanel({ language, user, onUserUpdate }) {
           <span>{t.saved}</span>
         </label>
         {recoveryConfirmed && <p className="form-notice" role="status">{t.done}</p>}
+        {required && recoveryConfirmed && pendingUser && (
+          <button className="primary-action" type="button" onClick={() => onUserUpdate?.(pendingUser)}>
+            {t.continueAdmin}
+          </button>
+        )}
       </section>}
 
-      {status?.enabled && recoveryCodes.length === 0 && !confirmDisable && (
+      {!required && status?.enabled && recoveryCodes.length === 0 && !confirmDisable && (
         <button className="danger-action" type="button" disabled={busy} onClick={() => setConfirmDisable(true)}>
           {t.disable}
         </button>
       )}
 
-      {status?.enabled && confirmDisable && <div className="security-confirmation">
+      {!required && status?.enabled && confirmDisable && <div className="security-confirmation">
         <p>{t.disableQuestion}</p>
         <div>
           <button className="secondary-action" type="button" onClick={() => setConfirmDisable(false)}>{t.keep}</button>

@@ -15,7 +15,7 @@
     "traces": { "enabled": true, "head_sampling_rate": 0.01 }
   },
   "vars": {
-    "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+    "APPWRITE_ENDPOINT": "https://auth-exclusive.jason-shadow.com/v1",
     "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
     "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
     "MAX_UPSTREAM_JSON_BYTES": "65536"
@@ -24,7 +24,7 @@
     "preview": {
       "name": "exclusive-identity-projection-preview",
       "vars": {
-        "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+        "APPWRITE_ENDPOINT": "https://auth-exclusive.jason-shadow.com/v1",
         "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
         "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
         "MAX_UPSTREAM_JSON_BYTES": "65536"

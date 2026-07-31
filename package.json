@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/prepare-appwrite-site.js && npm run build:appwrite && node scripts/check-bundle-budget.js",
+    "build": "node scripts/generate-sitemap.js && node scripts/prepare-appwrite-site.js && npm run build:appwrite && node scripts/check-bundle-budget.js",
     "preview": "http-server dist",
     "cloudflare:install": "npm --prefix cloudflare install",
     "cloudflare:check": "npm --prefix cloudflare run check",

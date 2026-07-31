@@ -16,7 +16,7 @@
     "deploy:maintenance": "wrangler deploy --config wrangler.maintenance-jobs.jsonc"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260726.1",
+    "@cloudflare/workers-types": "5.20260731.1",
     "@types/node": "26.1.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10",

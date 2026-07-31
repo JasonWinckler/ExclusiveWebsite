@@ -21,7 +21,7 @@ technical safeguards accurately.
   API, and subject to the documented immediate/48-hour deletion process.
 - Audit events are retained for at most 730 days and at most 30 days after the
   affected account is deleted.
-- Do not add external analytics, advertising pixels, social-media pixels, or unnecessary cookies.
+- Do not add advertising pixels, social-media pixels, cross-site identifiers or unnecessary cookies. Cloudflare Web Analytics is permitted only in its cookieless, aggregate configuration and must not receive age evidence, payment details or authenticated API payloads.
 
 ## Implementation notes
 - Preserve the dark red/ember/gold visual design.

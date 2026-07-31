@@ -32,6 +32,7 @@ export interface AppwriteUser {
   emailVerification: boolean;
   status: boolean;
   labels: string[];
+  mfa?: boolean;
   accessedAt?: string;
 }
 
@@ -40,6 +41,7 @@ export interface AuthenticatedIdentity {
   email: string;
   displayName: string;
   emailVerified: boolean;
+  mfaEnabled: boolean;
   labels: readonly string[];
   appwriteAccessedAt: string | null;
 }

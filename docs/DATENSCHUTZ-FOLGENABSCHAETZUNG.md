@@ -40,9 +40,10 @@ Zwecke verwendet werden.
 5. Die Nachweise werden unter zufälligen Objektschlüsseln in einem privaten
    Cloudflare-R2-Bucket mit EU-Jurisdiktion gespeichert. Es existiert keine
    öffentliche Bucket- oder Objekt-URL.
-6. Nur ein von Appwrite als Administrator authentifizierter Nutzer mit einer
-   zusätzlichen, gerätegebundenen Admin-Sitzung kann einen aktiven Prüffall
-   öffnen. Diese Sitzung ist höchstens zehn Minuten gültig.
+6. Nur ein von Appwrite als Administrator authentifizierter Nutzer mit
+   aktiviertem TOTP-MFA und einer zusätzlichen, gerätegebundenen Admin-Sitzung
+   kann einen aktiven Prüffall öffnen. Diese Sitzung ist höchstens zehn Minuten
+   gültig.
 7. Der Administrator vergleicht Dokument, Gesicht, Einmalcode,
    Bewegungsabfolge, Dokumentgültigkeit und Volljährigkeit.
 8. Nach der Entscheidung werden R2-Objekte und die zugehörigen
@@ -136,11 +137,13 @@ sie sind soweit möglich zu trennen und zu pseudonymisieren.
 ## 7. Empfänger und Auftragsverarbeiter
 
 - Jason Winckler als alleiniger berechtigter Betreiber und Prüfer;
-- Cloudflare als Infrastruktur- und Auftragsverarbeiter für Workers, D1 und R2;
+- Cloudflare als Infrastruktur- und Auftragsverarbeiter für Pages, Workers, D1,
+  R2 und cookiefreie aggregierte Webanalyse;
 - Appwrite ausschließlich für Authentifizierung und Sitzungen.
 
 Appwrite und Microsoft erhalten keine Ausweis- oder Videonachweise aus diesem
-Prozess. Im Produktivbetrieb sind gültige Auftragsverarbeitungsverträge,
+Prozess. Auch die Webanalyse erhält keine Nachweise, Zahlungsdetails oder
+authentifizierten API-Antworten. Im Produktivbetrieb sind gültige Auftragsverarbeitungsverträge,
 Unterauftragnehmer, Speicherorte und gegebenenfalls eingesetzte
 Übermittlungsinstrumente im internen Verfahrensregister dokumentiert und
 werden regelmäßig überprüft. Vertragskopien werden aus Vertraulichkeits- und
@@ -150,7 +153,7 @@ Datensparsamkeitsgründen nicht im öffentlichen Repository veröffentlicht.
 
 - TLS, HSTS, restriktive Content-Security-Policy und `no-store`-Antworten;
 - privater R2-Bucket ohne öffentliche Entwicklungs- oder Custom-Domain;
-- serverseitige Appwrite-JWT-Prüfung und `admin`-Rollenprüfung;
+- serverseitige Appwrite-JWT-, `admin`-Rollen- und MFA-Prüfung;
 - zusätzliche kryptografische Admin-Sitzung, an Nutzer und Geräte-Token
   gebunden, maximal zehn Minuten;
 - Abruf nur für aktive, fristgerechte und prüfbereite Fälle;
@@ -161,8 +164,8 @@ Datensparsamkeitsgründen nicht im öffentlichen Repository veröffentlicht.
 - Auditierung jedes Nachweisabrufs;
 - unmittelbare Löschung nach Entscheidung sowie stündlicher Retry-Pfad;
 - Fail-closed-Zugriff: Backend- oder Identitätsfehler gewähren keinen Zugang;
-- gerätegebundene Nutzeranmeldung, maximal drei registrierte Geräte und
-  optionale MFA.
+- gerätegebundene Nutzeranmeldung, maximal drei registrierte Geräte, optionale
+  Nutzer-MFA und verpflichtende Admin-MFA.
 
 ## 9. Risikobewertung
 

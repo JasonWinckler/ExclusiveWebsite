@@ -2783,7 +2783,42 @@ body.adult-site summary:focus-visible {
   outline-offset:3px;
 }
 
-/* Optional account MFA */
+/* Account and mandatory administrator MFA */
+.admin-mfa-gate {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px,4vw,56px);
+  background:
+    radial-gradient(circle at 18% 10%,rgba(199,48,27,.22),transparent 34%),
+    radial-gradient(circle at 88% 86%,rgba(248,215,164,.1),transparent 30%),
+    #0d0005;
+}
+.admin-mfa-gate__panel {
+  width: min(100%,920px);
+  display: grid;
+  gap: 22px;
+  padding: clamp(20px,4vw,42px);
+  border: 1px solid rgba(248,215,164,.3);
+  border-radius: 30px;
+  background: rgba(30,0,11,.93);
+  box-shadow: 0 28px 90px rgba(0,0,0,.48);
+}
+.admin-mfa-gate__intro {
+  display: grid;
+  grid-template-columns: 82px minmax(0,1fr);
+  gap: 20px;
+  align-items: center;
+}
+.admin-mfa-gate__intro img {
+  width: 82px;
+  aspect-ratio: 1;
+  border: 2px solid rgba(248,215,164,.6);
+  border-radius: 50%;
+  object-fit: cover;
+}
+.admin-mfa-gate__intro h1 { margin: 4px 0 8px; }
+.admin-mfa-gate__intro p { margin: 0; }
 .security-settings {
   display: grid;
   gap: 18px;
@@ -2892,6 +2927,11 @@ body.adult-site summary:focus-visible {
 }
 
 @media(max-width: 640px) {
+  .admin-mfa-gate__intro {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .admin-mfa-gate__intro img { justify-self: center; }
   .security-card__heading {
     grid-template-columns: auto minmax(0,1fr);
   }

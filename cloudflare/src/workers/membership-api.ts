@@ -3224,7 +3224,31 @@ async function requestDeletion(
   };
 }
 
-async function route(request: Request, env: MembershipEnv): Promise<Response> {
+function productCatalogCacheKey(request: Request, locale: "de" | "en", origin: string | null): Request {
+  const url = new URL(request.url);
+  url.pathname = "/__edge-cache/products";
+  url.search = new URLSearchParams({
+    locale,
+    origin: origin ?? "direct",
+  }).toString();
+  return new Request(url.toString(), { method: "GET" });
+}
+
+function withRequestId(response: Response, correlationId: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", correlationId);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function route(
+  request: Request,
+  env: MembershipEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const requestUrl = new URL(request.url);
   const origins = allowedOrigins(env.SITE_ORIGINS);
   if (request.method === "OPTIONS") return preflight(request, origins);
@@ -3233,17 +3257,32 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     return jsonResponse({ status: "ok" }, { origin, origins, requestId: correlationId });
   }
+  if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
+    const locale = requestUrl.searchParams.get("locale") === "en" ? "en" : "de";
+    const cacheKey = productCatalogCacheKey(request, locale, origin);
+    const edgeCache = await caches.open("exclusive-products-v1");
+    const cached = await edgeCache.match(cacheKey);
+    if (cached) return withRequestId(cached, correlationId);
+    await enforceRateLimit(
+      env.USER_RATE_LIMITER,
+      request.headers.get("CF-Connecting-IP") ?? "unknown",
+    );
+    const result = await listProducts(
+      env,
+      locale,
+    );
+    const cacheable = jsonResponse(result, { origin, origins });
+    cacheable.headers.set(
+      "Cache-Control",
+      "public, max-age=300, s-maxage=900, stale-while-revalidate=86400",
+    );
+    ctx.waitUntil(edgeCache.put(cacheKey, cacheable.clone()));
+    return withRequestId(cacheable, correlationId);
+  }
   await enforceRateLimit(
     env.USER_RATE_LIMITER,
     request.headers.get("CF-Connecting-IP") ?? "unknown",
   );
-  if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
-    const result = await listProducts(
-      env,
-      requestUrl.searchParams.get("locale") === "en" ? "en" : "de",
-    );
-    return jsonResponse(result, { origin, origins, requestId: correlationId });
-  }
   if (request.method === "POST" && requestUrl.pathname === "/v1/auth/password-reset/request") {
     if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
       throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
@@ -3375,12 +3414,12 @@ async function route(request: Request, env: MembershipEnv): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: MembershipEnv): Promise<Response> {
+  async fetch(request: Request, env: MembershipEnv, ctx: ExecutionContext): Promise<Response> {
     const origins = allowedOrigins(env.SITE_ORIGINS);
     const origin = request.headers.get("Origin");
     const correlationId = requestId(request);
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "INTERNAL_ERROR";
       logEvent(error instanceof ApiError && error.status < 500 ? "warn" : "error", "membership_request_failed", {

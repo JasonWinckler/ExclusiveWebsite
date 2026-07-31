@@ -65,10 +65,41 @@ describe("Appwrite JWT authentication", () => {
       emailVerification: true,
       status: true,
       labels: ["age_verified", "active_vip"],
+      mfa: false,
       accessedAt: "2026-07-01T00:00:00.000Z",
     })));
     await expect(authenticateAdministrator(request(), env(), "admin"))
       .rejects.toMatchObject({ status: 403, code: "ADMINISTRATOR_REQUIRED" });
+  });
+
+  it("requires MFA for an administrator", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      $id: "admin-a",
+      email: "admin@example.test",
+      name: "Administrator",
+      emailVerification: true,
+      status: true,
+      labels: ["admin"],
+      mfa: false,
+      accessedAt: "2026-07-01T00:00:00.000Z",
+    })));
+    await expect(authenticateAdministrator(request(), env(), "admin"))
+      .rejects.toMatchObject({ status: 403, code: "ADMIN_MFA_REQUIRED" });
+  });
+
+  it("authorizes an administrator with MFA enabled", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      $id: "admin-a",
+      email: "admin@example.test",
+      name: "Administrator",
+      emailVerification: true,
+      status: true,
+      labels: ["admin"],
+      mfa: true,
+      accessedAt: "2026-07-01T00:00:00.000Z",
+    })));
+    await expect(authenticateAdministrator(request(), env(), "admin"))
+      .resolves.toMatchObject({ userId: "admin-a", mfaEnabled: true });
   });
 
   it("fails closed when Appwrite cannot be reached", async () => {

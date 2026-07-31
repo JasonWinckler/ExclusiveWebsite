@@ -15,10 +15,11 @@ Die Admin-API verlangt bei jeder geschützten Anfrage:
 
 1. ein gültiges, serverseitig geprüftes Appwrite-JWT;
 2. das Appwrite-Label `admin`;
-3. eine zusätzliche zufällige Admin-Sitzung;
-4. dass diese Sitzung demselben Administrator und Geräte-Token zugeordnet ist;
-5. dass die höchstens zehn Minuten lange Sitzung noch gültig ist;
-6. einen erlaubten Origin.
+3. in Appwrite aktivierte Multi-Faktor-Authentifizierung;
+4. eine zusätzliche zufällige Admin-Sitzung;
+5. dass diese Sitzung demselben Administrator und Geräte-Token zugeordnet ist;
+6. dass die höchstens zehn Minuten lange Sitzung noch gültig ist;
+7. einen erlaubten Origin.
 
 Altersnachweise sind nur während eines aktiven, eingereichten und noch nicht
 abgelaufenen Prüffalls abrufbar. Größe und ETag des privaten R2-Objekts werden
@@ -36,8 +37,12 @@ wird protokolliert und die Browser-Vorschau wird automatisch geschlossen.
 - Fail-closed-Autorisierung bei Appwrite-, D1- oder Workerfehlern;
 - maximal drei registrierte Geräte; Geräte können abgemeldet oder gesperrt
   werden;
-- MFA ist für Nutzer optional und für das Administratorkonto organisatorisch
-  verpflichtend zu aktivieren.
+- MFA ist für Nutzer optional. Admins werden vor dem ersten Zugriff zur
+  TOTP-Einrichtung gezwungen; die Admin-API prüft den MFA-Status zusätzlich
+  serverseitig und verweigert den Zugriff ohne MFA.
+- Cloudflare Web Analytics misst ausschließlich cookiefreie, aggregierte
+  Seiten- und Leistungsdaten; Werbe-, Profiling- und Social-Media-Pixel bleiben
+  ausgeschlossen.
 
 Sicherheitsvorfälle sind anhand der
 [Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md) sowie der

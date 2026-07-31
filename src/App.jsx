@@ -1840,6 +1840,24 @@ export default function App() {
     }
   };
 
+  if (isAdmin && user?.mfa !== true) return <main className="admin-mfa-gate">
+    <section className="admin-mfa-gate__panel">
+      <div className="admin-mfa-gate__intro">
+        <img src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" width="1536" height="1536" />
+        <div>
+          <p className="eyebrow">{language === "de" ? "ADMIN SECURITY" : "ADMIN SECURITY"}</p>
+          <h1>{language === "de" ? "Schütze deinen Admin-Zugang" : "Protect your admin access"}</h1>
+          <p>{language === "de"
+            ? "Für den Zugriff auf sensible Verwaltungsfunktionen ist eine Authenticator-App verpflichtend. Die Einrichtung dauert nur wenige Minuten."
+            : "An authenticator app is required before sensitive administration features can be accessed. Setup only takes a few minutes."}</p>
+        </div>
+      </div>
+      <MfaPanel language={language} user={user} onUserUpdate={setUser} required />
+      <button className="secondary-action" type="button" disabled={busy} onClick={handleAdminLogout}>
+        {language === "de" ? "Abmelden" : "Sign out"}
+      </button>
+    </section>
+  </main>;
   if (isAdmin) return <React.Suspense fallback={<p className="app-loading">{ui.adminRedirect}</p>}>
     <AdminPortal user={user} language={language} setLanguage={setLanguage} onLogout={handleAdminLogout} />
   </React.Suspense>;

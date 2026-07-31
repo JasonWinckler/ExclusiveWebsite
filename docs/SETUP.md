@@ -8,7 +8,8 @@ reconstruction checklist for preview or disaster-recovery environments.
 Appwrite owns registration, login, E-Mail-Status, JWTs, MFA and Sitzungen.
 Active production requirements:
 
-- project endpoint `https://fra.cloud.appwrite.io/v1`;
+- verified first-party project endpoint
+  `https://auth-exclusive.jason-shadow.com/v1` (CNAME at Namecheap, Appwrite-managed TLS);
 - production domain and deployment hosts as Web platforms;
 - password minimum eight characters with at least one special character;
 - password dictionary and personal-data checks enabled;

@@ -7,7 +7,7 @@ import {
 } from "appwrite";
 
 export const appwriteConfig = Object.freeze({
-  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://fra.cloud.appwrite.io/v1",
+  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://auth-exclusive.jason-shadow.com/v1",
   projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || "6a64cbeb0009826c9efc",
 });
 

@@ -104,6 +104,7 @@ export async function authenticateUser(
     email: user.email,
     displayName: user.name || "",
     emailVerified: user.emailVerification === true,
+    mfaEnabled: user.mfa === true,
     labels: Object.freeze([...user.labels]),
     appwriteAccessedAt: trustedIso(user.accessedAt),
   };
@@ -130,6 +131,9 @@ export async function authenticateAdministrator(
   const identity = await authenticateUser(request, env, { requireVerifiedEmail: true });
   if (!identity.labels.includes(adminLabel)) {
     throw new ApiError(403, "ADMINISTRATOR_REQUIRED");
+  }
+  if (!identity.mfaEnabled) {
+    throw new ApiError(403, "ADMIN_MFA_REQUIRED");
   }
   return identity;
 }
