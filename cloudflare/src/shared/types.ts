@@ -93,7 +93,6 @@ export interface AdminEnv extends BaseEnv {
   LABEL_SYNC_SERVICE_SECRET: string;
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
-  AGE_EVIDENCE_RETENTION_DAYS?: string;
   AGE_APPROVAL_VALID_DAYS?: string;
   ADMIN_SESSION_MINUTES?: string;
   N26_CSV_IMPORT_MODE?: string;

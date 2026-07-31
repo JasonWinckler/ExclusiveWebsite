@@ -1,18 +1,45 @@
-# DATA DELETION
+# Datenlöschung und Aufbewahrung
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+## Grundsätze
 
-## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
+Personenbezogene Daten werden zweckgebunden, getrennt nach Datenart und nur so
+lange gespeichert, wie dies für Betrieb, Sicherheit oder gesetzliche
+Aufbewahrung erforderlich ist. Eine Kontolöschung entzieht Zugriffe sofort und
+löscht oder anonymisiert nicht aufbewahrungspflichtige Daten.
 
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
+## Altersnachweise
 
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+- Uploadfenster: höchstens 60 Minuten.
+- Manuelle Prüfung: höchstens 48 Stunden ab Einreichung.
+- Entscheidung: R2-Dateien und Upload-Metadaten werden unmittelbar gelöscht.
+- Fristablauf: Löschung im nächsten stündlichen Wartungslauf.
+- Einmalcode und Checkliste: Löschung mit Entscheidung oder Ablauf.
+- Reviewer, Freitext und Länder-Snapshot: Minimierung nach 30 Tagen.
+
+Eine fehlgeschlagene R2-Löschung markiert den Vorgang als fehlerhaft. Der
+stündliche Wartungsjob versucht die Löschung erneut; eine Freigabe macht den
+Nachweis nicht öffentlich.
+
+## Auditereignisse
+
+- allgemeine Höchstfrist: 730 Tage;
+- Ereignisse, die einen gelöschten Nutzer betreffen: höchstens 30 Tage nach
+  Accountlöschung;
+- Ereignisse eines gelöschten Administratorkontos: ebenfalls höchstens 30 Tage;
+- die kontobezogene Frist hat Vorrang vor der allgemeinen Frist.
+
+## Kontolöschung
+
+Nutzer und Administrator können eine zweistufig bestätigte Löschung auslösen.
+Der Prozess löscht Appwrite-Authkonto, Sitzungen, Geräte, Kommentare,
+Authentifizierungs-Tokens und Altersnachweise. Das D1-Profil wird anonymisiert.
+Gesetzlich notwendige Rechnungs- und Zahlungsdaten werden getrennt
+weitergespeichert und soweit möglich pseudonymisiert.
+
+Administrative oder gesetzliche Holds blockieren eine automatische Löschung.
+Eine manuelle Betroffenenlöschung darf nur blockiert werden, wenn eine
+dokumentierte Rechtsgrundlage die Aufbewahrung tatsächlich verlangt.
+
+Siehe auch
+[Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md) und
+[Altersverifikation](AGE_VERIFICATION.md).

@@ -1,18 +1,17 @@
-# BACKUP AND RESTORE
+# Backup und Wiederherstellung
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+- Quellcode und Konfiguration ohne Secrets werden über Git versioniert.
+- D1-Wiederherstellung darf nur über die genehmigten Cloudflare-Funktionen
+  erfolgen und muss Retention- und Löschfristen respektieren.
+- Altersnachweise werden nicht als langfristige Backups exportiert. Sie müssen
+  nach Entscheidung beziehungsweise Fristablauf auch aus temporären
+  Wiederherstellungspfaden entfernt bleiben.
+- Private R2-Objekte dürfen nicht in lokale Entwicklerbackups, GitHub-Artefakte
+  oder Supportarchive kopiert werden.
+- Secrets, Appwrite-API-Keys und Microsoft-Graph-Zugangsdaten werden getrennt
+  rotiert und niemals aus Git wiederhergestellt.
+- Nach einer Wiederherstellung sind Autorisierung, Auditretention und fällige
+  Löschjobs vor Wiederfreigabe der Website auszuführen.
 
-## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
-
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
-
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+Ein Wiederherstellungstest muss mit synthetischen Daten erfolgen und darf keine
+echten Ausweise, Videos oder Bankdaten enthalten.

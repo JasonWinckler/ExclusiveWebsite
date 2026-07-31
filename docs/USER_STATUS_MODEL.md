@@ -1,18 +1,28 @@
-# USER STATUS MODEL
+# Nutzer- und Zugriffsstatus
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+## Konto
 
-## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
+- `EMAIL_PENDING`: Konto existiert, E-Mail noch nicht bestätigt.
+- `ACTIVE`: Konto aktiv.
+- `RESTRICTED`: manuell gesperrt; Sitzungen und geschützte Zugriffe werden
+  widerrufen.
+- `DELETION_PENDING`: Löschung läuft; neue geschützte Aktionen sind gesperrt.
+- `DELETED`: Appwrite-Konto gelöscht, D1-Profil anonymisiert.
 
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
+## Altersstatus
 
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+- `NOT_STARTED`, `PENDING`, `APPROVED`, `REJECTED`, `EXPIRED`, `CANCELLED`,
+  `RETRY_REQUIRED`.
+- Nur `APPROVED` mit nicht abgelaufener Entscheidung kann Zugang zu
+  altersbeschränkten Bereichen ermöglichen.
+
+## Membership
+
+D1 ist maßgeblich. Eine aktive Berechtigung verlangt passenden Zeitraum,
+Altersstatus, Kontostatus und registriertes Gerät. Beim Kauf einer höheren
+Stufe kann die bisherige Laufzeit pausiert und später fortgesetzt werden.
+Manuelle Adminvergabe ersetzt hingegen aktive und geplante Berechtigungen des
+Nutzers.
+
+Appwrite-Labels werden nur als serverseitige Projektion synchronisiert und
+dürfen nie allein geschützten Zugriff gewähren.

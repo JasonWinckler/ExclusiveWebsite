@@ -315,6 +315,34 @@ describe("browser and repository security contract", () => {
     expect(maintenance).toContain("cleanupRetainedEvidence");
   });
 
+  it("minimizes age evidence and caps audit retention", () => {
+    const migration = read("cloudflare/migrations/0019_privacy_retention_hardening.sql");
+    const legacySubjectMigration = read(
+      "cloudflare/migrations/0020_backfill_legacy_audit_subjects.sql",
+    );
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
+    const maintenanceConfig = read("cloudflare/wrangler.maintenance-jobs.jsonc");
+    const adminPortal = read("src/AdminPortal.jsx");
+    expect(migration).toContain("subject_erasure_due_at");
+    expect(migration).toContain("decision_metadata_erasure_due_at");
+    expect(legacySubjectMigration).toContain("REGISTERED_DEVICE");
+    expect(legacySubjectMigration).toContain("APPWRITE_SESSION");
+    expect(legacySubjectMigration).toContain("CONTENT_COMMENT");
+    expect(legacySubjectMigration).toContain("audit-retention-delete");
+    expect(maintenanceConfig).toMatch(/"AUDIT_RETENTION_DAYS": "730"/);
+    expect(maintenance).toContain("parsePositiveInt(env.AUDIT_RETENTION_DAYS, 730, 730)");
+    expect(maintenance).toContain("subject_erasure_due_at <= ?");
+    expect(maintenance).toContain("+ 30 * 86_400_000");
+    expect(admin).toContain("c.manual_review_status = 'READY_FOR_REVIEW'");
+    expect(admin).toContain("c.review_expires_at IS NOT NULL AND c.review_expires_at > ?");
+    expect(admin).toContain("DELETE FROM age_verification_uploads");
+    expect(admin).toContain("liveness_challenge_json = '[]'");
+    expect(maintenance).toContain("cleanupAgeDecisionMetadata");
+    expect(adminPortal).toContain("window.setTimeout(closeSensitivePreview, 120_000)");
+    expect(adminPortal).toContain('document.visibilityState === "hidden"');
+  });
+
   it("ships transport-security headers and validates uploaded file signatures", () => {
     const headers = read("public/_headers");
     const media = read("cloudflare/src/shared/media.ts");

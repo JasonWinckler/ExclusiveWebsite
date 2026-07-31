@@ -33,7 +33,7 @@
     "INACTIVE_ACCOUNT_DAYS": "30",
     "DELETION_GRACE_DAYS": "7",
     "MAINTENANCE_BATCH_SIZE": "50",
-    "AUDIT_RETENTION_DAYS": "2555"
+    "AUDIT_RETENTION_DAYS": "730"
   },
   "env": {
     "preview": {
@@ -57,7 +57,7 @@
         "INACTIVE_ACCOUNT_DAYS": "30",
         "DELETION_GRACE_DAYS": "1",
         "MAINTENANCE_BATCH_SIZE": "10",
-        "AUDIT_RETENTION_DAYS": "2555"
+        "AUDIT_RETENTION_DAYS": "730"
       }
     }
   }

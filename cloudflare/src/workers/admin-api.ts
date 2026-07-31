@@ -157,6 +157,7 @@ function auditStatement(
     action: string;
     targetType: string;
     targetId: string;
+    subjectUserId?: string | null;
     previousState: unknown;
     newState: unknown;
     reason: string;
@@ -167,14 +168,16 @@ function auditStatement(
   return db.prepare(`
     INSERT INTO admin_audit_events (
       id, administrator_appwrite_user_id, action, target_type, target_id,
-      previous_state_json, new_state_json, reason, correlation_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      subject_appwrite_user_id, previous_state_json, new_state_json,
+      reason, correlation_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     crypto.randomUUID(),
     input.administratorUserId,
     input.action,
     input.targetType,
     input.targetId,
+    input.subjectUserId ?? null,
     JSON.stringify(input.previousState),
     JSON.stringify(input.newState),
     input.reason,
@@ -330,6 +333,7 @@ async function revokeUserDevice(
     action: kind === "session" ? "USER_SESSION_SIGNED_OUT" : "USER_DEVICE_REMOVED",
     targetType: kind === "session" ? "APPWRITE_SESSION" : "REGISTERED_DEVICE",
     targetId,
+    subjectUserId: userId,
     previousState: { active: true },
     newState: { active: false },
     reason: "Administrator device management",
@@ -391,6 +395,7 @@ async function setUserDeviceLock(
     action: body.action === "LOCK" ? "USER_DEVICE_LOCKED" : "USER_DEVICE_UNLOCKED",
     targetType: "REGISTERED_DEVICE",
     targetId,
+    subjectUserId: userId,
     previousState: { status: current.status },
     newState: { status: body.action === "LOCK" ? "LOCKED" : "UNLOCKED" },
     reason: "Administrator device security control",
@@ -455,10 +460,15 @@ async function streamAgeEvidence(
 ): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/i.test(evidenceId)) throw new ApiError(400, "INVALID_EVIDENCE_ID");
   const evidence = await env.DB.prepare(`
-    SELECT id, age_case_id, evidence_kind, r2_object_key, content_type,
-      size_bytes, object_etag, deleted_at
-    FROM age_verification_uploads WHERE id = ?
-  `).bind(evidenceId).first<AgeEvidenceRow>();
+    SELECT u.id, u.age_case_id, u.appwrite_user_id, u.evidence_kind,
+      u.r2_object_key, u.content_type, u.size_bytes, u.object_etag, u.deleted_at
+    FROM age_verification_uploads u
+    JOIN age_verification_cases c ON c.id = u.age_case_id
+    WHERE u.id = ? AND u.deleted_at IS NULL
+      AND c.status = 'PENDING' AND c.manual_review_status = 'READY_FOR_REVIEW'
+      AND c.evidence_deleted_at IS NULL
+      AND c.review_expires_at IS NOT NULL AND c.review_expires_at > ?
+  `).bind(evidenceId, isoNow()).first<AgeEvidenceRow & { appwrite_user_id: string }>();
   if (!evidence || evidence.deleted_at) throw new ApiError(404, "EVIDENCE_NOT_FOUND");
   const object = await env.VERIFICATION_UPLOADS.get(evidence.r2_object_key);
   if (!object || object.etag !== evidence.object_etag || object.size !== evidence.size_bytes) {
@@ -470,6 +480,7 @@ async function streamAgeEvidence(
     action: "AGE_EVIDENCE_ACCESSED",
     targetType: "AGE_EVIDENCE",
     targetId: evidence.id,
+    subjectUserId: evidence.appwrite_user_id,
     previousState: null,
     newState: { caseId: evidence.age_case_id, kind: evidence.evidence_kind },
     reason: "Manual age review",
@@ -513,9 +524,9 @@ async function deleteAgeEvidenceImmediately(
   await Promise.all(uploads.results.map((upload) => env.VERIFICATION_UPLOADS.delete(upload.r2_object_key)));
   await env.DB.batch([
     env.DB.prepare(`
-      UPDATE age_verification_uploads SET deleted_at = ?, updated_at = ?
-      WHERE age_case_id = ? AND deleted_at IS NULL
-    `).bind(now, now, caseId),
+      DELETE FROM age_verification_uploads
+      WHERE age_case_id = ?
+    `).bind(caseId),
     env.DB.prepare(`
       UPDATE age_verification_cases SET evidence_deleted_at = ?, retention_until = ?,
         updated_at = ? WHERE id = ?
@@ -583,6 +594,8 @@ async function decideAgeCase(
   }
   const now = isoNow();
   const retentionUntil = now;
+  const decisionMetadataErasureDueAt =
+    new Date(Date.parse(now) + 30 * 86_400_000).toISOString();
   const approvalExpiresAt = body.decision === "APPROVED"
     ? new Date(
       Date.now() + parsePositiveInt(env.AGE_APPROVAL_VALID_DAYS, 365, 3_650) * 86_400_000,
@@ -594,7 +607,9 @@ async function decideAgeCase(
     env.DB.prepare(`
       UPDATE age_verification_cases SET status = ?, manual_review_status = ?,
         reviewed_by_appwrite_user_id = ?, review_reason = ?, decided_at = ?,
-        review_checklist_json = ?, expires_at = ?, retention_until = ?, label_sync_status = 'PENDING',
+        liveness_challenge_json = '[]', review_checklist_json = NULL,
+        decision_metadata_erasure_due_at = ?,
+        expires_at = ?, retention_until = ?, label_sync_status = 'PENDING',
         label_sync_last_error_code = NULL, version = version + 1, updated_at = ?
       WHERE id = ? AND version = ? AND status = 'PENDING'
         AND manual_review_status = 'READY_FOR_REVIEW'
@@ -604,7 +619,7 @@ async function decideAgeCase(
       administratorUserId,
       reason,
       now,
-      JSON.stringify(checklist),
+      decisionMetadataErasureDueAt,
       approvalExpiresAt,
       retentionUntil,
       now,
@@ -643,14 +658,16 @@ async function decideAgeCase(
       action: `AGE_CASE_${body.decision}`,
       targetType: "AGE_CASE",
       targetId: ageCase.id,
+      subjectUserId: ageCase.appwrite_user_id,
       previousState: { status: ageCase.status, reviewStatus: ageCase.manual_review_status },
       newState: {
         status: body.decision,
         expiresAt: approvalExpiresAt,
         retentionUntil,
-        checklist,
+        checksCompleted: body.decision === "APPROVED",
+        checklistVersion: ageCase.instructions_version,
       },
-      reason,
+      reason: "Manual age review decision",
       correlationId,
       now,
     }),
@@ -1116,6 +1133,7 @@ async function grantManualMembership(
       action: "MEMBERSHIP_MANUALLY_GRANTED",
       targetType: "USER",
       targetId: userId,
+      subjectUserId: userId,
       previousState: {
         replacedEntitlements: previousEntitlements.results,
       },
@@ -1405,10 +1423,11 @@ async function manuallyActivatePaymentOrder(
     env.DB.prepare(`
       INSERT INTO admin_audit_events (
         id, administrator_appwrite_user_id, action, target_type, target_id,
-        previous_state_json, new_state_json, reason, correlation_id, created_at
+        subject_appwrite_user_id, previous_state_json, new_state_json,
+        reason, correlation_id, created_at
       )
       SELECT ?, ?, 'SEPA_PAYMENT_MANUALLY_ACTIVATED', 'SUBSCRIPTION', id,
-        ?, ?, ?, ?, ?
+        appwrite_user_id, ?, ?, ?, ?, ?
       FROM subscriptions WHERE id = ? AND settlement_note = ?
     `).bind(
       crypto.randomUUID(),
@@ -1710,6 +1729,7 @@ async function importN26Csv(
         action: "SEPA_PAYMENT_MATCHED",
         targetType: "SUBSCRIPTION",
         targetId: subscription.id,
+        subjectUserId: subscription.appwrite_user_id,
         previousState: { status: subscription.status },
         newState: {
           status: "ACTIVE",
@@ -1820,8 +1840,13 @@ async function moderateContentComment(
   }
   requireIdempotencyKey(request);
   const existing = await env.DB.prepare(`
-    SELECT id, status, body FROM content_comments WHERE id = ?
-  `).bind(commentId).first<{ id: string; status: string; body: string }>();
+    SELECT id, appwrite_user_id, status, body FROM content_comments WHERE id = ?
+  `).bind(commentId).first<{
+    id: string;
+    appwrite_user_id: string;
+    status: string;
+    body: string;
+  }>();
   if (!existing) throw new ApiError(404, "COMMENT_NOT_FOUND");
   const now = isoNow();
   const nextStatus = body.action === "RESTORE" ? "ACTIVE" : body.action === "HIDE" ? "HIDDEN" : "DELETED";
@@ -1839,6 +1864,7 @@ async function moderateContentComment(
       action: `COMMENT_${body.action}`,
       targetType: "CONTENT_COMMENT",
       targetId: commentId,
+      subjectUserId: existing.appwrite_user_id,
       previousState: { status: existing.status },
       newState: { status: nextStatus },
       reason: body.reason.trim(),
@@ -2317,6 +2343,7 @@ async function mutateHold(
       action: input.enabled ? "ADMINISTRATIVE_HOLD_ADDED" : "ADMINISTRATIVE_HOLD_REMOVED",
       targetType: "USER",
       targetId: input.userId,
+      subjectUserId: input.userId,
       previousState: {
         administrativeHold: previous.administrative_hold === 1,
         legalRetentionUntil: previous.legal_retention_until,
@@ -2357,6 +2384,7 @@ async function restrictUser(
       action: "ACCOUNT_RESTRICTED",
       targetType: "USER",
       targetId: userId,
+      subjectUserId: userId,
       previousState: { accountStatus: previous.account_status },
       newState: { accountStatus: "RESTRICTED" },
       reason,
@@ -2429,6 +2457,7 @@ async function unrestrictUser(
       action: "ACCOUNT_REACTIVATED",
       targetType: "USER",
       targetId: userId,
+      subjectUserId: userId,
       previousState: { accountStatus: previous.account_status },
       newState: { accountStatus: nextStatus },
       reason,
@@ -2524,6 +2553,7 @@ async function manuallyVerifyUserEmail(
       action: "EMAIL_VERIFICATION_MANUALLY_CONFIRMED",
       targetType: "USER",
       targetId: userId,
+      subjectUserId: userId,
       previousState: {
         emailVerified: false,
         accountStatus: previous.account_status,
@@ -2599,6 +2629,7 @@ async function scheduleAdminAccountDeletion(
       action: "ACCOUNT_DELETION_SCHEDULED",
       targetType: "USER",
       targetId: userId,
+      subjectUserId: userId,
       previousState: { accountStatus: profile.account_status },
       newState: { accountStatus: "DELETION_PENDING", deletionJobId: jobId },
       reason,
@@ -2689,6 +2720,7 @@ async function cancelAdminPaymentOrder(
       action: "SEPA_ORDER_CANCELLED",
       targetType: "SUBSCRIPTION",
       targetId: order.id,
+      subjectUserId: order.appwrite_user_id,
       previousState: { status: order.status },
       newState: { status: "CANCELLED", cancellationSource: "ADMIN" },
       reason,
@@ -2715,8 +2747,13 @@ async function archiveAdminPaymentOrder(
   exactKeys(body, ["reason"]);
   const reason = validateReason(body.reason);
   const order = await env.DB.prepare(`
-    SELECT id, status, archived_at FROM subscriptions WHERE id = ?
-  `).bind(orderId).first<{ id: string; status: string; archived_at: string | null }>();
+    SELECT id, appwrite_user_id, status, archived_at FROM subscriptions WHERE id = ?
+  `).bind(orderId).first<{
+    id: string;
+    appwrite_user_id: string;
+    status: string;
+    archived_at: string | null;
+  }>();
   if (!order) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
   if (order.archived_at) return { orderId, archived: true, existing: true };
   if (["ACTIVE", "PAID", "REFUNDED", "DISPUTED", "REVERSED"].includes(order.status)) {
@@ -2734,6 +2771,7 @@ async function archiveAdminPaymentOrder(
       action: "PAYMENT_ORDER_ARCHIVED",
       targetType: "SUBSCRIPTION",
       targetId: orderId,
+      subjectUserId: order.appwrite_user_id,
       previousState: { status: order.status, archived: false },
       newState: { status: order.status, archived: true },
       reason,
@@ -2786,6 +2824,7 @@ async function retryLabelSync(
       action: "LABEL_SYNC_RETRIED",
       targetType: "LABEL_SYNC_ATTEMPT",
       targetId: attempt.id,
+      subjectUserId: attempt.appwrite_user_id,
       previousState: { status: attempt.status },
       newState: { status: "SYNCED" },
       reason,
@@ -2861,6 +2900,7 @@ async function decidePrivacyRequest(
       action: "PRIVACY_REQUEST_UPDATED",
       targetType: "PRIVACY_REQUEST",
       targetId: privacyRequestId,
+      subjectUserId: existing.appwrite_user_id,
       previousState: {
         status: existing.status,
         response: existing.response_summary,

@@ -32,4 +32,11 @@ The frontend public variables are listed in `.env.example`. Cloudflare secret na
 
 The repository is in the reversible implementation phase. Legacy Appwrite Function source is intentionally retained as rollback material, but the frontend no longer calls Appwrite Functions, TablesDB or Storage for membership. Do not remove deployed Appwrite resources until the Cloudflare replacement is deployed and production negative-path tests pass.
 
-See [docs/CLOUDFLARE_MIGRATION.md](docs/CLOUDFLARE_MIGRATION.md) and [docs/PROVIDER_DECISIONS.md](docs/PROVIDER_DECISIONS.md).
+Current operational documentation:
+
+- [Architecture and migration](docs/CLOUDFLARE_MIGRATION.md)
+- [Provider decisions](docs/PROVIDER_DECISIONS.md)
+- [Age verification](docs/AGE_VERIFICATION.md)
+- [Security](docs/SECURITY.md)
+- [Data deletion and retention](docs/DATA_DELETION.md)
+- [Data protection impact assessment](docs/DATENSCHUTZ-FOLGENABSCHAETZUNG.md)

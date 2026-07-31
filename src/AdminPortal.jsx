@@ -282,9 +282,21 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const interval = window.setInterval(check, 1_000);
     return () => window.clearInterval(interval);
   }, [onLogout]);
-  useEffect(() => () => {
-    if (preview?.url) URL.revokeObjectURL(preview.url);
-  }, [preview]);
+  useEffect(() => {
+    const previewUrl = preview?.url;
+    if (!previewUrl) return undefined;
+    const closeSensitivePreview = () => setPreview(null);
+    const timeout = window.setTimeout(closeSensitivePreview, 120_000);
+    const closeWhenHidden = () => {
+      if (document.visibilityState === "hidden") closeSensitivePreview();
+    };
+    document.addEventListener("visibilitychange", closeWhenHidden);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", closeWhenHidden);
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [preview?.url]);
 
   const selectCase = async (caseId) => {
     setBusy(true);

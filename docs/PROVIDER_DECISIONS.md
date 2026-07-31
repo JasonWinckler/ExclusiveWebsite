@@ -14,9 +14,13 @@ Verification, password-reset and invoice messages use the established Shadow's T
 
 ## Age verification
 
-`AGE_REVIEW_MODE=manual-r2-v1` is selected. The browser captures ID front, ID back and a live video showing the face and ID while the user follows the head-movement instructions. Evidence is uploaded directly to the private EU-jurisdiction `exclusive-age-evidence` bucket through server-authorized upload URLs. Only an Appwrite user carrying the `admin` label can review and decide a case. Evidence is deleted after the configured seven-day post-decision retention period unless a documented legal hold applies.
+`AGE_REVIEW_MODE=manual-r2-v1` is selected. The browser captures the document pages required for the selected document type and a short, silent live video showing the face, document, random six-digit paper code and challenge movements. Evidence is uploaded through the authenticated Membership Worker to the private EU-jurisdiction `exclusive-age-evidence` bucket. There are no public R2 object URLs.
 
-This is an internal workflow, not a claim of automatic KJM approval or legal sufficiency for every jurisdiction. Obtain German youth-protection/privacy counsel and complete the production DPIA, instruction review and positive/negative-path security testing before exposing NSFW content publicly.
+Only an Appwrite user carrying the `admin` label and a device-bound admin session valid for at most ten minutes can review a case. The evidence endpoint additionally requires a pending, review-ready and unexpired case. Every evidence read is audited and uses `Cache-Control: no-store`. The admin browser closes the local preview when the tab is hidden or after two minutes.
+
+Evidence and its upload metadata are deleted immediately after a decision. Unreviewed evidence is deleted after the 48-hour review deadline in the next hourly maintenance run. The paper challenge and full checklist are cleared with the decision; reviewer identity, free-text reason and country snapshot are minimized after 30 days.
+
+This is an internal workflow, not a claim of automatic KJM approval or legal sufficiency for every jurisdiction. The current assessment is documented in [DATENSCHUTZ-FOLGENABSCHAETZUNG.md](DATENSCHUTZ-FOLGENABSCHAETZUNG.md). Obtain German youth-protection/privacy counsel and complete the KJM, instruction and production security reviews before representing the process as legally approved.
 
 ## SEPA
 

@@ -282,6 +282,7 @@ export async function createAuditEvent(
     action: string;
     targetType: string;
     targetId: string;
+    subjectUserId?: string | null;
     previousState: unknown;
     newState: unknown;
     reason: string;
@@ -292,14 +293,16 @@ export async function createAuditEvent(
   await db.prepare(`
     INSERT INTO admin_audit_events (
       id, administrator_appwrite_user_id, action, target_type, target_id,
-      previous_state_json, new_state_json, reason, correlation_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      subject_appwrite_user_id, previous_state_json, new_state_json,
+      reason, correlation_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     crypto.randomUUID(),
     values.administratorUserId,
     values.action,
     values.targetType,
     values.targetId,
+    values.subjectUserId ?? null,
     values.previousState == null ? null : JSON.stringify(values.previousState),
     values.newState == null ? null : JSON.stringify(values.newState),
     values.reason,

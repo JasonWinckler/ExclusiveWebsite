@@ -58,7 +58,11 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
     await env.DB.batch([
       env.DB.prepare(`
         UPDATE age_verification_cases SET status = 'EXPIRED', manual_review_status = 'EXPIRED',
-          retention_until = COALESCE(retention_until, ?), version = version + 1, updated_at = ?
+          retention_until = COALESCE(retention_until, ?),
+          liveness_challenge_json = '[]', reviewed_by_appwrite_user_id = NULL,
+          review_reason = NULL, review_checklist_json = NULL,
+          country_code_snapshot = NULL, decision_metadata_erasure_due_at = NULL,
+          version = version + 1, updated_at = ?
         WHERE id = ? AND status IN ('PENDING', 'APPROVED')
       `).bind(now, now, ageCase.id),
       env.DB.prepare(`
@@ -272,9 +276,8 @@ async function deleteEvidenceForCase(
       return false;
     }
     await env.DB.prepare(`
-      UPDATE age_verification_uploads SET deleted_at = ?, updated_at = ?
-      WHERE id = ? AND deleted_at IS NULL
-    `).bind(now, now, upload.id).run();
+      DELETE FROM age_verification_uploads WHERE id = ?
+    `).bind(upload.id).run();
   }
   await env.DB.prepare(`
     UPDATE age_verification_cases SET evidence_deleted_at = ?,
@@ -459,6 +462,7 @@ async function processDeletionJobs(
     `).bind(now, now, job.id, job.version).run();
     if ((claimed.meta.changes ?? 0) !== 1) continue;
 
+    const auditErasureDueAt = new Date(Date.parse(now) + 30 * 86_400_000).toISOString();
     await env.DB.batch([
       env.DB.prepare(`
         UPDATE entitlements SET status = 'REVOKED', revoked_at = ?,
@@ -480,7 +484,9 @@ async function processDeletionJobs(
       env.DB.prepare(`
         UPDATE age_verification_cases
         SET liveness_challenge_json = '[]', review_reason = NULL,
-          review_checklist_json = NULL, version = version + 1, updated_at = ?
+          review_checklist_json = NULL, reviewed_by_appwrite_user_id = NULL,
+          country_code_snapshot = NULL, decision_metadata_erasure_due_at = NULL,
+          version = version + 1, updated_at = ?
         WHERE appwrite_user_id = ?
       `).bind(now, job.appwrite_user_id),
       env.DB.prepare(`
@@ -542,12 +548,15 @@ async function processDeletionJobs(
       env.DB.prepare(`
         INSERT INTO admin_audit_events (
           id, administrator_appwrite_user_id, action, target_type, target_id,
+          subject_appwrite_user_id, subject_erasure_due_at,
           previous_state_json, new_state_json, reason, correlation_id, created_at
         ) VALUES (?, 'system:maintenance-jobs', 'ACCOUNT_DELETED', 'USER', ?,
-          ?, ?, ?, ?, ?)
+          ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         crypto.randomUUID(),
         job.appwrite_user_id,
+        job.appwrite_user_id,
+        auditErasureDueAt,
         JSON.stringify({ accountStatus: "DELETION_PENDING" }),
         JSON.stringify({ accountStatus: "DELETED" }),
         job.request_source === "AUTOMATIC"
@@ -560,6 +569,31 @@ async function processDeletionJobs(
     outcome = "COMPLETED";
   }
   return outcome;
+}
+
+async function cleanupAgeDecisionMetadata(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<void> {
+  await env.DB.prepare(`
+    UPDATE age_verification_cases
+    SET reviewed_by_appwrite_user_id = NULL,
+      review_reason = NULL,
+      review_checklist_json = NULL,
+      liveness_challenge_json = '[]',
+      country_code_snapshot = NULL,
+      decision_metadata_erasure_due_at = NULL,
+      version = version + 1,
+      updated_at = ?
+    WHERE id IN (
+      SELECT id FROM age_verification_cases
+      WHERE decision_metadata_erasure_due_at IS NOT NULL
+        AND decision_metadata_erasure_due_at <= ?
+      ORDER BY decision_metadata_erasure_due_at ASC
+      LIMIT ?
+    )
+  `).bind(now, now, batchSize).run();
 }
 
 async function retryLabelSync(env: MaintenanceEnv, now: string, batchSize: number): Promise<void> {
@@ -697,12 +731,51 @@ async function applyAuditRetention(
   if (!await acquireLock(env.DB, "audit-retention-delete", ownerId, now, 5)) return;
   try {
     const cutoff = new Date(Date.parse(now) - retentionDays * 86_400_000).toISOString();
-    await env.DB.prepare(`
-      DELETE FROM admin_audit_events
-      WHERE id IN (
-        SELECT id FROM admin_audit_events WHERE created_at < ? ORDER BY created_at LIMIT ?
-      )
-    `).bind(cutoff, batchSize).run();
+    await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE admin_audit_events
+        SET subject_erasure_due_at = (
+          SELECT strftime('%Y-%m-%dT%H:%M:%fZ', p.deleted_at, '+30 days')
+          FROM user_profiles p
+          WHERE p.appwrite_user_id = admin_audit_events.subject_appwrite_user_id
+        )
+        WHERE subject_erasure_due_at IS NULL
+          AND subject_appwrite_user_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM user_profiles p
+            WHERE p.appwrite_user_id = admin_audit_events.subject_appwrite_user_id
+              AND p.account_status = 'DELETED' AND p.deleted_at IS NOT NULL
+          )
+      `),
+      env.DB.prepare(`
+        UPDATE admin_audit_events
+        SET subject_erasure_due_at = (
+          SELECT strftime('%Y-%m-%dT%H:%M:%fZ', p.deleted_at, '+30 days')
+          FROM user_profiles p
+          WHERE p.appwrite_user_id = admin_audit_events.administrator_appwrite_user_id
+        )
+        WHERE subject_erasure_due_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM user_profiles p
+            WHERE p.appwrite_user_id = admin_audit_events.administrator_appwrite_user_id
+              AND p.account_status = 'DELETED' AND p.deleted_at IS NOT NULL
+          )
+      `),
+    ]);
+    await env.DB.batch([
+      env.DB.prepare(`
+        DELETE FROM admin_audit_events
+        WHERE subject_erasure_due_at IS NOT NULL AND subject_erasure_due_at <= ?
+      `).bind(now),
+      env.DB.prepare(`
+        DELETE FROM admin_audit_events
+        WHERE id IN (
+          SELECT id FROM admin_audit_events
+          WHERE created_at < ?
+          ORDER BY created_at LIMIT ?
+        )
+      `).bind(cutoff, batchSize),
+    ]);
   } finally {
     await releaseLock(env.DB, "audit-retention-delete", ownerId);
   }
@@ -720,6 +793,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
   try {
     await expireRecords(env, now, batchSize);
     await cleanupRetainedEvidence(env, now, batchSize);
+    await cleanupAgeDecisionMetadata(env, now, batchSize);
     await cleanupRetiredContentMedia(env, now, batchSize);
     await retryLabelSync(env, now, batchSize);
     await retryUsernameSync(env, now, batchSize);
@@ -737,7 +811,7 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
       env,
       ownerId,
       now,
-      parsePositiveInt(env.AUDIT_RETENTION_DAYS, 2555, 36_500),
+      parsePositiveInt(env.AUDIT_RETENTION_DAYS, 730, 730),
       batchSize,
     );
     logEvent("info", "maintenance_completed", { requestId: ownerId });

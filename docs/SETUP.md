@@ -1,32 +1,57 @@
-# Appwrite production setup
+# Production setup
 
-The browser application connects to project `6a64cbeb0009826c9efc`, TablesDB database `registered_users` (`6a64f96800187b534953`), and the private `content_and_verification` bucket (`6a657e2b0008347358ee`). Public resource IDs may use the `VITE_*` variables in `.env.example`. API keys, webhook secrets, and other credentials must never use `VITE_*` or be added to Sites builds.
+## Appwrite
 
-## Authentication and platforms
+Appwrite owns registration, login, E-Mail-Status, JWTs, MFA and Sitzungen.
+Required production settings:
 
-Add each production hostname and `localhost` as Web platforms. Enable Email/Password authentication, configure SMTP, use a strong password policy, and disable anonymous authentication before production. Verification and recovery redirects must use registered origins.
+- project endpoint `https://fra.cloud.appwrite.io/v1`;
+- production domain and deployment hosts as Web platforms;
+- password minimum eight characters with at least one special character;
+- password dictionary and personal-data checks enabled;
+- at most three active user sessions/devices at the application layer;
+- only the dedicated private identity Worker receives the scoped server API
+  key.
 
-## Server-owned membership data
+The frontend does not use Appwrite TablesDB, Storage or Functions as the
+canonical membership backend.
 
-The current database and permission model are documented in [Appwrite server Functions](APPWRITE_SERVER_FUNCTIONS.md). All ten TablesDB tables use row security, have no table-level browser permissions, and grant an owner read-only permission only when a Function creates a user-owned row. The browser uploads files to the file-secured verification bucket and asks a server Function to finalize the case; it cannot create a case, choose its status, or update a profile.
+## Cloudflare
 
-Do not add browser create/update/delete permissions as a workaround when a Function is unavailable. A missing or quota-blocked Function means the corresponding workflow remains disabled.
+Required resources:
 
-## Function configuration
+- D1 membership database with every migration in `cloudflare/migrations`;
+- private R2 bucket `exclusive-age-evidence` with EU jurisdiction;
+- private R2 bucket `exclusive-content-media`;
+- `exclusive-identity-projection` without a public route;
+- Membership, Admin and Maintenance Workers;
+- service bindings exactly as declared by the Wrangler configurations;
+- encrypted secrets from `cloudflare/.dev.vars.example`, never committed.
 
-Deploy each directory under `appwrite/functions/` with Node.js 22, entrypoint `src/main.js`, and build command `npm install`. Apply exactly the execution roles, schedules, and scopes in the scope matrix. Appwrite injects a scope-limited `APPWRITE_FUNCTION_API_KEY` as an encrypted system variable. Required non-secret variables are:
+Production modes:
 
-- `FUNCTION_KIND` — the handler name represented by the directory.
-- `APPWRITE_DATABASE_ID=6a64f96800187b534953`.
-- `VERIFICATION_BUCKET_ID=6a657e2b0008347358ee` for verification finalization and retention cleanup.
-- `INACTIVE_DAYS=730` for inactive-account cleanup.
+- `AGE_REVIEW_MODE=manual-r2-v1`;
+- `SEPA_TRANSFER_MODE=epc-qr-credit-transfer-v1`;
+- `PROTECTED_CONTENT_MODE=private-r2-v1`;
+- `AUTH_EMAIL_MODE=CUSTOM`;
+- `DEVICE_LIMIT=3`;
+- `AGE_REVIEW_WINDOW_HOURS=48`;
+- `ADMIN_SESSION_MINUTES=10`;
+- `AUDIT_RETENTION_DAYS=730`.
 
-`PAYMENT_WEBHOOK_SECRET` is the only application secret currently required. Create it as a secret Function variable and share it only through the payment provider's secret configuration. Payments remain disabled until a provider contract and legal review are complete.
+The maintenance Worker runs hourly and enforces expirations, evidence deletion,
+decision-metadata minimization, email retries and audit retention.
 
-## Sites build
+## Release validation
 
-- Install command: `npm ci`
-- Build command: `npm run build`
-- Output directory: `dist`
+```sh
+cd cloudflare
+pnpm run typecheck
+pnpm test
+cd ..
+npm run build
+```
 
-Protected files are never public, previewed, or addressed by a browser-constructed URL. Authorization must be evaluated server-side on every request. Account approval, administrative review, payments, entitlements, and cleanup must not fall back to frontend logic.
+After deployment verify Worker health, D1 migrations, private R2 access,
+registration/login, negative authorization paths, admin-session expiry,
+age-evidence deletion and account-erasure retention.

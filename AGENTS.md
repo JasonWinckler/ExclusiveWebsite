@@ -4,12 +4,22 @@
 These instructions apply to the whole repository.
 
 ## Project direction
-This repository is a static, self-hosted frontend for a future secure adult membership application. Keep production behavior conservative: no external adult-platform links, no adult media, no third-party payment widgets, and no claim of legal/certification approval.
+This repository contains the production React frontend and Cloudflare membership
+backend for a single-creator adult membership application. Appwrite owns
+authentication; Cloudflare Workers, D1 and private R2 own membership, age
+review, SEPA orders, protected content and administration. Keep production
+behavior conservative and never claim legal or certification approval.
 
 ## Content and safety rules
 - Do not commit adult media, customer data, identity documents, challenge videos, secrets, real bank details, production `.env` files, databases, or backups.
 - Keep all protected-content previews neutral placeholders only; never blur real adult media for unauthenticated users.
-- Registration, manual age verification, payments, free adult content, and exclusive adult content must remain frontend-only/disabled until reviewed and explicitly enabled in a future backend.
+- Protected operations must remain server-authorized and fail closed. Never
+  replace Appwrite authentication, D1 authorization or private R2 delivery with
+  frontend-only checks.
+- Age evidence must remain private, accessible only through the protected admin
+  API, and subject to the documented immediate/48-hour deletion process.
+- Audit events are retained for at most 730 days and at most 30 days after the
+  affected account is deleted.
 - Do not add external analytics, advertising pixels, social-media pixels, or unnecessary cookies.
 
 ## Implementation notes

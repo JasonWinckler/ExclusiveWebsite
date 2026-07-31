@@ -1,32 +1,44 @@
-# DEPLOYMENT
+# Deployment
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+## Frontend
 
-## Appwrite Sites deployment
+Die Produktionsdomain `exclusive.jason-shadow.com` wird über Cloudflare
+ausgeliefert und aus dem GitHub-Branch `main` gebaut. Der Build lautet:
 
-This repository targets Appwrite Sites exclusively. Configure the site in the **Jason Shadow Enterprises** Appwrite project with these settings:
+```sh
+npm install
+npm run build
+```
 
-- Project ID: `6a64cbeb0009826c9efc`
-- Endpoint and region: `https://fra.cloud.appwrite.io/v1` (Frankfurt)
-- Install command: `npm install`
-- Build command: `npm run build`
-- Output directory: `dist`
+Ausgabeverzeichnis ist `dist`. Die Appwrite-Site bleibt als kontrollierte
+Rollback-/Staging-Möglichkeit bestehen, ist aber keine zweite Daten- oder
+Autorisierungsquelle.
 
-The build first copies every static route and asset into `dist`, then bundles the Appwrite Web SDK client. Opening the deployed home page automatically calls `client.ping()`; use the browser console and network panel to confirm connectivity. Add every Appwrite Sites deployment hostname and the production custom domain as Web platforms in the Appwrite project before testing from those origins.
+## Backend
 
-No GitHub Pages deployment configuration is used or required.
+Die Reihenfolge für Schema- und Workeränderungen ist:
 
-## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
+1. D1-Migrationen anwenden;
+2. `identity-projection` bereitstellen;
+3. `membership-api` bereitstellen;
+4. `admin-api` bereitstellen;
+5. `maintenance-jobs` bereitstellen;
+6. Frontend bauen und veröffentlichen;
+7. Health-, Negativ- und Positivpfade testen.
 
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
+Interne Kommunikation erfolgt über Service Bindings. Secrets werden nur als
+Cloudflare Worker Secrets gespeichert. Der private Identity Worker besitzt
+keine öffentliche Route.
 
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+## Aktive Produktionskontrollen
+
+- private R2-Buckets für Altersnachweise und Content;
+- D1 als maßgebliche Mitgliedschafts- und Auditdatenbank;
+- stündlicher Wartungsjob für Ablauf, Löschung, E-Mail-Retries und Retention;
+- Adminsitzungen höchstens zehn Minuten;
+- Auditretention höchstens 730 Tage beziehungsweise 30 Tage nach
+  Accountlöschung;
+- HSTS, CSP, Origin-Prüfung und `no-store` für API-Antworten.
+
+Ein Rollout ist erst abgeschlossen, wenn Migration, Typecheck, Worker-Tests,
+Frontend-Build und Produktions-Healthchecks erfolgreich sind.

@@ -1,18 +1,34 @@
-# ADMIN GUIDE
+# Admin-Handbuch
 
-This static repository now prepares a conservative frontend for a future self-hosted adult membership platform.
+Der Adminbereich ist nur mit Appwrite-Adminrolle und einer zusätzlichen,
+gerätegebundenen Zehn-Minuten-Sitzung erreichbar.
 
-## Required production blockers
-- Registration remains disabled until a Laravel backend, email verification, jurisdiction checks, legal texts, and AVS review are complete.
-- Manual age verification remains disabled until professional legal review approves the documented process.
-- Adult content, thumbnails, videos, media URLs, payment instructions, and protected catalog data must not be delivered publicly.
-- No real customer data, adult media, identity documents, challenge videos, bank details, secrets, production databases, or backups may be committed.
+## Altersprüfung
 
-## Future backend requirements
-- Laravel monolith, PHP 8.3+, private storage, queues, scheduler, PostgreSQL or MariaDB.
-- Account statuses: EMAIL_PENDING, PENDING_AGE_VERIFICATION, CAPTURE_PENDING, CAPTURE_IN_PROGRESS, MANUAL_REVIEW_PENDING, LIVE_REVIEW_REQUIRED, APPROVED_PENDING_PURGE, PURGE_IN_PROGRESS, PURGE_ERROR, APPROVED_PENDING_CREDENTIAL, ACTIVE, REJECTED, LOCKED, REVERIFICATION_REQUIRED, CANCELLED, EXPIRED.
-- Access must fail closed. Only ACTIVE accounts with confirmed email, valid AVS, jurisdiction permission, step-up authentication, and active entitlement may access protected media.
-- Manual SEPA may be added only after age verification and must never bypass AVS.
+- Nachweise ausschließlich über „Sicher öffnen“ ansehen.
+- Keine Screenshots oder lokalen Kopien erstellen.
+- Die verbindliche Checkliste vollständig prüfen.
+- Bei Zweifel ablehnen und eine neue Aufnahme verlangen.
+- Nach Entscheidung den angezeigten Löschstatus kontrollieren.
 
-## Legal placeholders
-Use placeholders only until reviewed: [LEGAL_BUSINESS_NAME], [OWNER_NAME], [BUSINESS_ADDRESS], [EMAIL_ADDRESS], [DOMAIN], [TAX_NUMBER], [VAT_ID], [YOUTH_PROTECTION_CONTACT], [HOSTING_PROVIDER].
+## Nutzer und Geräte
+
+- „Abmelden“ entfernt nur die Sitzung; das Gerät darf sich später erneut
+  anmelden.
+- „Sperren“ widerruft das Geräte-Token, bis es entsperrt wird.
+- Manuelle Memberships ersetzen aktive und geplante Memberships dieses Nutzers.
+- Accountrestriktion und Accountlöschung verlangen eine dokumentierte
+  Begründung.
+
+## Zahlungen und Content
+
+- SEPA-Aufträge nur nach tatsächlichem Kontoeingang oder exaktem N26-CSV-Match
+  aktivieren.
+- CSV-Inhalte werden nicht gespeichert; verarbeitet werden nur die für den
+  Abgleich notwendigen Felder und Hashes.
+- Content wird direkt veröffentlicht. Vor Upload Titel, Zugriffsstufe,
+  Beschreibung und Kommentarfreigabe kontrollieren.
+
+MFA ist für das Administratorkonto organisatorisch verpflichtend. Siehe
+[Sicherheit](SECURITY.md) und
+[AVS-Prüfprozess](AVS_REVIEW_PROCESS.md).

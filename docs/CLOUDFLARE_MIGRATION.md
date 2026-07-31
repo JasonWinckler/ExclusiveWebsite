@@ -53,7 +53,7 @@ Migration `cloudflare/migrations/0001_initial.sql` creates:
 - `label_sync_attempts`
 - `maintenance_locks`
 
-Provider event IDs and retry idempotency keys are unique. Statuses use explicit checks. User, status, expiry, retention and cleanup columns are indexed. Optimistic versions protect mutable state. Audit events reject updates and ordinary deletes.
+Provider event IDs and retry idempotency keys are unique. Statuses use explicit checks. User, status, expiry, retention and cleanup columns are indexed. Optimistic versions protect mutable state. Audit events reject updates and ordinary deletes. The maintenance lock is the only authorized deletion path: events expire after at most 730 days, or at most 30 days after the affected subject or administrator account is deleted.
 
 ## Authentication bridge
 

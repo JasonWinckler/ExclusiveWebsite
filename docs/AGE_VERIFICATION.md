@@ -1,13 +1,61 @@
-# Age-verification design
+# Altersverifikation
 
-The implemented flow is an intake and manual-review queue, not an automated proof-of-age system:
+## Produktiver Ablauf
 
-1. A user registers through Appwrite Accounts.
-2. Appwrite sends an email confirmation link.
-3. Only a signed-in user whose email is confirmed can submit legal name, date of birth, country code, and an 18+ declaration.
-4. The browser rejects a date of birth under 18 and creates a private, read-only-to-the-user document in `age_verifications` with status `MANUAL_REVIEW_PENDING`.
-5. An administrator or trusted backend performs the real review and changes status. Client code can neither update nor approve the record.
+Appwrite ist die Authentifizierungsgrenze. Nur ein angemeldeter Nutzer mit
+bestätigter E-Mail-Adresse und aktivem Konto kann eine Altersprüfung beginnen.
+Der Cloudflare Membership Worker erzeugt einen Fall mit einem kryptografisch
+zufälligen sechsstelligen Code und einem höchstens 60 Minuten geöffneten
+Uploadfenster.
 
-This client-side age calculation is a usability check, not a security boundary. Production access must be authorized server-side and fail closed unless email, age review, jurisdiction, step-up authentication, and entitlement checks all pass.
+Der Browser nimmt die erforderliche Dokumentseite beziehungsweise Vorder- und
+Rückseite live auf. Anschließend wird ein 10 bis 20 Sekunden langes Video ohne
+Ton aufgenommen. Darin müssen Gesicht, Dokument und der handschriftliche Code
+sichtbar sein; außerdem folgt der Nutzer einer zufällig zusammengestellten
+Bewegungsabfolge. Vorhandene Dateien können über die Oberfläche nicht
+ausgewählt werden.
 
-See [SETUP.md](SETUP.md) for the exact Appwrite schema, permissions, and required console work.
+Der Server akzeptiert nur die für den Dokumenttyp notwendigen Dateien, prüft
+Größe, MIME-Typ, Dateisignatur, Fall- und Nutzerzuordnung sowie das
+Uploadfenster. Die Objekte werden ausschließlich im privaten R2-Bucket
+`exclusive-age-evidence` mit EU-Jurisdiktion gespeichert.
+
+## Adminprüfung
+
+Nachweise können nur abgerufen werden, wenn:
+
+- Appwrite den aktuellen Nutzer als Administrator authentifiziert;
+- der Administrator zusätzlich eine gerätegebundene Sitzung besitzt, die
+  höchstens zehn Minuten gültig ist;
+- der Fall `PENDING` und `READY_FOR_REVIEW` ist;
+- das 48-Stunden-Prüffenster noch nicht abgelaufen ist;
+- der Nachweis nicht bereits gelöscht wurde.
+
+Jeder Abruf wird protokolliert. Der Browser schließt einen Nachweis beim
+Tabwechsel oder spätestens nach zwei Minuten. Die Freigabe verlangt die
+vollständige serverseitige Checkliste einschließlich Code-, Gesichts-,
+Dokument- und Bewegungsprüfung.
+
+## Datenminimierung und Löschung
+
+- Nach einer Entscheidung werden R2-Dateien und Upload-Metadaten unmittelbar
+  gelöscht.
+- Nicht bearbeitete Fälle laufen nach 48 Stunden ab; der stündliche
+  Wartungsjob entfernt die Nachweise im nächsten Lauf.
+- Einmalcode und vollständige Checkliste werden bei Entscheidung oder Ablauf
+  entfernt.
+- Reviewer-Zuordnung, Freitextbegründung und Länder-Snapshot werden spätestens
+  30 Tage nach der Entscheidung minimiert.
+- Auditereignisse werden höchstens 730 Tage gespeichert; Ereignisse zu einem
+  gelöschten Konto höchstens 30 Tage nach dessen Löschung.
+
+Die vollständige Bewertung steht in der
+[Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md).
+
+## Rechtlicher Status
+
+Der Prozess ist eigenbetrieben, manuell und ohne Drittanbieter für die
+Identitätsentscheidung. Er ist nicht als KJM-zertifiziert oder automatisch
+rechtskonform zu bezeichnen. Vor einer entsprechenden Aussage sind
+fachanwaltliche Prüfung und gegebenenfalls eine KJM-Positivbewertung
+erforderlich.
