@@ -14,9 +14,9 @@
 - Backup-Objekte besitzen keine öffentliche URL und werden im Admin-Reiter
   „System Monitoring“ nur als Metadaten (Zeit, Größe, Objektname) angezeigt.
 
-Für den Workflow müssen im GitHub-Repository ausschließlich
-`CLOUDFLARE_ACCOUNT_ID` und ein minimal berechtigtes
-`CLOUDFLARE_API_TOKEN` als verschlüsselte Actions-Secrets vorliegen. Das Token
+Für den Workflow muss im GitHub-Repository `CLOUDFLARE_ACCOUNT_ID` als normale
+Actions-Variable und ausschließlich ein minimal berechtigtes
+`CLOUDFLARE_API_TOKEN` als verschlüsseltes Actions-Secret vorliegen. Das Token
 benötigt nur D1-Export- und Schreibzugriff auf den Sicherungsbucket.
 
 ## Wiederherstellung
