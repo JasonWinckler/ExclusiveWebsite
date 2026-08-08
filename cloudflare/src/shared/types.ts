@@ -126,10 +126,6 @@ export interface PaymentReconciliationEnv {
 export interface IdentityProjectionEnv {
   DB: D1Database;
   EMAIL_ASSETS: Fetcher;
-  APPWRITE_ENDPOINT?: string;
-  APPWRITE_PROJECT_ID?: string;
-  AUTH_MODE?: string;
-  APPWRITE_SERVER_API_KEY: string;
   GRAPH_TENANT_ID: string;
   GRAPH_CLIENT_ID: string;
   GRAPH_CLIENT_SECRET: string;

@@ -5,7 +5,6 @@ import {
   logEvent,
   parsePositiveInt,
   readJsonBody,
-  readJsonResponse,
 } from "../shared/http";
 import { hashPassword, secretsEqual } from "../shared/security";
 import { sendMicrosoftGraphEmail } from "../shared/microsoft-graph";
@@ -51,49 +50,6 @@ async function emailBrandImage(env: IdentityProjectionEnv): Promise<{
     contentId: EMAIL_BRAND_CONTENT_ID,
     contentBytes: bytesToBase64(bytes),
   };
-}
-
-function appwriteBaseUrl(raw: string | undefined): string {
-  let endpoint: URL;
-  try {
-    endpoint = new URL(raw ?? "");
-  } catch {
-    throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  }
-  if (endpoint.protocol !== "https:") throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  return endpoint.toString().replace(/\/$/, "");
-}
-
-async function appwriteRequest(
-  env: IdentityProjectionEnv,
-  path: string,
-  init: RequestInit = {},
-  acceptedStatuses: readonly number[] = [],
-): Promise<Response> {
-  if (!env.APPWRITE_PROJECT_ID || !env.APPWRITE_SERVER_API_KEY) {
-    throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  }
-  let response: Response;
-  try {
-    response = await fetch(`${appwriteBaseUrl(env.APPWRITE_ENDPOINT)}${path}`, {
-      ...init,
-      redirect: "manual",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "X-Appwrite-Key": env.APPWRITE_SERVER_API_KEY,
-        "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
-        "X-Appwrite-Response-Format": "1.9.5",
-        ...(init.headers ?? {}),
-      },
-    });
-  } catch {
-    throw new ApiError(503, "APPWRITE_UNAVAILABLE");
-  }
-  if (!response.ok && response.status !== 204 && !acceptedStatuses.includes(response.status)) {
-    throw new ApiError(503, "APPWRITE_OPERATION_FAILED");
-  }
-  return response;
 }
 
 async function syncLabels(
@@ -155,7 +111,6 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
   if (typeof body.userId !== "string" || !/^[A-Za-z0-9._-]{1,36}$/.test(body.userId)) {
     throw new ApiError(400, "INVALID_USER_ID");
   }
-  const encodedUserId = encodeURIComponent(body.userId);
   if (path === "/update-user-status") {
     if (typeof body.status !== "boolean") throw new ApiError(400, "INVALID_USER_STATUS");
     if (!body.status) {

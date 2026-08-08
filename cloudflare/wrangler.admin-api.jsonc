@@ -37,9 +37,7 @@
     "simple": { "limit": 30, "period": 60 }
   }],
   "vars": {
-    "APPWRITE_ENDPOINT": "https://auth-exclusive.jason-shadow.com/v1",
-    "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
-    "AUTH_MODE": "DUAL",
+    "AUTH_MODE": "CLOUDFLARE_ONLY",
     "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
     "MAX_JSON_BODY_BYTES": "32768",
     "MAX_UPSTREAM_JSON_BYTES": "65536",
