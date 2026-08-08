@@ -61,6 +61,7 @@ export interface AuthEnv extends BaseEnv {
   IDENTITY_PROJECTION: Service;
   AUTH_EMAIL_SERVICE_SECRET: string;
   AUTH_ENCRYPTION_KEY: string;
+  AUTH_PASSWORD_PEPPER: string;
   SESSION_DAYS?: string;
   DEVICE_LIMIT?: string;
 }

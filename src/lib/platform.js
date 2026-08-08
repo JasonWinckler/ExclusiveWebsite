@@ -161,6 +161,69 @@ export function getDeviceToken() {
   return token;
 }
 
+const PASSWORD_VERIFIER_ITERATIONS = 600_000;
+
+function bytesToBase64Url(bytes) {
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function validatePasswordPolicy(password) {
+  if (
+    typeof password !== "string" ||
+    password.length < 6 ||
+    password.length > 128 ||
+    !/[\p{L}\p{N}]/u.test(password) ||
+    !/[^\p{L}\p{N}\s]/u.test(password) ||
+    /[\u0000-\u001f\u007f]/.test(password)
+  ) throw new CloudflareApiError("PASSWORD_POLICY_NOT_MET", 400);
+}
+
+async function derivePasswordVerifier(password, salt, iterations = PASSWORD_VERIFIER_ITERATIONS) {
+  validatePasswordPolicy(password);
+  if (!/^[A-Za-z0-9_-]{22}$/.test(salt) || iterations !== PASSWORD_VERIFIER_ITERATIONS) {
+    throw new CloudflareApiError("INVALID_PASSWORD_MATERIAL", 503);
+  }
+  const normalizedSalt = salt.replace(/-/g, "+").replace(/_/g, "/");
+  const saltBytes = Uint8Array.from(
+    atob(normalizedSalt.padEnd(Math.ceil(normalizedSalt.length / 4) * 4, "=")),
+    (character) => character.charCodeAt(0),
+  );
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    salt: saltBytes,
+    iterations,
+  }, material, 256);
+  return bytesToBase64Url(new Uint8Array(bits));
+}
+
+async function createPasswordCredential(password) {
+  const salt = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+  return {
+    verifier: await derivePasswordVerifier(password, salt),
+    salt,
+    iterations: PASSWORD_VERIFIER_ITERATIONS,
+  };
+}
+
+async function passwordVerifierForEmail(email, password) {
+  const material = await apiRequest("/v1/password/material", {
+    auth: true,
+    authenticated: false,
+    method: "POST",
+    json: { email },
+  });
+  return derivePasswordVerifier(password, material.salt, material.iterations);
+}
+
 export function forgetCurrentDevice() {
   localStorage.removeItem(deviceStorageKey);
 }
@@ -185,13 +248,14 @@ export async function registerAccount({
   gpcSignal = false,
   locale = "de",
 }) {
+  const passwordCredential = await createPasswordCredential(password);
   const result = await apiRequest("/v1/register", {
     auth: true,
     authenticated: false,
     method: "POST",
     idempotent: true,
     json: {
-      name, email, password, countryCode, regionCode, privacyNoticeVersion,
+      name, email, passwordCredential, countryCode, regionCode, privacyNoticeVersion,
       privacyNoticeAccepted, gpcSignal, locale,
     },
   });
@@ -200,8 +264,9 @@ export async function registerAccount({
 }
 
 export async function login(email, password) {
+  const passwordVerifier = await passwordVerifierForEmail(email, password);
   const result = await apiRequest("/v1/login", {
-    auth: true, authenticated: false, method: "POST", json: { email, password },
+    auth: true, authenticated: false, method: "POST", json: { email, passwordVerifier },
   });
   if (!result.mfaRequired) {
     const user = await getCurrentUser();
@@ -263,9 +328,15 @@ export const requestPasswordReset = (email, locale = "de") => apiRequest(
   "/v1/password-reset/request",
   { auth: true, method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
 );
-export const completePasswordReset = (token, password) => apiRequest(
+export const completePasswordReset = async (token, password) => apiRequest(
   "/v1/password-reset/confirm",
-  { auth: true, method: "POST", json: { token, password }, authenticated: false, idempotent: true },
+  {
+    auth: true,
+    method: "POST",
+    json: { token, passwordCredential: await createPasswordCredential(password) },
+    authenticated: false,
+    idempotent: true,
+  },
 );
 export const completeEmailVerification = (token) => apiRequest(
   "/v1/email-verification/confirm",
@@ -281,9 +352,18 @@ export const updateProfileName = (displayName) => apiRequest(
   "/v1/account/profile/name",
   { method: "PATCH", json: { displayName }, idempotent: true },
 );
-export const updateProfileEmail = (email, password, locale = "de") => apiRequest(
+export const updateProfileEmail = async (email, password, locale = "de", currentEmail = email) => apiRequest(
   "/v1/account/email",
-  { auth: true, method: "PATCH", json: { email, password, locale }, idempotent: true },
+  {
+    auth: true,
+    method: "PATCH",
+    json: {
+      email,
+      passwordVerifier: await passwordVerifierForEmail(currentEmail, password),
+      locale,
+    },
+    idempotent: true,
+  },
 );
 
 export const getProducts = (locale = "de") => apiRequest(

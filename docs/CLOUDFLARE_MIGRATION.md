@@ -19,9 +19,10 @@ internen Nutzer-ID.
 
 Appwrite kann Passwort-Hashes nicht exportieren. Deshalb enthält jedes
 übernommene Bestandskonto zunächst `migration_required=1`. Der einmalige
-branded Passwortreset setzt einen neuen Cloudflare-Hash; sämtliche fachlichen
-Daten und Memberships bleiben erhalten. Neuregistrierungen landen direkt in
-D1.
+branded Passwortreset erzeugt im Browser einen starken, gesalzenen
+PBKDF2-Verifier. Cloudflare speichert davon nur einen zusätzlich mit einem
+serverseitigen Secret geschützten HMAC; sämtliche fachlichen Daten und
+Memberships bleiben erhalten. Neuregistrierungen landen direkt in D1.
 
 ## Sicherheitsverbesserungen
 

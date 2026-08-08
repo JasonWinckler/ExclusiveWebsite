@@ -23,6 +23,84 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+const PASSWORD_VERIFIER_ITERATIONS = 600_000;
+
+export interface PasswordVerifierCredential {
+  verifier: string;
+  salt: string;
+  iterations: number;
+}
+
+export function validatePasswordVerifierCredential(value: unknown): PasswordVerifierCredential {
+  const credential = value && typeof value === "object"
+    ? value as Partial<PasswordVerifierCredential>
+    : {};
+  if (
+    typeof credential.verifier !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(credential.verifier) ||
+    typeof credential.salt !== "string" ||
+    !/^[A-Za-z0-9_-]{22}$/.test(credential.salt) ||
+    credential.iterations !== PASSWORD_VERIFIER_ITERATIONS
+  ) throw new ApiError(400, "INVALID_PASSWORD_VERIFIER");
+  return {
+    verifier: credential.verifier,
+    salt: credential.salt,
+    iterations: credential.iterations,
+  };
+}
+
+async function passwordPepperHmac(pepper: string, value: string): Promise<string> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(pepper)) {
+    throw new ApiError(503, "PASSWORD_PEPPER_NOT_CONFIGURED");
+  }
+  const key = await crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from(base64UrlToBytes(pepper)).buffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value),
+  );
+  return bytesToBase64Url(new Uint8Array(signature));
+}
+
+export async function hashPasswordVerifier(
+  credential: PasswordVerifierCredential,
+  pepper: string,
+): Promise<string> {
+  const valid = validatePasswordVerifierCredential(credential);
+  return passwordPepperHmac(
+    pepper,
+    `password-v1:${valid.iterations}:${valid.salt}:${valid.verifier}`,
+  );
+}
+
+export async function verifyPasswordVerifier(
+  verifier: unknown,
+  expectedHash: string,
+  salt: string,
+  iterations: number,
+  pepper: string,
+): Promise<boolean> {
+  if (typeof verifier !== "string" || !expectedHash || !salt) return false;
+  let derived: string;
+  try {
+    derived = await hashPasswordVerifier({ verifier, salt, iterations }, pepper);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "INVALID_PASSWORD_VERIFIER") return false;
+    throw error;
+  }
+  return secretsEqual(expectedHash, derived);
+}
+
+export async function passwordMaterialSalt(email: string, pepper: string): Promise<string> {
+  return (await passwordPepperHmac(pepper, `password-material-v1:${email}`)).slice(0, 22);
+}
+
 export function randomBase64Url(byteLength = 32): string {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(byteLength)));
 }

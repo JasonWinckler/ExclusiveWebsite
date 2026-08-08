@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword, randomBase64Url, validatePassword, verifyPassword } from "../src/shared/security";
+import {
+  hashPassword,
+  hashPasswordVerifier,
+  passwordMaterialSalt,
+  randomBase64Url,
+  validatePassword,
+  verifyPassword,
+  verifyPasswordVerifier,
+} from "../src/shared/security";
 import { decryptTotpSecret, encryptTotpSecret, verifyTotp } from "../src/shared/totp";
 
 describe("Cloudflare-native authentication cryptography", () => {
@@ -10,6 +18,33 @@ describe("Cloudflare-native authentication cryptography", () => {
     expect(first.hash).not.toBe(second.hash);
     await expect(verifyPassword("Shadow!9", first.hash, first.salt, first.iterations)).resolves.toBe(true);
     await expect(verifyPassword("Wrong!9", first.hash, first.salt, first.iterations)).resolves.toBe(false);
+  }, 15_000);
+
+  it("stores only a server-peppered client verifier", async () => {
+    const pepper = randomBase64Url(32);
+    const credential = {
+      verifier: randomBase64Url(32),
+      salt: randomBase64Url(16),
+      iterations: 600_000,
+    };
+    const stored = await hashPasswordVerifier(credential, pepper);
+    expect(stored).not.toBe(credential.verifier);
+    await expect(verifyPasswordVerifier(
+      credential.verifier,
+      stored,
+      credential.salt,
+      credential.iterations,
+      pepper,
+    )).resolves.toBe(true);
+    await expect(verifyPasswordVerifier(
+      randomBase64Url(32),
+      stored,
+      credential.salt,
+      credential.iterations,
+      pepper,
+    )).resolves.toBe(false);
+    await expect(passwordMaterialSalt("unknown@example.test", pepper))
+      .resolves.toMatch(/^[A-Za-z0-9_-]{22}$/);
   });
 
   it("enforces the configured minimum and a special character", () => {
@@ -28,4 +63,3 @@ describe("Cloudflare-native authentication cryptography", () => {
     await expect(verifyTotp(secret, "000000", 59_000)).resolves.toBe(false);
   });
 });
-

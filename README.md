@@ -7,9 +7,10 @@ membership platform at `exclusive.jason-shadow.com`.
 
 - Cloudflare Pages serves the frontend and its same-origin `/api/*` gateway.
 - `exclusive-auth-api` owns registration, passwords, email state, sessions and
-  TOTP MFA. Passwords use salted PBKDF2-HMAC-SHA-256; session tokens are stored
-  only as SHA-256 hashes and sent in `Secure`, `HttpOnly`, `SameSite=Strict`
-  cookies.
+  TOTP MFA. The browser derives a salted PBKDF2-HMAC-SHA-256 verifier with
+  600,000 iterations; D1 stores only a second server-peppered HMAC. Session
+  tokens are stored only as SHA-256 hashes and sent in `Secure`, `HttpOnly`,
+  `SameSite=Strict` cookies.
 - D1 is authoritative for accounts, privacy choices, age decisions, products,
   SEPA orders, entitlements, devices, posts, comments and audit state.
 - Private R2 buckets store short-lived age evidence and creator media.

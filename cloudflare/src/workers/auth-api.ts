@@ -13,12 +13,13 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import {
-  hashPassword,
+  hashPasswordVerifier,
+  passwordMaterialSalt,
   randomBase64Url,
   sha256Hex,
   validateDeviceToken,
-  validatePassword,
-  verifyPassword,
+  validatePasswordVerifierCredential,
+  verifyPasswordVerifier,
 } from "../shared/security";
 import {
   createRecoveryCodes,
@@ -191,7 +192,7 @@ async function register(request: Request, env: AuthEnv): Promise<{
   const body = await readJsonBody<Record<string, unknown>>(request, 16_384);
   const email = normalizeEmail(body.email);
   const name = normalizeName(body.name);
-  const password = validatePassword(body.password);
+  const passwordCredential = validatePasswordVerifierCredential(body.passwordCredential);
   if (body.privacyNoticeAccepted !== true) throw new ApiError(400, "PRIVACY_NOTICE_ACCEPTANCE_REQUIRED");
   const country = typeof body.countryCode === "string" ? body.countryCode.toUpperCase() : "";
   if (!/^[A-Z]{2}$/.test(country)) throw new ApiError(400, "COUNTRY_REQUIRED");
@@ -200,7 +201,7 @@ async function register(request: Request, env: AuthEnv): Promise<{
   const existing = await env.DB.prepare(`SELECT user_id FROM auth_accounts WHERE email = ? COLLATE NOCASE`)
     .bind(email).first<{ user_id: string }>();
   if (existing) throw new ApiError(409, "EMAIL_ALREADY_REGISTERED");
-  const passwordRecord = await hashPassword(password);
+  const passwordHash = await hashPasswordVerifier(passwordCredential, env.AUTH_PASSWORD_PEPPER);
   const userId = crypto.randomUUID();
   const now = isoNow();
   const privacyRegime = country === "US" ? "US_STATE_PRIVACY"
@@ -221,8 +222,8 @@ async function register(request: Request, env: AuthEnv): Promise<{
       user_id, email, password_hash, password_salt, password_iterations,
       role, mfa_required, migration_required, password_changed_at, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, 'USER', 0, 0, ?, ?, ?)`)
-      .bind(userId, email, passwordRecord.hash, passwordRecord.salt,
-        passwordRecord.iterations, now, now, now),
+      .bind(userId, email, passwordHash, passwordCredential.salt,
+        passwordCredential.iterations, now, now, now),
   ]);
   const session = await createSession(env, userId, request, "ACTIVE");
   try {
@@ -242,7 +243,7 @@ async function register(request: Request, env: AuthEnv): Promise<{
 async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<string, unknown>; session: { token: string; expiresAt: string } }> {
   const body = await readJsonBody<Record<string, unknown>>(request, 8192);
   const email = normalizeEmail(body.email);
-  const password = typeof body.password === "string" ? body.password : "";
+  const passwordVerifier = typeof body.passwordVerifier === "string" ? body.passwordVerifier : "";
   const row = await env.DB.prepare(`
     SELECT a.user_id, a.password_hash, a.password_salt, a.password_iterations,
       a.mfa_enabled, a.migration_required, a.failed_login_count, a.locked_until,
@@ -259,7 +260,13 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
   if (!row.password_hash || !row.password_salt || row.migration_required === 1) {
     throw new ApiError(409, "PASSWORD_MIGRATION_REQUIRED");
   }
-  const valid = await verifyPassword(password, row.password_hash, row.password_salt, row.password_iterations);
+  const valid = await verifyPasswordVerifier(
+    passwordVerifier,
+    row.password_hash,
+    row.password_salt,
+    row.password_iterations,
+    env.AUTH_PASSWORD_PEPPER,
+  );
   if (!valid) {
     const failures = row.failed_login_count + 1;
     const lockedUntil = failures >= 5 ? new Date(Date.now() + 15 * 60_000).toISOString() : null;
@@ -301,18 +308,22 @@ async function actionToken(
   }>();
   if (!row) throw new ApiError(400, "AUTH_TOKEN_INVALID_OR_EXPIRED");
   if (row.purpose === "RESET_PASSWORD") {
-    const password = validatePassword(body.password);
-    const record = await hashPassword(password);
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
-        password_iterations = ?, migration_required = 0, password_changed_at = ?,
-        failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
-        .bind(record.hash, record.salt, record.iterations, now, now, row.user_id),
-      env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_RESET'
-        WHERE user_id = ? AND revoked_at IS NULL`).bind(now, row.user_id),
-      env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`)
-        .bind(now, row.id),
-    ]);
+    const passwordCredential = validatePasswordVerifierCredential(body.passwordCredential);
+    const passwordHash = await hashPasswordVerifier(passwordCredential, env.AUTH_PASSWORD_PEPPER);
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
+          password_iterations = ?, migration_required = 0, password_changed_at = ?,
+          failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
+          .bind(passwordHash, passwordCredential.salt, passwordCredential.iterations, now, now, row.user_id),
+        env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_RESET'
+          WHERE user_id = ? AND revoked_at IS NULL`).bind(now, row.user_id),
+        env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`)
+          .bind(now, row.id),
+      ]);
+    } catch {
+      throw new ApiError(503, "PASSWORD_RESET_PERSISTENCE_FAILED");
+    }
   } else {
     const email = row.purpose === "CHANGE_EMAIL" ? normalizeEmail(row.pending_email) : null;
     const statements = email
@@ -445,6 +456,20 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     return setSessionCookie(response(result.payload), result.session.token,
       Math.max(0, Math.floor((Date.parse(result.session.expiresAt) - Date.now()) / 1000)));
   }
+  if (request.method === "POST" && url.pathname === "/v1/password/material") {
+    const body = await readJsonBody<Record<string, unknown>>(request, 4096);
+    const email = normalizeEmail(body.email);
+    const account = await env.DB.prepare(`SELECT password_salt, password_iterations
+      FROM auth_accounts WHERE email = ? COLLATE NOCASE`).bind(email).first<{
+        password_salt: string | null; password_iterations: number;
+      }>();
+    return response({
+      salt: account?.password_salt && /^[A-Za-z0-9_-]{22}$/.test(account.password_salt)
+        ? account.password_salt
+        : await passwordMaterialSalt(email, env.AUTH_PASSWORD_PEPPER),
+      iterations: 600_000,
+    });
+  }
   if (request.method === "POST" && url.pathname === "/v1/logout") {
     const token = cookieToken(request);
     if (token) await env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'LOGOUT'
@@ -507,7 +532,13 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     const newEmail = normalizeEmail(body.email);
     const account = await env.DB.prepare(`SELECT password_hash, password_salt, password_iterations FROM auth_accounts WHERE user_id = ?`)
       .bind(identity.userId).first<{ password_hash: string; password_salt: string; password_iterations: number }>();
-    if (!account || typeof body.password !== "string" || !await verifyPassword(body.password, account.password_hash, account.password_salt, account.password_iterations)) {
+    if (!account || !await verifyPasswordVerifier(
+      body.passwordVerifier,
+      account.password_hash,
+      account.password_salt,
+      account.password_iterations,
+      env.AUTH_PASSWORD_PEPPER,
+    )) {
       throw new ApiError(401, "CURRENT_PASSWORD_INCORRECT");
     }
     const duplicate = await env.DB.prepare(`SELECT user_id FROM auth_accounts WHERE email = ? COLLATE NOCASE AND user_id <> ?`)

@@ -1692,7 +1692,7 @@ export default function App() {
     setNotice("");
     let emailChanged = false;
     try {
-      await updateProfileEmail(email, password, language);
+      await updateProfileEmail(email, password, language, profile?.email || email);
       emailChanged = true;
       await resendVerification(language);
       await refresh();

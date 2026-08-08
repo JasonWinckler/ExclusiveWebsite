@@ -2,8 +2,12 @@
 
 ## Identität und Sitzungen
 
-- Passwörter: individueller 128-Bit-Salt, PBKDF2-HMAC-SHA-256 mit 600.000
-  Iterationen; Klartextpasswörter werden nie gespeichert oder geloggt.
+- Passwörter: Der Browser leitet mit individuellem 128-Bit-Salt und 600.000
+  PBKDF2-HMAC-SHA-256-Iterationen einen Verifier ab. Der Auth-Worker speichert
+  davon ausschließlich einen zweiten HMAC mit separatem Cloudflare-Secret.
+  Klartextpasswörter und der direkt nutzbare Browser-Verifier werden weder in
+  D1 gespeichert noch geloggt; die teure Ableitung überschreitet dadurch nicht
+  das kostenlose Worker-CPU-Limit.
 - Browser-Sitzung: 256-Bit-Zufallstoken; in D1 liegt nur SHA-256. Das Cookie ist
   `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/` und besitzt kein `Domain`-
   Attribut.
