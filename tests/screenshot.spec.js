@@ -57,6 +57,7 @@ test.describe('membership safety requirements', () => {
     await expect(page.locator('.tagline')).toHaveText(/where desire becomes temptation|wo verlangen zur versuchung wird/i);
     await expect(page.getByRole('link', { name: /exclusive content/i })).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/');
     await expect(page.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/shadows.temptation_official/');
+    await expect(page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i })).toBeVisible();
     await expect(page.locator('.link-list a')).toHaveCount(2);
     await expect(page.locator('a[href="https://jason-shadow.com/"]')).toHaveCount(0);
     await expect(page.locator('.ai-disclosure')).toHaveCount(0);
@@ -67,7 +68,27 @@ test.describe('membership safety requirements', () => {
       () => banner.evaluate((image) => image.naturalWidth),
       { timeout: 15_000 },
     ).toBeGreaterThan(0);
-    await expect(page.locator('script[src^="http"]')).toHaveCount(0);
+    await expect(page.locator('script[src*="paypalobjects.com/donate/sdk/donate-sdk.js"]')).toHaveCount(1);
+  });
+
+  test('login keeps password recovery compact and lets users verify their input', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Sign in' }).first().click();
+
+    const dialog = page.getByRole('dialog');
+    const password = dialog.locator('input[name="password"]');
+    await expect(dialog.locator('.auth-tabs button')).toHaveCount(2);
+    await expect(password).toHaveAttribute('type', 'password');
+    await password.fill('example!');
+    await dialog.getByRole('button', { name: 'Show password' }).click();
+    await expect(password).toHaveAttribute('type', 'text');
+    await dialog.getByRole('button', { name: 'Hide password' }).click();
+    await expect(password).toHaveAttribute('type', 'password');
+
+    await dialog.getByRole('button', { name: 'Forgot your password?' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Reset password' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /back to sign in/i })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Send reset link' })).toBeVisible();
   });
 });
 
@@ -107,13 +128,13 @@ test.describe('legal notices', () => {
 
   test('localized search landing pages expose unique, crawlable copy', async ({ page }) => {
     await page.goto('/de/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/Exklusive Inhalte für Erwachsene/);
+    await expect(page).toHaveTitle(/Exklusive Pornos.*Adult-Inhalte/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.getByRole('heading', { name: /wo verlangen zur versuchung wird/i })).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/de/');
 
     await page.goto('/en/', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveTitle(/Exclusive Adult Content/);
+    await expect(page).toHaveTitle(/Exclusive Male Porn.*Adult Content/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await expect(page.getByRole('heading', { name: /where desire becomes temptation/i })).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://exclusive.jason-shadow.com/en/');

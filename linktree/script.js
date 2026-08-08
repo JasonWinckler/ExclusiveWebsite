@@ -21,6 +21,8 @@ const translations = {
     tagline: "Wo Verlangen zur Versuchung wird.",
     exclusive: "Exclusive Content 🔞",
     openSite: "Website öffnen",
+    support: "Unterstützen & spenden",
+    paypalDonation: "PayPal-Spende",
   },
   en: {
     metaTitle: "Shadow’s Temptation | Official Creator Links",
@@ -29,6 +31,8 @@ const translations = {
     tagline: "Where desire becomes temptation.",
     exclusive: "Exclusive Content 🔞",
     openSite: "Open website",
+    support: "Support & donate",
+    paypalDonation: "PayPal donation",
   },
 };
 const storedLanguage = window.localStorage.getItem(languageStorageKey);
@@ -62,3 +66,39 @@ document.querySelectorAll("[data-lang]").forEach((button) => {
   });
 });
 applyTranslations(initialLanguage);
+
+const paypalButton = document.querySelector("[data-paypal-open]");
+const paypalContainer = document.querySelector("#paypal-donate-button-container");
+const paypalSdk = document.querySelector("[data-paypal-sdk]");
+const paypalHostedButtonId = "U87BSM6V2TXLC";
+const paypalDonationUrl = `https://www.paypal.com/donate/?hosted_button_id=${paypalHostedButtonId}`;
+
+const renderPaypalButton = () => {
+  if (!window.PayPal?.Donation || !paypalContainer || paypalContainer.childElementCount) return;
+  window.PayPal.Donation.Button({
+    env: "production",
+    hosted_button_id: paypalHostedButtonId,
+    image: {
+      src: "https://www.paypalobjects.com/en_US/DK/i/btn/btn_donateCC_LG.gif",
+      alt: "Donate with PayPal",
+      title: "PayPal donation",
+    },
+  }).render("#paypal-donate-button-container");
+};
+
+const openPaypalDonation = () => {
+  const hostedButton = paypalContainer?.querySelector("button, input, a, img");
+  if (hostedButton) {
+    hostedButton.click();
+    return;
+  }
+  window.open(paypalDonationUrl, "_blank", "noopener,noreferrer");
+};
+
+paypalButton?.addEventListener("click", openPaypalDonation);
+paypalSdk?.addEventListener("load", renderPaypalButton, { once: true });
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", renderPaypalButton, { once: true });
+} else {
+  renderPaypalButton();
+}

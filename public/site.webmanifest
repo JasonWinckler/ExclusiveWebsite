@@ -1,0 +1,19 @@
+{
+  "name": "Shadow’s Temptation",
+  "short_name": "Temptation",
+  "description": "Private, personally curated 18+ creator memberships by Jason Shadow.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0003",
+  "theme_color": "#170008",
+  "icons": [
+    {
+      "src": "/linktree/uploads/exclusive-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

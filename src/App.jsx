@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import DeviceManager from "./DeviceManager";
 import MfaPanel from "./MfaPanel";
 import PrivacyPanel from "./PrivacyPanel";
@@ -68,9 +68,9 @@ const copy = {
     basic: "Exclusive Basic",
     premium: "Exclusive Premium",
     vip: "Exclusive VIP",
-    basicText: "Zugang zur Basic Gallery.",
-    premiumText: "Basic plus Premium Gallery.",
-    vipText: "Alle Galerien plus zusätzliche VIP-Perks.",
+    basicText: "Zugang zur Basic-Galerie.",
+    premiumText: "Zugang zur Basic- und Premium-Galerie.",
+    vipText: "Alle Galerien plus zusätzliche VIP-Vorteile.",
     buy: "Zugang wählen",
     trial: "Einmaliges Schnupperangebot",
     catalogUnavailable: "Der Produktkatalog ist derzeit nicht erreichbar. Es kann kein Zahlungsauftrag erzeugt werden.",
@@ -354,6 +354,34 @@ async function prepareIdCopy(file, side, language) {
 
 function Field({ label, ...props }) {
   return <label className="form-field"><span>{label}</span><input {...props} /></label>;
+}
+
+function PasswordField({ label, showLabel, hideLabel, ...props }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const generatedId = useId();
+  const inputId = props.id || generatedId;
+
+  return <div className="form-field password-field">
+    <label htmlFor={inputId}>{label}</label>
+    <span className="password-input-wrap">
+      <input {...props} id={inputId} type={isVisible ? "text" : "password"} />
+      <button
+        className="password-visibility-toggle"
+        type="button"
+        aria-label={isVisible ? hideLabel : showLabel}
+        aria-pressed={isVisible}
+        aria-controls={inputId}
+        title={isVisible ? hideLabel : showLabel}
+        onClick={() => setIsVisible((current) => !current)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+          <circle cx="12" cy="12" r="2.75" />
+          {!isVisible && <path d="m4 4 16 16" />}
+        </svg>
+      </button>
+    </span>
+  </div>;
 }
 
 function VerificationRules({ ui }) {
@@ -1963,7 +1991,7 @@ export default function App() {
       t={t}
     >
       <div className="auth-tabs">
-        {["login", "register", "reset"].map((item) => <button
+        {["login", "register"].map((item) => <button
           type="button"
           className={mode === item ? "is-active" : ""}
           onClick={() => { setMode(item); setNotice(""); }}
@@ -1974,14 +2002,21 @@ export default function App() {
       <form className="auth-panel" onSubmit={handleAuth}>
         {mode === "register" && <Field label={t.name} name="name" autoComplete="name" required maxLength="128" />}
         {mode !== "recover" && <Field label={t.emailLabel} name="email" type="email" autoComplete="email" required />}
-        {mode !== "reset" && <Field
+        {mode !== "reset" && <PasswordField
           label={t.password}
+          showLabel={t.showPassword}
+          hideLabel={t.hidePassword}
           name="password"
-          type="password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           minLength="6"
+          maxLength="128"
           required
         />}
+        {mode === "login" && <button
+          className="auth-reset-link"
+          type="button"
+          onClick={() => { setMode("reset"); setNotice(""); }}
+        >{t.forgotPassword}</button>}
         {mode === "register" && <>
           <label className="field">
             <span>{language === "de" ? "Land des gewöhnlichen Aufenthalts" : "Country of residence"}</span>
@@ -2022,6 +2057,11 @@ export default function App() {
           </p>}
         </>}
         <button className="primary-action" disabled={busy}>{busy ? ui.loading : t[`${mode}Submit`]}</button>
+        {mode === "reset" && <button
+          className="auth-back-link"
+          type="button"
+          onClick={() => { setMode("login"); setNotice(""); }}
+        >← {t.backToLogin}</button>}
       </form>
     </Modal>}
 
@@ -2084,7 +2124,7 @@ export default function App() {
             ["overview", language === "de" ? "Übersicht" : "Overview"],
             ["profile", language === "de" ? "Meine Daten" : "My data"],
             ["orders", language === "de" ? "Bestellungen" : "Orders"],
-            ["access", language === "de" ? "Zugang & Perks" : "Access & perks"],
+            ["access", language === "de" ? "Zugang & Vorteile" : "Access & perks"],
             ["devices", language === "de" ? "Geräte" : "Devices"],
             ["security", language === "de" ? "Sicherheit" : "Security"],
             ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
@@ -2166,7 +2206,7 @@ export default function App() {
             </div>
             <div className="current-account-value"><span>{language === "de" ? "Aktuell" : "Current"}</span><strong>{user.email}</strong></div>
             <Field label={language === "de" ? "Neue E-Mail-Adresse" : "New email address"} name="email" type="email" autoComplete="email" required maxLength="320" />
-            <Field label={language === "de" ? "Aktuelles Passwort" : "Current password"} name="password" type="password" autoComplete="current-password" required minLength="6" maxLength="128" />
+            <PasswordField label={language === "de" ? "Aktuelles Passwort" : "Current password"} showLabel={t.showPassword} hideLabel={t.hidePassword} name="password" autoComplete="current-password" required minLength="6" maxLength="128" />
             <p className="profile-policy-note is-security">
               {language === "de"
                 ? "Nach der Änderung wird der geschützte Zugang pausiert, bis du die neue Adresse bestätigt hast."
@@ -2187,9 +2227,9 @@ export default function App() {
         {dashboardTab === "access" && <div className="access-perks">
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{entitlement.paused.tier.replace("EXCLUSIVE_", "Exclusive ")} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
-          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>Private Telegram Channel</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
+          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>{language === "de" ? "Privater Telegram-Kanal" : "Private Telegram channel"}</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
-          {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Benefits werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
+          {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Vorteile werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
         {dashboardTab === "devices" && <DeviceManager
           language={language}

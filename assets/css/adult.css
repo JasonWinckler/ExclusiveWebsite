@@ -169,6 +169,12 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .form-field { display: grid; gap: 8px; color: var(--gold); font-weight: 800; }
 .form-field input { width: 100%; min-height: 48px; box-sizing: border-box; padding: 10px 13px; border: 1px solid rgba(255,202,144,.35); border-radius: 12px; color: var(--cream); background: rgba(10,0,3,.62); font: inherit; }
 .form-field input:focus { outline: 2px solid rgba(255,202,144,.55); outline-offset: 2px; }
+.password-input-wrap { position: relative; display: block; }
+.password-input-wrap input { padding-right: 56px; }
+.password-visibility-toggle { position: absolute; top: 50%; right: 7px; display: grid; width: 40px; height: 40px; padding: 0; place-items: center; transform: translateY(-50%); border: 0; border-radius: 10px; color: var(--gold); background: transparent; cursor: pointer; }
+.password-visibility-toggle:hover { background: rgba(255,202,144,.1); }
+.password-visibility-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.password-visibility-toggle svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .form-field input[type="file"] { min-height: 58px; padding: 9px; }
 .form-field input[type="file"]::file-selector-button { margin-right: 12px; padding: 9px 12px; border: 0; border-radius: 9px; color: #210008; background: var(--gold); font: inherit; font-weight: 800; cursor: pointer; }
 .upload-note { margin: 0; padding: 13px 15px; border-left: 3px solid var(--gold); color: var(--muted); background: rgba(10,0,3,.38); font-size: .9rem; line-height: 1.55; }
@@ -177,6 +183,9 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .auth-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .auth-tabs button { min-height: 42px; padding: 0 14px; border: 1px solid var(--stroke); border-radius: 999px; color: var(--cream); background: rgba(255,255,255,.05); font-weight: 800; }
 .auth-tabs button.is-active { color: #210008; background: var(--gold); }
+.auth-reset-link { justify-self: start; margin-top: -6px; padding: 7px 12px; border: 1px solid rgba(106,183,255,.55); border-radius: 9px; color: #eaf6ff; background: linear-gradient(135deg, rgba(20,105,190,.9), rgba(31,127,213,.72)); font: inherit; font-size: .9rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.auth-reset-link:hover, .auth-reset-link:focus-visible { background: linear-gradient(135deg, #1779cb, #2b95e7); outline: 2px solid rgba(170,220,255,.75); outline-offset: 2px; }
+.auth-back-link { justify-self: center; padding: 6px; border: 0; color: var(--gold); background: transparent; font: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .form-notice { max-width: 980px; margin: 0 auto 18px; padding: 14px 18px; border: 1px solid rgba(255,202,144,.35); border-radius: 14px; color: var(--gold); background: rgba(10,0,3,.48); }
 @media(max-width: 760px) { .account-grid { grid-template-columns: 1fr; } }
 @media(max-width: 860px) { .exclusive-header { align-items: flex-start; flex-direction: column; border-radius: 24px; } .header-actions { justify-content: flex-start; } .locked-grid, .status-panel dl { grid-template-columns: 1fr; } }
