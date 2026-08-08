@@ -14,6 +14,12 @@
     "logs": { "enabled": true, "head_sampling_rate": 0.1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.01 }
   },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "exclusive-membership",
+    "database_id": "fc38b1d0-2e77-42a5-ac5c-72603fcb95ab",
+    "migrations_dir": "migrations"
+  }],
   "vars": {
     "APPWRITE_ENDPOINT": "https://auth-exclusive.jason-shadow.com/v1",
     "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",

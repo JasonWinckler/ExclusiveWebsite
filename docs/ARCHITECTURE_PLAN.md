@@ -1,40 +1,40 @@
-# Architektur
-
-## Zuständigkeiten
+# Produktionsarchitektur
 
 | Ebene | Verantwortung |
 |---|---|
-| Cloudflare Pages | öffentliches React-Frontend |
-| Appwrite Auth | Registrierung, E-Mail-Status, Login, JWT, MFA, Sitzungen |
-| Membership Worker | Nutzerprojektion, Altersfälle, SEPA-Aufträge, Berechtigungen, geschützter Content |
-| Admin Worker | Altersprüfung, Nutzerverwaltung, Zahlungen, Content und Moderation |
-| Identity Worker | private Appwrite- und Microsoft-Graph-Operationen über Service Bindings |
-| Maintenance Worker | Ablauf, Löschung, Retention, Synchronisations- und E-Mail-Retries |
-| D1 | maßgebliche Geschäfts-, Mitgliedschafts- und Auditdaten |
+| Cloudflare Pages | React-Frontend, statische Rechtstexte, Same-Origin-API-Gateway |
+| Auth Worker | Registrierung, E-Mail-Verifikation, Passwörter, Sitzungen, TOTP-MFA, Recovery-Codes |
+| Membership Worker | Nutzerprofil, Altersfälle, SEPA-Aufträge, Berechtigungen, geschützter Content |
+| Admin Worker | Altersprüfung, Nutzer-, Zahlungs-, Content- und Kommentarmoderation |
+| Identity Worker | privater E-Mail-Versand über Microsoft Graph |
+| Maintenance Worker | Ablauf, Löschung, Retention, Erinnerungen und E-Mail-Retries |
+| D1 | maßgebliche Identitäts-, Geschäfts-, Mitgliedschafts- und Auditdaten |
 | private R2-Buckets | kurzlebige Altersnachweise und geschützter Creator-Content |
 
-## Sicherheitsmodell
+## Anfrageweg
 
-- Der Browser bestimmt niemals Nutzer-ID, Labels oder Berechtigungen.
-- Jeder Worker leitet die Nutzeridentität aus einem serverseitig geprüften
-  Appwrite-JWT ab.
-- D1 ist maßgeblich; Appwrite-Labels sind nur Projektionen.
-- Interne privilegierte Aktionen laufen über Service Bindings.
-- Altersnachweise und Content besitzen keine öffentlichen R2-URLs.
-- Geschützter Zugriff ist fail closed und verlangt aktives Konto, bestätigte
-  E-Mail, Altersfreigabe, Membership und registriertes Gerät.
-- Adminaktionen verlangen zusätzlich eine gerätegebundene Sitzung von höchstens
-  zehn Minuten.
+1. Der Browser ruft ausschließlich relative `/api/auth`, `/api/member` oder
+   `/api/admin`-Routen auf.
+2. Pages Functions leiten intern über Service Bindings weiter.
+3. Der Auth Worker setzt eine nicht aus JavaScript lesbare
+   `__Host-shadow_session`-Sitzung.
+4. Membership und Admin validieren den gehashten Sitzungstoken in D1 und leiten
+   Nutzer-ID, Rolle, MFA-, Alters- und Membershipstatus ausschließlich
+   serverseitig ab.
+5. R2-Objekte werden erst nach vollständiger D1-Autorisierung gestreamt; Namen
+   und Objekt-Keys werden nicht als öffentliche URL ausgegeben.
 
-## Datenschutzmodell
+Die historischen Spaltennamen `appwrite_user_id` bleiben als stabile interne
+Subject-ID bestehen. Der Name bezeichnet keine aktive Abhängigkeit und wurde
+bewusst nicht massenhaft umgeschrieben, damit bestehende Bestellungen,
+Entitlements, Altersentscheidungen und Audits unverändert zugeordnet bleiben.
 
-- Altersnachweise werden nach Entscheidung unmittelbar oder nach Ablauf des
-  48-Stunden-Fensters automatisch gelöscht.
-- Nachweismetadaten werden auf den notwendigen Status reduziert.
-- Auditdaten werden höchstens 730 Tage und nach Accountlöschung höchstens
-  30 Tage gespeichert.
-- Finanzdaten besitzen getrennte gesetzliche Aufbewahrungsregeln.
+## Datenschutz
 
-Details stehen in [Sicherheit](SECURITY.md),
-[Datenlöschung](DATA_DELETION.md) und der
-[Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md).
+- Altersnachweise: sofort nach Entscheidung, ansonsten spätestens nach Ablauf
+  des 48-Stunden-Prüffensters im nächsten Wartungslauf.
+- Auditdaten: höchstens 730 Tage und höchstens 30 Tage nach Accountlöschung.
+- Finanz- und Rechnungsdaten: getrennte gesetzliche Aufbewahrung; kein
+  pauschales Löschen vor Fristablauf.
+- Appwrite bleibt während des begrenzten Rollback-Fensters unverändert, ist aber
+  nicht Teil des produktiven Anfragewegs.

@@ -11,6 +11,67 @@ export async function sha256Hex(data: Uint8Array | string): Promise<string> {
   ));
 }
 
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const value of bytes) binary += String.fromCharCode(value);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+export function randomBase64Url(byteLength = 32): string {
+  return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(byteLength)));
+}
+
+export function validatePassword(password: unknown): string {
+  if (
+    typeof password !== "string" ||
+    password.length < 6 ||
+    password.length > 128 ||
+    !/[\p{L}\p{N}]/u.test(password) ||
+    !/[^\p{L}\p{N}\s]/u.test(password) ||
+    /[\u0000-\u001f\u007f]/.test(password)
+  ) throw new ApiError(400, "PASSWORD_POLICY_NOT_MET");
+  return password;
+}
+
+export async function hashPassword(
+  password: string,
+  salt = randomBase64Url(16),
+  iterations = 600_000,
+): Promise<{ hash: string; salt: string; iterations: number }> {
+  validatePassword(password);
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    salt: Uint8Array.from(base64UrlToBytes(salt)).buffer,
+    iterations,
+  }, material, 256);
+  return { hash: bytesToBase64Url(new Uint8Array(bits)), salt, iterations };
+}
+
+export async function verifyPassword(
+  password: string,
+  expectedHash: string,
+  salt: string,
+  iterations: number,
+): Promise<boolean> {
+  if (!password || !expectedHash || !salt) return false;
+  const derived = await hashPassword(password, salt, iterations);
+  return secretsEqual(expectedHash, derived.hash);
+}
+
 export async function secretsEqual(expected: string, actual: string): Promise<boolean> {
   if (!expected || !actual) return false;
   const encoder = new TextEncoder();

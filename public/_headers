@@ -1,15 +1,34 @@
 /*
-  Cache-Control: public, max-age=300, must-revalidate
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://auth-exclusive.jason-shadow.com wss://auth-exclusive.jason-shadow.com https://exclusive-membership-api.jason-winckler-business.workers.dev https://exclusive-admin-api.jason-winckler-business.workers.dev https://cloudflareinsights.com; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self' https://static.cloudflareinsights.com 'sha256-adofnCj9lar+Ny3x/d+DBmd6wCLUwK/aobtFTh3Xm5A=' 'sha256-dVKIk+/34xpGAs8YZEylHlxKHjk3xbFyqpicZ0dDKAs=' 'sha256-qSdaVK8va1cGoEuWBCCpLpk9BvpFp8rZfo43rTQKE8c='; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests
-  Cross-Origin-Opener-Policy: same-origin
-  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), browsing-topics=()
-  Referrer-Policy: strict-origin-when-cross-origin
-  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'
   X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(), payment=()
   X-Frame-Options: DENY
 
-/assets/*
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
 
-/linktree/uploads/*
-  Cache-Control: private, no-store, max-age=0
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.png
+  Cache-Control: private, no-store
+
+/*.jpg
+  Cache-Control: private, no-store
+
+/*.jpeg
+  Cache-Control: private, no-store
+
+/*.webp
+  Cache-Control: private, no-store
+
+/api/*
+  Cache-Control: private, no-store

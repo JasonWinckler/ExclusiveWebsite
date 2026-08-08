@@ -7,7 +7,7 @@ import {
   readJsonBody,
   readJsonResponse,
 } from "../shared/http";
-import { secretsEqual } from "../shared/security";
+import { hashPassword, secretsEqual } from "../shared/security";
 import { sendMicrosoftGraphEmail } from "../shared/microsoft-graph";
 import type { IdentityProjectionEnv } from "../shared/types";
 
@@ -53,10 +53,10 @@ async function emailBrandImage(env: IdentityProjectionEnv): Promise<{
   };
 }
 
-function appwriteBaseUrl(raw: string): string {
+function appwriteBaseUrl(raw: string | undefined): string {
   let endpoint: URL;
   try {
-    endpoint = new URL(raw);
+    endpoint = new URL(raw ?? "");
   } catch {
     throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
   }
@@ -113,21 +113,11 @@ async function syncLabels(
   )) {
     throw new ApiError(400, "INVALID_LABEL");
   }
-  const userResponse = await appwriteRequest(env, `/users/${encodeURIComponent(input.userId)}`);
-  const user = await readJsonResponse<{ labels?: unknown }>(
-    userResponse,
-    parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
-    "APPWRITE_INVALID_RESPONSE",
-  );
-  if (!Array.isArray(user.labels) || !user.labels.every((label) => typeof label === "string")) {
-    throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
-  }
-  const nextLabels = user.labels.filter((label) => !vocabulary.has(label));
-  if (typeof input.desiredLabel === "string") nextLabels.push(input.desiredLabel);
-  await appwriteRequest(env, `/users/${encodeURIComponent(input.userId)}/labels`, {
-    method: "PUT",
-    body: JSON.stringify({ labels: nextLabels }),
-  });
+  // Access and age state are authoritative D1 records. Labels are derived when
+  // a session is authenticated, so no external identity write is necessary.
+  const exists = await env.DB.prepare(`SELECT 1 AS found FROM user_profiles WHERE appwrite_user_id = ?`)
+    .bind(input.userId).first<{ found: number }>();
+  if (!exists) throw new ApiError(404, "USER_NOT_FOUND");
 }
 
 async function handleRequest(request: Request, env: IdentityProjectionEnv): Promise<Response> {
@@ -145,7 +135,9 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     path === "/list-sessions" ||
     path === "/delete-session" ||
     path === "/send-transactional-email";
-  const expectedSecret = labelServicePath
+  const expectedSecret = path === "/send-transactional-email" && env.AUTH_EMAIL_SERVICE_SECRET
+    ? env.AUTH_EMAIL_SERVICE_SECRET
+    : labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
     : env.ACCOUNT_LIFECYCLE_SERVICE_SECRET;
   if (!await secretsEqual(
@@ -166,31 +158,36 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
   const encodedUserId = encodeURIComponent(body.userId);
   if (path === "/update-user-status") {
     if (typeof body.status !== "boolean") throw new ApiError(400, "INVALID_USER_STATUS");
-    await appwriteRequest(env, `/users/${encodedUserId}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: body.status }),
-    });
+    if (!body.status) {
+      await env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'ACCOUNT_STATUS'
+        WHERE user_id = ? AND revoked_at IS NULL`).bind(new Date().toISOString(), body.userId).run();
+    }
     return jsonResponse({ ok: true });
   }
   if (path === "/verify-user-email") {
-    await appwriteRequest(env, `/users/${encodedUserId}/verification`, {
-      method: "PATCH",
-      body: JSON.stringify({ emailVerification: true }),
-    });
+    const now = new Date().toISOString();
+    await env.DB.prepare(`UPDATE user_profiles SET email_verified = 1,
+      account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
+      version = version + 1, updated_at = ? WHERE appwrite_user_id = ?`)
+      .bind(now, body.userId).run();
     return jsonResponse({ ok: true });
   }
   if (path === "/update-user-password") {
     if (
       typeof body.password !== "string" ||
-      body.password.length < 8 ||
+      body.password.length < 6 ||
       body.password.length > 256 ||
       /[\u0000-\u001f\u007f]/.test(body.password)
     ) throw new ApiError(400, "INVALID_PASSWORD");
-    await appwriteRequest(env, `/users/${encodedUserId}/password`, {
-      method: "PATCH",
-      body: JSON.stringify({ password: body.password }),
-    });
-    await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
+    const password = await hashPassword(body.password);
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
+        password_iterations = ?, migration_required = 0, password_changed_at = ?, updated_at = ?
+        WHERE user_id = ?`).bind(password.hash, password.salt, password.iterations, now, now, body.userId),
+      env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_CHANGED'
+        WHERE user_id = ? AND revoked_at IS NULL`).bind(now, body.userId),
+    ]);
     return jsonResponse({ ok: true });
   }
   if (path === "/update-user-name") {
@@ -201,10 +198,9 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       /[\u0000-\u001f\u007f]/.test(body.name) ||
       !/[\p{L}\p{N}]/u.test(body.name)
     ) throw new ApiError(400, "INVALID_DISPLAY_NAME");
-    await appwriteRequest(env, `/users/${encodedUserId}/name`, {
-      method: "PATCH",
-      body: JSON.stringify({ name: body.name }),
-    });
+    await env.DB.prepare(`UPDATE user_profiles SET display_name = ?, version = version + 1,
+      updated_at = ? WHERE appwrite_user_id = ?`)
+      .bind(body.name, new Date().toISOString(), body.userId).run();
     return jsonResponse({ ok: true });
   }
   if (path === "/send-transactional-email") {
@@ -218,13 +214,10 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       body.html.length < 1 ||
       body.html.length > 131_072
     ) throw new ApiError(400, "INVALID_TRANSACTIONAL_EMAIL");
-    const userResponse = await appwriteRequest(env, `/users/${encodedUserId}`);
-    const user = await readJsonResponse<{ email?: unknown; name?: unknown }>(
-      userResponse,
-      parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
-      "APPWRITE_INVALID_RESPONSE",
-    );
-    if (typeof user.email !== "string") throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
+    const user = await env.DB.prepare(`SELECT email, display_name AS name FROM user_profiles
+      WHERE appwrite_user_id = ? AND account_status <> 'DELETED'`)
+      .bind(body.userId).first<{ email: string; name: string }>();
+    if (!user?.email) throw new ApiError(404, "USER_NOT_FOUND");
     const deliveryStartedAt = Date.now();
     await sendMicrosoftGraphEmail({
       tenantId: env.GRAPH_TENANT_ID,
@@ -246,35 +239,25 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     return jsonResponse({ ok: true });
   }
   if (path === "/revoke-sessions") {
-    await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
+    await env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'REVOKED'
+      WHERE user_id = ? AND revoked_at IS NULL`).bind(new Date().toISOString(), body.userId).run();
     return jsonResponse({ ok: true });
   }
   if (path === "/list-sessions") {
-    const response = await appwriteRequest(env, `/users/${encodedUserId}/sessions`);
-    const payload = await readJsonResponse<{ sessions?: unknown }>(
-      response,
-      parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
-      "APPWRITE_INVALID_RESPONSE",
-    );
-    if (!Array.isArray(payload.sessions)) throw new ApiError(503, "APPWRITE_INVALID_RESPONSE");
+    const payload = await env.DB.prepare(`SELECT id, created_at, last_seen_at, expires_at,
+      user_agent_label FROM auth_sessions WHERE user_id = ? AND revoked_at IS NULL
+      AND state = 'ACTIVE' AND expires_at > ? ORDER BY last_seen_at DESC LIMIT 20`)
+      .bind(body.userId, new Date().toISOString()).all<Record<string, unknown>>();
     return jsonResponse({
-      sessions: payload.sessions.slice(0, 20).map((session) => {
+      sessions: (payload.results ?? []).map((session) => {
         const value = session as Record<string, unknown>;
         return {
-          id: value.$id,
-          createdAt: value.$createdAt,
-          updatedAt: value.$updatedAt,
-          expire: value.expire,
-          current: value.current === true,
-          countryCode: value.countryCode,
-          countryName: value.countryName,
-          deviceName: value.deviceName,
-          deviceBrand: value.deviceBrand,
-          deviceModel: value.deviceModel,
-          osName: value.osName,
-          osVersion: value.osVersion,
-          clientName: value.clientName,
-          clientVersion: value.clientVersion,
+          id: value.id,
+          createdAt: value.created_at,
+          updatedAt: value.last_seen_at,
+          expire: value.expires_at,
+          current: false,
+          clientName: value.user_agent_label,
         };
       }),
     });
@@ -283,17 +266,13 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     if (typeof body.sessionId !== "string" || !/^[A-Za-z0-9._-]{1,36}$/.test(body.sessionId)) {
       throw new ApiError(400, "INVALID_SESSION_ID");
     }
-    await appwriteRequest(
-      env,
-      `/users/${encodedUserId}/sessions/${encodeURIComponent(body.sessionId)}`,
-      { method: "DELETE" },
-      [404],
-    );
+    await env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'DEVICE_REVOKED'
+      WHERE id = ? AND user_id = ? AND revoked_at IS NULL`)
+      .bind(new Date().toISOString(), body.sessionId, body.userId).run();
     return jsonResponse({ ok: true });
   }
   if (path === "/delete-user") {
-    await appwriteRequest(env, `/users/${encodedUserId}/sessions`, { method: "DELETE" });
-    await appwriteRequest(env, `/users/${encodedUserId}`, { method: "DELETE" });
+    await env.DB.prepare(`DELETE FROM auth_accounts WHERE user_id = ?`).bind(body.userId).run();
     return jsonResponse({ ok: true });
   }
   throw new ApiError(404, "NOT_FOUND");

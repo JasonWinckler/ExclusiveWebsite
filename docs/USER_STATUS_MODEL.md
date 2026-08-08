@@ -7,7 +7,7 @@
 - `RESTRICTED`: manuell gesperrt; Sitzungen und geschützte Zugriffe werden
   widerrufen.
 - `DELETION_PENDING`: Löschung läuft; neue geschützte Aktionen sind gesperrt.
-- `DELETED`: Appwrite-Konto gelöscht, D1-Profil anonymisiert.
+- `DELETED`: Cloudflare-Authkonto und Sitzungen gelöscht, D1-Profil anonymisiert.
 
 ## Altersstatus
 
@@ -24,5 +24,5 @@ Stufe kann die bisherige Laufzeit pausiert und später fortgesetzt werden.
 Manuelle Adminvergabe ersetzt hingegen aktive und geplante Berechtigungen des
 Nutzers.
 
-Appwrite-Labels werden nur als serverseitige Projektion synchronisiert und
-dürfen nie allein geschützten Zugriff gewähren.
+Rollen- und Zugriffslabels werden bei der Anfrage ausschließlich aus D1
+abgeleitet und dürfen nie vom Browser vorgegeben werden.

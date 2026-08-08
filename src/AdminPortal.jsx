@@ -30,7 +30,7 @@ import {
   getProducts,
   getAdminSessionExpiry,
   requestPasswordReset,
-} from "./lib/appwrite";
+} from "./lib/platform";
 import { friendlyErrorMessage } from "./lib/error-messages";
 
 const copy = {

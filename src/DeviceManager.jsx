@@ -6,7 +6,7 @@ import {
   revokeLoginSession,
   revokeRegisteredDevice,
   setRegisteredDeviceLock,
-} from "./lib/appwrite";
+} from "./lib/platform";
 import { friendlyErrorMessage } from "./lib/error-messages";
 
 function sessionName(session, language) {

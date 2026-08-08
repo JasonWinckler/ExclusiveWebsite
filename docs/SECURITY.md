@@ -1,49 +1,43 @@
 # Sicherheit
 
-## Vertrauensgrenzen
+## Identität und Sitzungen
 
-- Appwrite authentifiziert Nutzer, E-Mail-Status und Sitzungen.
-- Cloudflare D1 ist maßgeblich für Altersstatus, Mitgliedschaften, Geräte,
-  Zahlungen, Inhalte und Datenschutzvorgänge.
-- Appwrite-Labels sind nur serverseitig gepflegte Projektionen und keine
-  alleinige Zugriffsentscheidung.
-- R2-Buckets für Content und Altersnachweise bleiben privat.
+- Passwörter: individueller 128-Bit-Salt, PBKDF2-HMAC-SHA-256 mit 600.000
+  Iterationen; Klartextpasswörter werden nie gespeichert oder geloggt.
+- Browser-Sitzung: 256-Bit-Zufallstoken; in D1 liegt nur SHA-256. Das Cookie ist
+  `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/` und besitzt kein `Domain`-
+  Attribut.
+- Maximal drei aktive Sitzungen/Geräte. Entfernen meldet ab; eine explizite
+  Gerätesperre bleibt getrennt und kann wieder aufgehoben werden.
+- Nach fünf falschen Passwörtern gilt eine 15-minütige Kontobremse. Antworten
+  unterscheiden nicht zwischen unbekannter Adresse und falschem Passwort.
+- MFA: TOTP nach RFC 6238, verschlüsselte Secrets (AES-GCM) und einmalige,
+  ausschließlich beim Erstellen angezeigte Recovery-Codes. Für Admins Pflicht.
+- Verbrauchte oder abgelaufene Auth-Aktionstoken, Sitzungen und verwendete
+  Recovery-Codes werden nach zwei Tagen durch den stündlichen Wartungslauf
+  entfernt; eine Accountlöschung entfernt Authdaten unmittelbar per Cascade.
 
 ## Adminzugriff
 
-Die Admin-API verlangt bei jeder geschützten Anfrage:
+Jede Adminaktion verlangt gleichzeitig eine aktive Cloudflare-Sitzung, die
+serverseitige D1-Rolle `ADMIN`, aktiviertes MFA, ein registriertes Gerät, einen
+erlaubten Origin und eine zusätzliche gerätegebundene Admin-Sitzung von
+höchstens zehn Minuten. Fehlt eine Bedingung, wird der Zugriff verweigert.
 
-1. ein gültiges, serverseitig geprüftes Appwrite-JWT;
-2. das Appwrite-Label `admin`;
-3. in Appwrite aktivierte Multi-Faktor-Authentifizierung;
-4. eine zusätzliche zufällige Admin-Sitzung;
-5. dass diese Sitzung demselben Administrator und Geräte-Token zugeordnet ist;
-6. dass die höchstens zehn Minuten lange Sitzung noch gültig ist;
-7. einen erlaubten Origin.
+Altersnachweise sind nur bei einem eingereichten, noch nicht abgelaufenen Fall
+abrufbar. D1-Größe/ETag werden gegen das private R2-Objekt geprüft, Antworten
+sind `no-store`, Abrufe werden auditiert und die Vorschau schließt bei
+Tabwechsel beziehungsweise spätestens nach zwei Minuten.
 
-Altersnachweise sind nur während eines aktiven, eingereichten und noch nicht
-abgelaufenen Prüffalls abrufbar. Größe und ETag des privaten R2-Objekts werden
-vor der Ausgabe gegen D1 geprüft. Antworten sind nicht cachebar, jeder Abruf
-wird protokolliert und die Browser-Vorschau wird automatisch geschlossen.
+## Plattformkontrollen
 
-## Weitere Maßnahmen
-
-- HSTS, CSP, `frame-ancestors 'none'`, `nosniff` und restriktive CORS-Regeln;
-- kryptografische UUIDs, Tokens und Challenges;
-- keine Secrets in `VITE_*`, Quellcode, Logs oder Git;
-- Service Bindings statt öffentlicher interner Worker-Endpunkte;
-- Dateigrößen- und Magic-Byte-Prüfung;
-- idempotente Zahlungs- und Löschvorgänge;
-- Fail-closed-Autorisierung bei Appwrite-, D1- oder Workerfehlern;
-- maximal drei registrierte Geräte; Geräte können abgemeldet oder gesperrt
-  werden;
-- MFA ist für Nutzer optional. Admins werden vor dem ersten Zugriff zur
-  TOTP-Einrichtung gezwungen; die Admin-API prüft den MFA-Status zusätzlich
-  serverseitig und verweigert den Zugriff ohne MFA.
-- Cloudflare Web Analytics misst ausschließlich cookiefreie, aggregierte
-  Seiten- und Leistungsdaten; Werbe-, Profiling- und Social-Media-Pixel bleiben
-  ausgeschlossen.
-
-Sicherheitsvorfälle sind anhand der
-[Datenschutz-Folgenabschätzung](DATENSCHUTZ-FOLGENABSCHAETZUNG.md) sowie der
-DSGVO-Meldepflichten zu bewerten.
+- HSTS (zwei Jahre, Subdomains, Preload), CSP, `frame-ancestors 'none'`,
+  `nosniff`, restriktive Permissions Policy und exakte Origin-Prüfung;
+- Same-Origin-Gateway und private Service Bindings statt öffentlicher interner
+  Auth-/Identity-Routen;
+- Magic-Byte-, Typ- und Größenprüfung für Medien;
+- private R2-Buckets ohne öffentliche Objekt-URLs;
+- idempotente Zahlungs-, E-Mail- und Löschvorgänge;
+- verschlüsselte Worker Secrets; keine Credentials in `VITE_*`, Git oder Logs;
+- personenbezogene API-Antworten und alle Bilder sind nicht cachebar;
+- keine Werbe-, Profiling- oder Social-Media-Pixel.

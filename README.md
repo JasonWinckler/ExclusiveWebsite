@@ -1,59 +1,48 @@
-# ExclusiveWebsite
+# Shadow's Temptation · ExclusiveWebsite
 
-This repository contains the production React frontend and the production
-Cloudflare membership backend for Shadow's Temptation.
+Production React frontend and Cloudflare backend for the single-creator
+membership platform at `exclusive.jason-shadow.com`.
 
-## Security boundary
+## Production architecture
 
-Appwrite owns authentication identities, password login, MFA, sessions and the
-authoritative E-Mail status. Branded verification and recovery messages use
-hashed, single-use D1 tokens and the private Identity Worker. The browser
-creates a short-lived Appwrite JWT for Cloudflare API calls. Cloudflare Workers
-and D1 own membership state, manual age-verification cases, SEPA orders,
-entitlements, device state, administration, transactional email and account
-deletion.
+- Cloudflare Pages serves the frontend and its same-origin `/api/*` gateway.
+- `exclusive-auth-api` owns registration, passwords, email state, sessions and
+  TOTP MFA. Passwords use salted PBKDF2-HMAC-SHA-256; session tokens are stored
+  only as SHA-256 hashes and sent in `Secure`, `HttpOnly`, `SameSite=Strict`
+  cookies.
+- D1 is authoritative for accounts, privacy choices, age decisions, products,
+  SEPA orders, entitlements, devices, posts, comments and audit state.
+- Private R2 buckets store short-lived age evidence and creator media.
+- Membership, Admin, Identity and Maintenance Workers communicate through
+  Cloudflare service bindings. The private Identity Worker sends branded mail
+  through Microsoft Graph and has no public route.
+- Appwrite is outside the production request path after the migration. Its
+  previous site and auth data are retained temporarily as rollback material;
+  they are not an authorization or data source.
 
-Protected authorization never trusts Appwrite labels alone. D1 is canonical;
-labels are a coarse server-maintained projection. Production uses the
-owner-operated manual R2 age-review flow, EPC-QR SEPA transfers with
-administrator-confirmed settlement and private R2 content delivery. Every
-protected path fails closed.
+Every protected operation fails closed. The browser never chooses its user ID,
+role, age status, tier or R2 object key.
 
-## Local development
-
-Frontend:
+## Development and validation
 
 ```sh
 npm install
-npm run dev
-```
+npm run build
 
-Cloudflare:
-
-```sh
 cd cloudflare
 pnpm install
-pnpm run typecheck
-pnpm test
+pnpm run check
 ```
 
-The frontend public variables are listed in `.env.example`. Cloudflare secret names are listed without values in `cloudflare/.dev.vars.example`; real values must be stored with Wrangler secrets or the Cloudflare dashboard.
+Public optional overrides are documented in `.env.example`. Worker secret names
+are documented in `cloudflare/.dev.vars.example`; values belong only in
+Cloudflare encrypted secrets.
 
-## Production status
+Operational documentation:
 
-The Cloudflare architecture is live on `exclusive.jason-shadow.com` and is
-built from GitHub `main`. The frontend no longer calls Appwrite Functions,
-TablesDB or Storage for membership or identity evidence. Legacy Function source
-is retained only as historical rollback material and is not an authorization
-path. Any remaining legacy cloud resource may be removed only after an explicit
-inventory confirms that it contains neither required production data nor data
-subject to a retention or deletion duty.
-
-Current operational documentation:
-
-- [Architecture and migration](docs/CLOUDFLARE_MIGRATION.md)
-- [Provider decisions](docs/PROVIDER_DECISIONS.md)
-- [Age verification](docs/AGE_VERIFICATION.md)
+- [Architecture](docs/ARCHITECTURE_PLAN.md)
+- [Deployment and rollback](docs/DEPLOYMENT.md)
 - [Security](docs/SECURITY.md)
+- [Age verification](docs/AGE_VERIFICATION.md)
 - [Data deletion and retention](docs/DATA_DELETION.md)
 - [Data protection impact assessment](docs/DATENSCHUTZ-FOLGENABSCHAETZUNG.md)

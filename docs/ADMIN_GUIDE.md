@@ -1,6 +1,6 @@
 # Admin-Handbuch
 
-Der Adminbereich ist nur mit Appwrite-Adminrolle und einer zusätzlichen,
+Der Adminbereich ist nur mit serverseitiger D1-Adminrolle, aktivem TOTP-MFA und einer zusätzlichen,
 gerätegebundenen Zehn-Minuten-Sitzung erreichbar.
 
 ## Altersprüfung

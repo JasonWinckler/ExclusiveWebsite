@@ -1,0 +1,13 @@
+{
+  "$schema": "./cloudflare/node_modules/wrangler/config-schema.json",
+  "name": "shadows-temptation",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "services": [
+    { "binding": "AUTH_API", "service": "exclusive-auth-api" },
+    { "binding": "MEMBERSHIP_API", "service": "exclusive-membership-api" },
+    { "binding": "ADMIN_API", "service": "exclusive-admin-api" }
+  ]
+}
+

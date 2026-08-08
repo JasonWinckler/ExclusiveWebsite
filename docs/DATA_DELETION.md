@@ -31,7 +31,7 @@ Nachweis nicht öffentlich.
 ## Kontolöschung
 
 Nutzer und Administrator können eine zweistufig bestätigte Löschung auslösen.
-Der Prozess löscht Appwrite-Authkonto, Sitzungen, Geräte, Kommentare,
+Der Prozess löscht das Cloudflare-Authkonto, Sitzungen, Geräte, Kommentare,
 Authentifizierungs-Tokens und Altersnachweise. Das D1-Profil wird anonymisiert.
 Gesetzlich notwendige Rechnungs- und Zahlungsdaten werden getrennt
 weitergespeichert und soweit möglich pseudonymisiert.

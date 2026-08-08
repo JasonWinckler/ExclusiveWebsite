@@ -41,7 +41,7 @@ import {
   createPrivacyRequest,
   fetchPrivacyExport,
   endAdminSession,
-} from "./lib/appwrite";
+} from "./lib/platform";
 import {
   countryOptions,
   hasGlobalPrivacyControl,
@@ -1692,7 +1692,7 @@ export default function App() {
     setNotice("");
     let emailChanged = false;
     try {
-      await updateProfileEmail(email, password);
+      await updateProfileEmail(email, password, language);
       emailChanged = true;
       await resendVerification(language);
       await refresh();
@@ -1979,7 +1979,7 @@ export default function App() {
           name="password"
           type="password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
-          minLength="8"
+          minLength="6"
           required
         />}
         {mode === "register" && <>
@@ -2166,7 +2166,7 @@ export default function App() {
             </div>
             <div className="current-account-value"><span>{language === "de" ? "Aktuell" : "Current"}</span><strong>{user.email}</strong></div>
             <Field label={language === "de" ? "Neue E-Mail-Adresse" : "New email address"} name="email" type="email" autoComplete="email" required maxLength="320" />
-            <Field label={language === "de" ? "Aktuelles Passwort" : "Current password"} name="password" type="password" autoComplete="current-password" required minLength="8" maxLength="256" />
+            <Field label={language === "de" ? "Aktuelles Passwort" : "Current password"} name="password" type="password" autoComplete="current-password" required minLength="6" maxLength="128" />
             <p className="profile-policy-note is-security">
               {language === "de"
                 ? "Nach der Änderung wird der geschützte Zugang pausiert, bis du die neue Adresse bestätigt hast."

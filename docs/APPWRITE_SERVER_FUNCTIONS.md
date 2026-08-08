@@ -1,28 +1,15 @@
-# Appwrite Server Functions: produktiver Legacy-Status
+# Appwrite: historischer Rollback-Status
 
-Appwrite is the production authentication boundary. The frontend uses Appwrite
-Accounts for identity and sessions, while branded verification and recovery are
-coordinated through Cloudflare and the private Identity Worker. Appwrite
-Functions, TablesDB and Storage are not used for membership authorization or
-identity-document upload.
+Appwrite ist nicht mehr Teil des produktiven Anfragewegs. Der Quellcode unter
+`appwrite/functions/` wird nur vorübergehend als historische Referenz und für
+einen kontrollierten Rollback aufbewahrt. Er darf nicht parallel aktiviert und
+nicht als zweite Wahrheitsquelle verwendet werden.
 
-The source under `appwrite/functions/` is retained as historical rollback and
-migration material. It is not called by the production frontend and must not be
-re-enabled as an alternate authorization path.
+Passwörter wurden nicht exportiert. Bestandsnutzer übernehmen ihr Konto über
+den einmaligen Cloudflare-Passwortreset. Fachliche Daten lagen bereits in D1
+und bleiben über die stabile interne Subject-ID zugeordnet.
 
-The Cloudflare replacement has passed the production gates that originally
-controlled the migration:
-
-1. Cloudflare Workers and D1 migrations are deployed.
-2. Registration and login use Appwrite Auth.
-3. Membership, manual age review, verified SEPA settlement, entitlement expiry
-   and deletion run through Cloudflare.
-4. Negative authorization tests prevent labels, redirects or browser-submitted
-   identifiers from granting access.
-
-If obsolete Function deployments, TablesDB databases or Storage buckets still
-exist in Appwrite, treat their removal as a separate controlled cleanup:
-inventory first, confirm that the production frontend has no dependency,
-resolve retention or deletion duties, disable before deletion and record the
-result. Never remove Auth users, required Web platforms or the Appwrite
-configuration used by the private Identity Worker.
+Entfernung der verbliebenen Appwrite-Ressourcen ist ein separater späterer
+Vorgang. Voraussetzung sind ein abgeschlossenes Beobachtungsfenster, bestätigte
+Cloudflare-Backups/Time-Travel, ein Daten-/Retention-Inventar und ein expliziter
+Löschentscheid des Betreibers.

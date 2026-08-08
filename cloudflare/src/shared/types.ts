@@ -48,11 +48,21 @@ export interface AuthenticatedIdentity {
 
 export interface BaseEnv {
   DB: D1Database;
-  APPWRITE_ENDPOINT: string;
-  APPWRITE_PROJECT_ID: string;
+  APPWRITE_ENDPOINT?: string;
+  APPWRITE_PROJECT_ID?: string;
+  AUTH_MODE?: string;
   SITE_ORIGINS?: string;
   MAX_JSON_BODY_BYTES?: string;
   MAX_UPSTREAM_JSON_BYTES?: string;
+}
+
+export interface AuthEnv extends BaseEnv {
+  AUTH_RATE_LIMITER: RateLimit;
+  IDENTITY_PROJECTION: Service;
+  AUTH_EMAIL_SERVICE_SECRET: string;
+  AUTH_ENCRYPTION_KEY: string;
+  SESSION_DAYS?: string;
+  DEVICE_LIMIT?: string;
 }
 
 export interface MembershipEnv extends BaseEnv {
@@ -114,15 +124,18 @@ export interface PaymentReconciliationEnv {
 }
 
 export interface IdentityProjectionEnv {
+  DB: D1Database;
   EMAIL_ASSETS: Fetcher;
-  APPWRITE_ENDPOINT: string;
-  APPWRITE_PROJECT_ID: string;
+  APPWRITE_ENDPOINT?: string;
+  APPWRITE_PROJECT_ID?: string;
+  AUTH_MODE?: string;
   APPWRITE_SERVER_API_KEY: string;
   GRAPH_TENANT_ID: string;
   GRAPH_CLIENT_ID: string;
   GRAPH_CLIENT_SECRET: string;
   GRAPH_SENDER_MAILBOX: string;
   LABEL_SYNC_SERVICE_SECRET: string;
+  AUTH_EMAIL_SERVICE_SECRET?: string;
   ACCOUNT_LIFECYCLE_SERVICE_SECRET: string;
   MAX_UPSTREAM_JSON_BYTES?: string;
 }

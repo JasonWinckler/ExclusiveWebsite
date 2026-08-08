@@ -1,34 +1,23 @@
-import {
-  Account,
-  AuthenticationFactor,
-  AuthenticatorType,
-  Client,
-  ID,
-} from "appwrite";
-
-export const appwriteConfig = Object.freeze({
-  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || "https://auth-exclusive.jason-shadow.com/v1",
-  projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || "6a64cbeb0009826c9efc",
-});
+// Cloudflare-native browser API. Authentication uses a same-origin HttpOnly
+// session cookie; the browser never receives service credentials or JWTs.
 
 export const cloudflareConfig = Object.freeze({
   apiBaseUrl: (
     import.meta.env.VITE_CLOUDFLARE_API_BASE_URL ||
-    "https://exclusive-membership-api.jason-winckler-business.workers.dev"
+    "/api/member"
   ).replace(/\/$/, ""),
   adminApiBaseUrl: (
     import.meta.env.VITE_CLOUDFLARE_ADMIN_API_BASE_URL ||
-    "https://exclusive-admin-api.jason-winckler-business.workers.dev"
+    "/api/admin"
+  ).replace(/\/$/, ""),
+  authApiBaseUrl: (
+    import.meta.env.VITE_CLOUDFLARE_AUTH_API_BASE_URL ||
+    "/api/auth"
   ).replace(/\/$/, ""),
 });
 
-const client = new Client()
-  .setEndpoint(appwriteConfig.endpoint)
-  .setProject(appwriteConfig.projectId);
-const account = new Account(client);
 const deviceStorageKey = "jason-shadow-device-token-v1";
 const adminSessionStorageKey = "shadows-temptation-admin-session-v1";
-const appwriteFallbackCookieKey = "cookieFallback";
 export const ageInstructionsVersion = "manual-age-v6";
 let adminSessionPromise = null;
 
@@ -66,17 +55,16 @@ async function errorFromResponse(response) {
 }
 
 async function apiRequest(path, options = {}) {
-  const baseUrl = options.admin
-    ? requireApiUrl(cloudflareConfig.adminApiBaseUrl, "ADMIN_API_NOT_CONFIGURED")
-    : requireApiUrl(cloudflareConfig.apiBaseUrl, "MEMBERSHIP_API_NOT_CONFIGURED");
+  const baseUrl = options.auth
+    ? cloudflareConfig.authApiBaseUrl
+    : options.admin
+      ? cloudflareConfig.adminApiBaseUrl
+      : cloudflareConfig.apiBaseUrl;
+  if (!baseUrl.startsWith("/")) requireApiUrl(baseUrl, "CLOUDFLARE_API_NOT_CONFIGURED");
   const headers = new Headers(options.headers);
   headers.set("Accept", options.responseType === "response" ? "*/*" : "application/json");
-  if (options.authenticated !== false) {
-    const jwt = await account.createJWT();
-    headers.set("Authorization", `Bearer ${jwt.jwt}`);
-  }
   if (options.idempotent) headers.set("Idempotency-Key", options.idempotencyKey || crypto.randomUUID());
-  if (options.device) headers.set("X-Device-Token", getDeviceToken());
+  if (options.device || options.auth) headers.set("X-Device-Token", getDeviceToken());
   if (options.admin && !options.skipAdminSession) {
     const adminSession = await ensureAdminSession();
     headers.set("X-Admin-Session", adminSession.token);
@@ -96,7 +84,7 @@ async function apiRequest(path, options = {}) {
     method: options.method || "GET",
     headers,
     body,
-    credentials: "omit",
+    credentials: "same-origin",
     redirect: "error",
   });
   if (!response.ok) {
@@ -177,48 +165,11 @@ export function forgetCurrentDevice() {
   localStorage.removeItem(deviceStorageKey);
 }
 
-function clearAppwriteFallbackSession() {
-  localStorage.removeItem(appwriteFallbackCookieKey);
-}
-
-async function discardBlockedSession() {
-  try {
-    await account.deleteSession({ sessionId: "current" });
-  } catch {
-    // A blocked Appwrite user may no longer be allowed to delete its own session.
-  }
-  clearAppwriteFallbackSession();
-}
-
-async function createEmailPasswordSession(email, password) {
-  try {
-    return await account.createEmailPasswordSession({ email, password });
-  } catch (error) {
-    if (error?.type !== "user_blocked") throw error;
-    await discardBlockedSession();
-    return account.createEmailPasswordSession({ email, password });
-  }
-}
-
-async function createAccount(email, password, name) {
-  try {
-    return await account.create({ userId: ID.unique(), email, password, name });
-  } catch (error) {
-    if (error?.type !== "user_blocked") throw error;
-    await discardBlockedSession();
-    return account.create({ userId: ID.unique(), email, password, name });
-  }
-}
-
 export async function getCurrentUser() {
   try {
-    return await account.get();
+    return await apiRequest("/v1/account", { auth: true });
   } catch (error) {
-    if (error?.type === "user_blocked") {
-      await discardBlockedSession();
-      return null;
-    }
-    if (error?.code === 401) return null;
+    if (error?.status === 401) return null;
     throw error;
   }
 }
@@ -234,60 +185,36 @@ export async function registerAccount({
   gpcSignal = false,
   locale = "de",
 }) {
-  const user = await createAccount(email, password, name);
-  const session = await createEmailPasswordSession(email, password);
-  await updatePrivacyProfile({
-    countryCode,
-    regionCode: countryCode === "US" ? regionCode : null,
-    noticeVersion: privacyNoticeVersion,
-    noticeAccepted: privacyNoticeAccepted,
-    gpcSignal,
-    locale,
+  const result = await apiRequest("/v1/register", {
+    auth: true,
+    authenticated: false,
+    method: "POST",
+    idempotent: true,
+    json: {
+      name, email, password, countryCode, regionCode, privacyNoticeVersion,
+      privacyNoticeAccepted, gpcSignal, locale,
+    },
   });
-  await requestEmailVerification(locale);
-  await registerCurrentDevice(undefined, session.$id);
-  return {
-    user: await getCurrentUser() || user,
-    sessionReady: true,
-  };
+  await registerCurrentDevice(undefined, result.session?.$id);
+  return result;
 }
 
 export async function login(email, password) {
-  const session = await createEmailPasswordSession(email, password);
-  try {
-    const user = await account.get();
-    await registerCurrentDevice(undefined, session.$id);
-    return {
-      session,
-      user,
-      sessionReady: true,
-    };
-  } catch (error) {
-    if (error?.type === "user_more_factors_required") {
-      return {
-        session,
-        mfaRequired: true,
-        sessionReady: false,
-      };
-    }
-    try {
-      await account.deleteSession({ sessionId: "current" });
-    } catch {
-      // Preserve the original device-policy error.
-    }
-    clearAppwriteFallbackSession();
-    throw error;
+  const result = await apiRequest("/v1/login", {
+    auth: true, authenticated: false, method: "POST", json: { email, password },
+  });
+  if (!result.mfaRequired) {
+    const user = await getCurrentUser();
+    await registerCurrentDevice(undefined, result.session?.$id);
+    return { ...result, user };
   }
+  return result;
 }
 export async function logout() {
   try {
-    return await account.deleteSession({ sessionId: "current" });
-  } catch (error) {
-    if (error?.type !== "user_blocked" && error?.type !== "user_session_not_found") throw error;
-    return {};
+    return await apiRequest("/v1/logout", { auth: true, authenticated: false, method: "POST" });
   } finally {
     sessionStorage.removeItem(adminSessionStorageKey);
-    clearAppwriteFallbackSession();
   }
 }
 export async function endAdminSession() {
@@ -306,96 +233,58 @@ export async function endAdminSession() {
 export function getAdminSessionExpiry() {
   return storedAdminSession()?.expiresAt || null;
 }
-export const getLoginSessions = () => account.listSessions();
-export const revokeLoginSession = (sessionId) => account.deleteSession({ sessionId });
-export const getMfaStatus = async () => {
-  const [user, factors] = await Promise.all([
-    account.get(),
-    account.listMFAFactors(),
-  ]);
-  return {
-    enabled: Boolean(user.mfa),
-    factors,
-    user,
-  };
-};
-export const beginTotpEnrollment = () => account.createMFAAuthenticator({
-  type: AuthenticatorType.Totp,
-});
-export const confirmTotpEnrollment = async (otp) => {
-  await account.updateMFAAuthenticator({
-    type: AuthenticatorType.Totp,
-    otp,
-  });
-  const recovery = await account.createMFARecoveryCodes();
-  const user = await account.updateMFA({ mfa: true });
-  return {
-    user,
-    recoveryCodes: recovery.recoveryCodes || [],
-  };
-};
-export const disableTotpMfa = async () => {
-  const user = await account.updateMFA({ mfa: false });
-  await account.deleteMFAAuthenticator({ type: AuthenticatorType.Totp });
-  return user;
-};
-export const createMfaLoginChallenge = async (factor = "totp") => {
-  const authenticationFactor = factor === "recovery"
-    ? AuthenticationFactor.Recoverycode
-    : AuthenticationFactor.Totp;
-  return account.createMFAChallenge({ factor: authenticationFactor });
-};
+export const getLoginSessions = () => apiRequest("/v1/sessions", { auth: true });
+export const revokeLoginSession = (sessionId) => apiRequest(
+  `/v1/sessions/${encodeURIComponent(sessionId)}`,
+  { auth: true, method: "DELETE" },
+);
+export const getMfaStatus = () => apiRequest("/v1/mfa", { auth: true });
+export const beginTotpEnrollment = () => apiRequest("/v1/mfa/enrollment", { auth: true, method: "POST" });
+export const confirmTotpEnrollment = (otp) => apiRequest(
+  "/v1/mfa/enrollment/confirm", { auth: true, method: "POST", json: { otp } },
+);
+export const disableTotpMfa = () => apiRequest("/v1/mfa", { auth: true, method: "DELETE" });
+export const createMfaLoginChallenge = (factor = "totp") => apiRequest(
+  "/v1/mfa/challenge", { auth: true, authenticated: false, method: "POST", json: { factor } },
+);
 export const completeMfaLoginChallenge = async (challengeId, otp) => {
-  const session = await account.updateMFAChallenge({ challengeId, otp });
-  try {
-    const user = await account.get();
-    await registerCurrentDevice(undefined, session.$id);
-    return {
-      session,
-      user,
-      sessionReady: true,
-    };
-  } catch (error) {
-    try {
-      await account.deleteSession({ sessionId: "current" });
-    } catch {
-      // Preserve the original device-policy error.
-    }
-    clearAppwriteFallbackSession();
-    throw error;
-  }
+  const result = await apiRequest("/v1/mfa/challenge/confirm", {
+    auth: true, authenticated: false, method: "POST", json: { challengeId, otp },
+  });
+  await registerCurrentDevice(undefined, result.session?.$id);
+  return result;
 };
 export const requestEmailVerification = (locale = "de") => apiRequest(
-  "/v1/auth/email-verification/request",
-  { method: "POST", json: { locale }, idempotent: true },
+  "/v1/email-verification/request",
+  { auth: true, method: "POST", json: { locale }, idempotent: true },
 );
 export const resendVerification = requestEmailVerification;
 export const requestPasswordReset = (email, locale = "de") => apiRequest(
-  "/v1/auth/password-reset/request",
-  { method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
+  "/v1/password-reset/request",
+  { auth: true, method: "POST", json: { email, locale }, authenticated: false, idempotent: true },
 );
 export const completePasswordReset = (token, password) => apiRequest(
-  "/v1/auth/password-reset/confirm",
-  { method: "POST", json: { token, password }, authenticated: false, idempotent: true },
+  "/v1/password-reset/confirm",
+  { auth: true, method: "POST", json: { token, password }, authenticated: false, idempotent: true },
 );
 export const completeEmailVerification = (token) => apiRequest(
-  "/v1/auth/email-verification/confirm",
-  { method: "POST", json: { token }, authenticated: false, idempotent: true },
+  "/v1/email-verification/confirm",
+  { auth: true, method: "POST", json: { token }, authenticated: false, idempotent: true },
 );
-export async function completeLegacyEmailVerification(userId, secret) {
-  try {
-    return await account.updateVerification({ userId, secret });
-  } catch (error) {
-    if (error?.type === "user_already_verified") return { alreadyVerified: true };
-    throw error;
-  }
+export async function completeLegacyEmailVerification() {
+  throw new CloudflareApiError("LEGACY_AUTH_LINK_EXPIRED", 410);
 }
-export const completeLegacyPasswordReset = (userId, secret, password) => account.updateRecovery({ userId, secret, password });
+export async function completeLegacyPasswordReset() {
+  throw new CloudflareApiError("LEGACY_AUTH_LINK_EXPIRED", 410);
+}
 export const updateProfileName = (displayName) => apiRequest(
   "/v1/account/profile/name",
   { method: "PATCH", json: { displayName }, idempotent: true },
 );
-export const updateProfileEmail = (email, password) => account.updateEmail({ email, password });
+export const updateProfileEmail = (email, password, locale = "de") => apiRequest(
+  "/v1/account/email",
+  { auth: true, method: "PATCH", json: { email, password, locale }, idempotent: true },
+);
 
 export const getProducts = (locale = "de") => apiRequest(
   `/v1/products?locale=${locale === "en" ? "en" : "de"}`,
@@ -640,4 +529,3 @@ export const adminUploadContent = (contentId, file) => apiRequest(
   { admin: true, method: "PUT", raw: file, contentType: file.type, idempotent: true },
 );
 
-export { account, client };

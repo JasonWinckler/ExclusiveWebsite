@@ -1,29 +1,36 @@
 # AGENTS.md
 
 ## Scope
-These instructions apply to the whole repository.
+
+These instructions apply to the entire repository.
 
 ## Project direction
-This repository contains the production React frontend and Cloudflare membership
-backend for a single-creator adult membership application. Appwrite owns
-authentication; Cloudflare Workers, D1 and private R2 own membership, age
-review, SEPA orders, protected content and administration. Keep production
-behavior conservative and document operator responsibility and implemented
-technical safeguards accurately.
+
+This is the production Cloudflare-native single-creator adult membership
+platform. Cloudflare Pages, Workers, D1 and private R2 own frontend delivery,
+authentication, authorization, age review, SEPA orders, content and
+administration. Appwrite is legacy rollback material only and must not be added
+back to the production request path.
 
 ## Content and safety rules
-- Do not commit adult media, customer data, identity documents, challenge videos, secrets, real bank details, production `.env` files, databases, or backups.
-- Keep all protected-content previews neutral placeholders only; never blur real adult media for unauthenticated users.
-- Protected operations must remain server-authorized and fail closed. Never
-  replace Appwrite authentication, D1 authorization or private R2 delivery with
-  frontend-only checks.
-- Age evidence must remain private, accessible only through the protected admin
-  API, and subject to the documented immediate/48-hour deletion process.
-- Audit events are retained for at most 730 days and at most 30 days after the
-  affected account is deleted.
-- Do not add advertising pixels, social-media pixels, cross-site identifiers or unnecessary cookies. Cloudflare Web Analytics is permitted only in its cookieless, aggregate configuration and must not receive age evidence, payment details or authenticated API payloads.
+
+- Never commit adult media, customer data, identity evidence, challenge videos,
+  secrets, real bank details, production environments, databases or backups.
+- Unauthenticated previews use neutral placeholders, never blurred real adult
+  media.
+- Protected operations remain server-authorized and fail closed. Never replace
+  Cloudflare session validation, D1 authorization or private R2 delivery with a
+  frontend-only check.
+- Age evidence is private, admin-only, `no-store`, and subject to immediate or
+  48-hour deletion.
+- Audit events are retained at most 730 days and at most 30 days after deletion
+  of the affected account.
+- Do not add ad/social pixels, cross-site identifiers or unnecessary cookies.
+  Only cookieless aggregate Cloudflare Web Analytics is permitted.
 
 ## Implementation notes
-- Preserve the dark red/ember/gold visual design.
-- `/linktree/` must remain available but should route users back into the single-page site experience rather than linking to external adult platforms.
-- Visible UI copy should be maintained through the central translation file (`assets/js/translations.js`) where practical for the static frontend.
+
+- Preserve the dark red, ember and gold brand design.
+- Keep `/linktree/` available and free of explicit sexual copy except the
+  clearly marked 18+ Exclusive Content link.
+- Maintain German and English copy together and avoid duplicate text.

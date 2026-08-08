@@ -141,6 +141,31 @@ async function expireRecords(env: MaintenanceEnv, now: string, batchSize: number
         ORDER BY updated_at ASC LIMIT ?
       )
     `).bind(authTokenHistoryCutoff, batchSize),
+    env.DB.prepare(`
+      DELETE FROM auth_action_tokens
+      WHERE id IN (
+        SELECT id FROM auth_action_tokens
+        WHERE (used_at IS NOT NULL AND used_at <= ?)
+          OR (used_at IS NULL AND expires_at <= ?)
+        ORDER BY created_at ASC LIMIT ?
+      )
+    `).bind(authTokenHistoryCutoff, authTokenHistoryCutoff, batchSize),
+    env.DB.prepare(`
+      DELETE FROM auth_sessions
+      WHERE id IN (
+        SELECT id FROM auth_sessions
+        WHERE expires_at <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)
+        ORDER BY created_at ASC LIMIT ?
+      )
+    `).bind(authTokenHistoryCutoff, authTokenHistoryCutoff, batchSize),
+    env.DB.prepare(`
+      DELETE FROM auth_recovery_codes
+      WHERE id IN (
+        SELECT id FROM auth_recovery_codes
+        WHERE used_at IS NOT NULL AND used_at <= ?
+        ORDER BY used_at ASC LIMIT ?
+      )
+    `).bind(authTokenHistoryCutoff, batchSize),
   ]);
   const resumableEntitlements = await env.DB.prepare(`
     SELECT id FROM entitlements

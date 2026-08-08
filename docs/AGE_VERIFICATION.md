@@ -2,7 +2,7 @@
 
 ## Produktiver Ablauf
 
-Appwrite ist die Authentifizierungsgrenze. Nur ein angemeldeter Nutzer mit
+Der Cloudflare Auth Worker ist die Authentifizierungsgrenze. Nur ein angemeldeter Nutzer mit
 bestätigter E-Mail-Adresse und aktivem Konto kann eine Altersprüfung beginnen.
 Der Cloudflare Membership Worker erzeugt einen Fall mit einem kryptografisch
 zufälligen sechsstelligen Code und einem höchstens 60 Minuten geöffneten
@@ -24,7 +24,7 @@ Uploadfenster. Die Objekte werden ausschließlich im privaten R2-Bucket
 
 Nachweise können nur abgerufen werden, wenn:
 
-- Appwrite den aktuellen Nutzer als Administrator authentifiziert;
+- Cloudflare die aktive Sitzung, D1-Adminrolle und verpflichtendes MFA bestätigt;
 - der Administrator zusätzlich eine gerätegebundene Sitzung besitzt, die
   höchstens zehn Minuten gültig ist;
 - der Fall `PENDING` und `READY_FOR_REVIEW` ist;

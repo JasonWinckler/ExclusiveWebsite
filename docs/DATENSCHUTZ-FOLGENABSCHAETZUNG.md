@@ -1,13 +1,13 @@
 # Datenschutz-Folgenabschätzung: manuelle Altersverifikation
 
-Version: 1.2
+Version: 1.3
 
-Stand: 31. Juli 2026
+Stand: 8. August 2026
 
 Betriebsstatus: produktiv eingesetzt
 
-Änderungsgrund: Produktiver Löschbestätigungsprozess und klare
-Betreiberverantwortung
+Änderungsgrund: Vollständige Cloudflare-Migration, produktiver
+Löschbestätigungsprozess und klare Betreiberverantwortung
 
 Verantwortlicher: Jason Winckler, handelnd unter Jason Shadow
 
@@ -28,8 +28,8 @@ Zwecke verwendet werden.
 
 ## 2. Verarbeitung und Datenfluss
 
-1. Appwrite authentifiziert den registrierten Nutzer und bestätigt dessen
-   E-Mail-Adresse.
+1. Der Cloudflare Auth Worker authentifiziert den registrierten Nutzer über eine
+   serverseitige, in D1 gespeicherte Sitzung und bestätigt dessen E-Mail-Adresse.
 2. Der Cloudflare Membership Worker erzeugt einen neuen Prüffall mit einem
    kryptografisch zufälligen sechsstelligen Einmalcode.
 3. Der Browser nimmt die erforderlichen Dokumentseiten und ein kurzes Live-Video
@@ -40,10 +40,9 @@ Zwecke verwendet werden.
 5. Die Nachweise werden unter zufälligen Objektschlüsseln in einem privaten
    Cloudflare-R2-Bucket mit EU-Jurisdiktion gespeichert. Es existiert keine
    öffentliche Bucket- oder Objekt-URL.
-6. Nur ein von Appwrite als Administrator authentifizierter Nutzer mit
-   aktiviertem TOTP-MFA und einer zusätzlichen, gerätegebundenen Admin-Sitzung
-   kann einen aktiven Prüffall öffnen. Diese Sitzung ist höchstens zehn Minuten
-   gültig.
+6. Nur ein in D1 als Administrator geführter Nutzer mit aktiviertem TOTP-MFA
+   und einer zusätzlichen, gerätegebundenen Admin-Sitzung kann einen aktiven
+   Prüffall öffnen. Diese Sitzung ist höchstens zehn Minuten gültig.
 7. Der Administrator vergleicht Dokument, Gesicht, Einmalcode,
    Bewegungsabfolge, Dokumentgültigkeit und Volljährigkeit.
 8. Nach der Entscheidung werden R2-Objekte und die zugehörigen
@@ -61,7 +60,7 @@ Betroffen sind registrierte Nutzer, die eine Altersverifikation beginnen.
 
 Verarbeitet werden:
 
-- interne Appwrite-Nutzer-ID und Fall-ID;
+- stabile interne Nutzer-ID und Fall-ID;
 - Land, Dokumenttyp, Einwilligungs- und Prozesszeitpunkte;
 - Vorderseite und gegebenenfalls Rückseite eines amtlichen Dokuments;
 - kurzes Live-Video mit Gesicht, Dokument, Einmalcode und Bewegungsabfolge;
@@ -138,11 +137,11 @@ sie sind soweit möglich zu trennen und zu pseudonymisieren.
 
 - Jason Winckler als alleiniger berechtigter Betreiber und Prüfer;
 - Cloudflare als Infrastruktur- und Auftragsverarbeiter für Pages, Workers, D1,
-  R2 und cookiefreie aggregierte Webanalyse;
-- Appwrite ausschließlich für Authentifizierung und Sitzungen.
+  R2, Authentifizierung, Sitzungen und cookiefreie aggregierte Webanalyse.
 
-Appwrite und Microsoft erhalten keine Ausweis- oder Videonachweise aus diesem
-Prozess. Auch die Webanalyse erhält keine Nachweise, Zahlungsdetails oder
+Microsoft erhält keine Ausweis- oder Videonachweise aus diesem Prozess. Die
+Nachweise verbleiben bis zur vorgesehenen Löschung ausschließlich in einem
+privaten R2-Bucket. Auch die Webanalyse erhält keine Nachweise, Zahlungsdetails oder
 authentifizierten API-Antworten. Im Produktivbetrieb sind gültige Auftragsverarbeitungsverträge,
 Unterauftragnehmer, Speicherorte und gegebenenfalls eingesetzte
 Übermittlungsinstrumente im internen Verfahrensregister dokumentiert und
@@ -153,7 +152,7 @@ Datensparsamkeitsgründen nicht im öffentlichen Repository veröffentlicht.
 
 - TLS, HSTS, restriktive Content-Security-Policy und `no-store`-Antworten;
 - privater R2-Bucket ohne öffentliche Entwicklungs- oder Custom-Domain;
-- serverseitige Appwrite-JWT-, `admin`-Rollen- und MFA-Prüfung;
+- serverseitige Cloudflare-Sitzungs-, D1-`admin`-Rollen- und MFA-Prüfung;
 - zusätzliche kryptografische Admin-Sitzung, an Nutzer und Geräte-Token
   gebunden, maximal zehn Minuten;
 - Abruf nur für aktive, fristgerechte und prüfbereite Fälle;

@@ -1,44 +1,33 @@
-# Deployment
+# Deployment und Rollback
 
-## Frontend
+## Automatischer Frontend-Rollout
 
-Die Produktionsdomain `exclusive.jason-shadow.com` wird über Cloudflare
-ausgeliefert und aus dem GitHub-Branch `main` gebaut. Der Build lautet:
+Cloudflare Pages ist mit GitHub verbunden. Pushes auf `main` bauen mit
+`npm run build` und veröffentlichen `dist`. Pages Functions in `functions/`
+stellen das Same-Origin-Gateway bereit; Bindings stehen in `wrangler.jsonc`.
 
-```sh
-npm install
-npm run build
-```
+## Backend-Reihenfolge
 
-Ausgabeverzeichnis ist `dist`. Die Appwrite-Site bleibt als kontrollierte
-Rollback-/Staging-Möglichkeit bestehen, ist aber keine zweite Daten- oder
-Autorisierungsquelle.
+1. D1-Time-Travel-Bookmark notieren.
+2. Additive D1-Migration anwenden.
+3. `identity-projection`, danach `auth-api`, `membership-api`, `admin-api` und
+   `maintenance-jobs` bereitstellen.
+4. Verschlüsselte Secrets/Bidings kontrollieren.
+5. Pages-Preview veröffentlichen und negative/positive Pfade prüfen.
+6. Produktion veröffentlichen.
+7. Erst danach Namecheap-CNAME `exclusive` von Appwrite auf
+   `shadows-temptation.pages.dev` ändern.
 
-## Backend
+## Rollback
 
-Die Reihenfolge für Schema- und Workeränderungen ist:
+- Frontend: vorheriges Pages-Deployment als Produktion aktivieren.
+- Worker: vorherige Worker-Version zu 100 Prozent ausrollen.
+- Datenbank: ausschließlich bei bestätigtem Schemafehler den unmittelbar vor
+  der Migration notierten D1-Time-Travel-Bookmark verwenden. Nach produktiven
+  Schreibvorgängen ist zuerst eine fachliche Delta-Prüfung nötig.
+- DNS: während des begrenzten Rollback-Fensters kann der vorherige Appwrite-
+  CNAME wiederhergestellt werden. Appwrite ist ansonsten kein produktiver
+  Authentifizierungs- oder Datenpfad.
 
-1. D1-Migrationen anwenden;
-2. `identity-projection` bereitstellen;
-3. `membership-api` bereitstellen;
-4. `admin-api` bereitstellen;
-5. `maintenance-jobs` bereitstellen;
-6. Frontend bauen und veröffentlichen;
-7. Health-, Negativ- und Positivpfade testen.
-
-Interne Kommunikation erfolgt über Service Bindings. Secrets werden nur als
-Cloudflare Worker Secrets gespeichert. Der private Identity Worker besitzt
-keine öffentliche Route.
-
-## Aktive Produktionskontrollen
-
-- private R2-Buckets für Altersnachweise und Content;
-- D1 als maßgebliche Mitgliedschafts- und Auditdatenbank;
-- stündlicher Wartungsjob für Ablauf, Löschung, E-Mail-Retries und Retention;
-- Adminsitzungen höchstens zehn Minuten;
-- Auditretention höchstens 730 Tage beziehungsweise 30 Tage nach
-  Accountlöschung;
-- HSTS, CSP, Origin-Prüfung und `no-store` für API-Antworten.
-
-Ein Rollout ist erst abgeschlossen, wenn Migration, Typecheck, Worker-Tests,
-Frontend-Build und Produktions-Healthchecks erfolgreich sind.
+Ein Rollout ist erst abgeschlossen, wenn Typecheck, Worker-Tests, Frontend-
+Build, Pages-Healthcheck und die zentralen Produktivpfade erfolgreich sind.

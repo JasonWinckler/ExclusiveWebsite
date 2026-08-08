@@ -1,7 +1,7 @@
 # Productive control and responsibility register
 
-The productive architecture uses Appwrite authentication, Cloudflare Workers,
-D1 and private R2 storage. The service is live. Jason Winckler is responsible
+The productive architecture uses Cloudflare Pages, Workers, D1 and private R2
+storage, including Cloudflare-native authentication. The service is live. Jason Winckler is responsible
 for selecting, operating, monitoring and updating the process. This register
 records implemented safeguards and recurring operational controls.
 

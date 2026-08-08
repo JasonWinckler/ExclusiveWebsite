@@ -8,7 +8,7 @@
   Wiederherstellungspfaden entfernt bleiben.
 - Private R2-Objekte dürfen nicht in lokale Entwicklerbackups, GitHub-Artefakte
   oder Supportarchive kopiert werden.
-- Secrets, Appwrite-API-Keys und Microsoft-Graph-Zugangsdaten werden getrennt
+- Secrets und Microsoft-Graph-Zugangsdaten werden getrennt
   rotiert und niemals aus Git wiederhergestellt.
 - Nach einer Wiederherstellung sind Autorisierung, Auditretention und fällige
   Löschjobs vor Wiederfreigabe der Website auszuführen.

@@ -4,7 +4,7 @@ import {
   confirmTotpEnrollment,
   disableTotpMfa,
   getMfaStatus,
-} from "./lib/appwrite";
+} from "./lib/platform";
 import { friendlyErrorMessage } from "./lib/error-messages";
 
 const text = {

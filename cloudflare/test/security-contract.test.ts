@@ -19,8 +19,8 @@ function filesRecursively(directory: string): string[] {
 }
 
 describe("browser and repository security contract", () => {
-  it("keeps Appwrite labels and another user's ID outside browser-controlled API bodies", () => {
-    const frontend = read("src/lib/appwrite.js");
+  it("keeps server-derived labels and another user's ID outside browser-controlled API bodies", () => {
+    const frontend = read("src/lib/platform.js");
     expect(frontend).not.toContain("Functions");
     expect(frontend).not.toContain("TablesDB");
     expect(frontend).not.toMatch(/\b(?:new\s+)?Storage\s*\(/);
@@ -30,11 +30,11 @@ describe("browser and repository security contract", () => {
       .toContain("identity.userId");
   });
 
-  it("does not expose Appwrite server secrets or obsolete resource IDs to Vite", () => {
+  it("does not expose server secrets or obsolete resource IDs to Vite", () => {
     const example = read(".env.example");
     expect(example).toContain("VITE_CLOUDFLARE_API_BASE_URL");
     expect(example).not.toMatch(/VITE_.*(?:KEY|SECRET|DATABASE|BUCKET|FUNCTION|COLLECTION)/);
-    expect(read("src/lib/appwrite.js")).not.toContain("APPWRITE_SERVER_API_KEY");
+    expect(read("src/lib/platform.js")).not.toContain("APPWRITE_SERVER_API_KEY");
     const wranglerConfigs = filesRecursively(cloudflareRoot)
       .filter((path) => /wrangler\..*\.jsonc$/.test(path))
       .map((path) => readFileSync(path, "utf8"))
@@ -43,7 +43,7 @@ describe("browser and repository security contract", () => {
   });
 
   it("routes authentication email exclusively through the private custom mail service", () => {
-    const frontend = read("src/lib/appwrite.js");
+    const frontend = read("src/lib/platform.js");
     const membershipConfig = read("cloudflare/wrangler.membership-api.jsonc");
     const membershipWorker = read("cloudflare/src/workers/membership-api.ts");
     const identityConfig = read("cloudflare/wrangler.identity-projection.jsonc");
@@ -69,7 +69,7 @@ describe("browser and repository security contract", () => {
       .toMatch(/"SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1"/);
     expect(read("cloudflare/wrangler.membership-api.jsonc"))
       .toMatch(/"PROTECTED_CONTENT_MODE": "private-r2-v1"/);
-    expect(read("src/lib/appwrite.js")).not.toMatch(/(?:bucketId|r2ObjectKey|protectedUrl)/i);
+    expect(read("src/lib/platform.js")).not.toMatch(/(?:bucketId|r2ObjectKey|protectedUrl)/i);
   });
 
   it("uses unique upload, order, bank transaction, and import idempotency keys", () => {
@@ -108,7 +108,7 @@ describe("browser and repository security contract", () => {
     const migration = read("cloudflare/migrations/0014_localized_catalog_and_age_routes.sql");
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const admin = read("cloudflare/src/workers/admin-api.ts");
-    const frontendApi = read("src/lib/appwrite.js");
+    const frontendApi = read("src/lib/platform.js");
     expect(migration).toContain("display_name_en");
     expect(migration).toContain("title_en");
     expect(migration).toContain("description_en");
@@ -140,7 +140,7 @@ describe("browser and repository security contract", () => {
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const admin = read("cloudflare/src/workers/admin-api.ts");
     const http = read("cloudflare/src/shared/http.ts");
-    const frontendApi = read("src/lib/appwrite.js");
+    const frontendApi = read("src/lib/platform.js");
     expect(migration).toContain("country_code TEXT");
     expect(migration).toContain("privacy_notice_acknowledged_at TEXT");
     expect(migration).toContain("CREATE TABLE privacy_requests");
@@ -169,23 +169,18 @@ describe("browser and repository security contract", () => {
     expect(frontend).not.toContain("function messageFor");
   });
 
-  it("revokes sessions before blocking accounts and recovers stale blocked browser state", () => {
+  it("revokes Cloudflare sessions before blocking accounts and uses HttpOnly browser sessions", () => {
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const admin = read("cloudflare/src/workers/admin-api.ts");
-    const frontendApi = read("src/lib/appwrite.js");
+    const frontendApi = read("src/lib/platform.js");
     expect(membership).toContain("await revokeAppwriteSessions(");
     expect(admin.match(/await revokeAppwriteSessions\(/g)).toHaveLength(2);
-    expect(frontendApi).toContain("clearAppwriteFallbackSession");
-    expect(frontendApi).toContain('error?.type !== "user_blocked"');
-    expect(frontendApi).toContain("await discardBlockedSession()");
-    expect(frontendApi).toContain("return account.createEmailPasswordSession({ email, password })");
-    expect(frontendApi).toContain("return account.create({ userId: ID.unique(), email, password, name })");
-    const currentUserFlow = frontendApi.slice(
-      frontendApi.indexOf("export async function getCurrentUser"),
-      frontendApi.indexOf("export async function registerAccount"),
-    );
-    expect(currentUserFlow.indexOf('error?.type === "user_blocked"'))
-      .toBeLessThan(currentUserFlow.indexOf("error?.code === 401"));
+    const authWorker = read("cloudflare/src/workers/auth-api.ts");
+    expect(read("cloudflare/src/shared/auth.ts")).toContain("__Host-shadow_session");
+    expect(authWorker).toContain("Secure; HttpOnly; SameSite=Strict");
+    expect(authWorker).toContain("UPDATE auth_sessions SET revoked_at");
+    expect(frontendApi).toContain('credentials: "same-origin"');
+    expect(frontendApi).not.toContain("createEmailPasswordSession");
   });
 
   it("keeps the SEPA subscription insert aligned with its database columns", () => {
@@ -234,7 +229,7 @@ describe("browser and repository security contract", () => {
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const identity = read("cloudflare/src/workers/identity-projection.ts");
     const maintenance = read("cloudflare/src/workers/maintenance-jobs.ts");
-    const frontendApi = read("src/lib/appwrite.js");
+    const frontendApi = read("src/lib/platform.js");
     const frontend = read("src/App.jsx");
     expect(migration).toContain("username_change_count");
     expect(migration).toContain("username_next_change_at");
@@ -244,7 +239,8 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain('/v1/account/profile/name');
     expect(identity).toContain('/update-user-name');
     expect(maintenance).toContain("retryUsernameSync");
-    expect(frontendApi).toContain("account.updateEmail({ email, password })");
+    expect(frontendApi).toContain('"/v1/account/email"');
+    expect(read("cloudflare/src/workers/auth-api.ts")).toContain("CHANGE_EMAIL");
     expect(frontend).toContain("await resendVerification(language)");
     expect(frontend).toContain("geschützte Zugang pausiert");
   });
@@ -267,7 +263,7 @@ describe("browser and repository security contract", () => {
     const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
     const admin = read("cloudflare/src/workers/admin-api.ts");
     const adminConfig = read("cloudflare/wrangler.admin-api.jsonc");
-    const frontendApi = read("src/lib/appwrite.js");
+    const frontendApi = read("src/lib/platform.js");
     expect(migration).toContain("CREATE TABLE admin_sessions");
     expect(migration).toContain("device_token_sha256 TEXT NOT NULL");
     expect(adminConfig).toMatch(/"ADMIN_SESSION_MINUTES": "10"/);
