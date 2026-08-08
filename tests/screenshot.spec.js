@@ -59,6 +59,7 @@ test.describe('membership safety requirements', () => {
     await expect(page.getByRole('link', { name: /instagram/i })).toHaveAttribute('href', 'https://www.instagram.com/shadows.temptation_official/');
     await expect(page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i })).toBeVisible();
     await expect(page.locator('#donate-button-container')).toBeHidden();
+    await expect(page.locator('[data-paypal-modal]')).toHaveCount(0);
     await expect(page.locator('.link-list a')).toHaveCount(2);
     await expect(page.locator('a[href="https://jason-shadow.com/"]')).toHaveCount(0);
     await expect(page.locator('.ai-disclosure')).toHaveCount(0);
@@ -87,10 +88,19 @@ test.describe('membership safety requirements', () => {
               const button = document.createElement('button');
               button.type = 'button';
               button.textContent = 'Donate with PayPal';
-              button.addEventListener('click', () => window.open(
-                `https://www.paypal.com/donate/?hosted_button_id=${config.hosted_button_id}`,
-                'paypalDonatePopup',
-              ));
+              button.addEventListener('click', () => {
+                const overlay = document.createElement('div');
+                overlay.className = 'paypal-checkout-sandbox';
+                const frame = document.createElement('iframe');
+                frame.className = 'paypal-checkout-sandbox-iframe';
+                frame.title = 'PayPal Checkout Overlay';
+                overlay.appendChild(frame);
+                document.body.appendChild(overlay);
+                window.open(
+                  `https://www.paypal.com/donate/?hosted_button_id=${config.hosted_button_id}`,
+                  'paypalDonatePopup',
+                );
+              });
               document.querySelector(selector).appendChild(button);
             },
           }),
@@ -105,9 +115,9 @@ test.describe('membership safety requirements', () => {
     });
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
     const donationTrigger = page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i });
-    const donationModal = page.locator('[data-paypal-modal]');
+    const pageBlur = page.locator('[data-paypal-page-blur]');
     await expect(donationTrigger).toBeVisible();
-    await expect(donationModal).toBeHidden();
+    await expect(pageBlur).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__paypalDonationConfig), { timeout: 15_000 }).toMatchObject({
       env: 'production',
       hosted_button_id: 'U87BSM6V2TXLC',
@@ -117,23 +127,36 @@ test.describe('membership safety requirements', () => {
       },
     });
     await donationTrigger.click();
-    await expect(donationModal).toBeVisible();
-    await expect(page.locator('body')).toHaveClass(/modal-open/);
-    await expect(page.getByRole('heading', { name: /support shadow’s temptation|shadow’s temptation unterstützen/i })).toBeVisible();
-    await expect.poll(() => page.locator('.sensitive-modal__backdrop').evaluate(
-      (element) => getComputedStyle(element).backdropFilter,
-    )).toContain('blur');
-    await expect.poll(() => page.evaluate(() => window.__paypalOpenUrl)).toBe('');
-
-    await page.keyboard.press('Escape');
-    await expect(donationModal).toBeHidden();
-    await expect(donationTrigger).toBeFocused();
-
-    await donationTrigger.click();
-    await page.getByRole('button', { name: /donate with paypal|mit paypal spenden/i }).click();
     await expect.poll(() => page.evaluate(() => window.__paypalOpenUrl)).toBe(
       'https://www.paypal.com/donate/?hosted_button_id=U87BSM6V2TXLC',
     );
+    await expect(page.locator('body')).toHaveClass(/paypal-donation-active/);
+    await expect(pageBlur).toBeVisible();
+    await expect.poll(() => page.locator('.page-shell').evaluate(
+      (element) => getComputedStyle(element).filter,
+    )).toContain('blur');
+    await expect(page.locator('#donate-button-container')).toBeHidden();
+    await expect(page.locator('[data-paypal-modal]')).toHaveCount(0);
+    const paypalOverlay = page.locator('.paypal-checkout-sandbox');
+    await expect(paypalOverlay).toBeVisible();
+    const overlayGeometry = await paypalOverlay.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        borderRadius: parseFloat(getComputedStyle(element).borderRadius),
+        height: rect.height,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+        width: rect.width,
+      };
+    });
+    expect(overlayGeometry.borderRadius).toBeGreaterThan(0);
+    expect(overlayGeometry.width).toBeLessThanOrEqual(720);
+    expect(overlayGeometry.width).toBeLessThan(overlayGeometry.viewportWidth);
+    expect(overlayGeometry.height).toBeLessThan(overlayGeometry.viewportHeight);
+
+    await paypalOverlay.evaluate((element) => element.remove());
+    await expect(page.locator('body')).not.toHaveClass(/paypal-donation-active/);
+    await expect(pageBlur).toBeHidden();
   });
 
   test('login keeps password recovery compact and lets users verify their input', async ({ page }) => {

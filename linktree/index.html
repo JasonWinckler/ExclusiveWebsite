@@ -31,7 +31,7 @@
     <meta name="twitter:image" content="https://exclusive.jason-shadow.com/linktree/uploads/banner.png" />
     <meta name="twitter:image:alt" content="Shadow’s Temptation – Where desire becomes temptation" />
     <link rel="stylesheet" href="../assets/css/base.css" />
-    <link rel="stylesheet" href="../assets/css/exclusive.css?v=donation-modal-1" />
+    <link rel="stylesheet" href="../assets/css/exclusive.css?v=paypal-overlay-1" />
   </head>
   <body>
     <div class="ember-field" aria-hidden="true"></div>
@@ -64,23 +64,12 @@
         </div>
       </section>
     </main>
-    <div class="sensitive-modal donation-modal" data-paypal-modal hidden>
-      <div class="sensitive-modal__backdrop" data-paypal-close aria-hidden="true"></div>
-      <section class="sensitive-modal__dialog donation-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="paypal-modal-title" aria-describedby="paypal-modal-description">
-        <button class="donation-modal__close" type="button" data-paypal-close data-linktree-i18n-aria="closeDonation" aria-label="Close donation dialog"><span aria-hidden="true">×</span></button>
-        <div class="donation-modal__icon" aria-hidden="true">♥</div>
-        <p class="sensitive-modal__eyebrow" data-linktree-i18n="supportEyebrow">A little spark</p>
-        <h2 id="paypal-modal-title" data-linktree-i18n="supportTitle">Support Shadow’s Temptation</h2>
-        <p id="paypal-modal-description" data-linktree-i18n="supportBody">Your voluntary support helps create new experiences and special moments.</p>
-        <div id="donate-button-container" class="paypal-donate-widget">
-          <div id="donate-button"></div>
-          <a class="paypal-donate-fallback" data-paypal-fallback data-linktree-i18n="openPaypal" href="https://www.paypal.com/donate/?hosted_button_id=U87BSM6V2TXLC" target="_blank" rel="noopener noreferrer">Open PayPal</a>
-        </div>
-        <p class="donation-modal__trust" data-linktree-i18n="paypalTrust">Secure payment processing by PayPal.</p>
-      </section>
+    <div class="paypal-page-blur" data-paypal-page-blur hidden aria-hidden="true"></div>
+    <div id="donate-button-container" class="external-payment-widget" aria-hidden="true">
+      <div id="donate-button"></div>
     </div>
     <script src="https://www.paypalobjects.com/donate/sdk/donate-sdk.js" charset="UTF-8"></script>
-    <script src="script.js?v=donation-modal-1"></script>
+    <script src="script.js?v=paypal-overlay-1"></script>
     <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"863690440c394dcaa21fe0ce6aa17cdf"}'></script>
   </body>
 </html>

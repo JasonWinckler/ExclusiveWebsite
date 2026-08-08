@@ -23,13 +23,6 @@ const translations = {
     openSite: "Website öffnen",
     support: "Unterstützen & spenden",
     paypalDonation: "PayPal-Spende",
-    supportEyebrow: "Ein kleiner Funke",
-    supportTitle: "Shadow’s Temptation unterstützen",
-    supportBody: "Mit deiner freiwilligen Unterstützung machst du neue Erlebnisse und besondere Momente möglich.",
-    openPaypal: "PayPal öffnen",
-    paypalTrust: "Sichere Zahlungsabwicklung durch PayPal.",
-    closeDonation: "Spendenfenster schließen",
-    donateWithPaypal: "Mit PayPal spenden",
   },
   en: {
     metaTitle: "Shadow’s Temptation | Official Creator Links",
@@ -40,13 +33,6 @@ const translations = {
     openSite: "Open website",
     support: "Support & donate",
     paypalDonation: "PayPal donation",
-    supportEyebrow: "A little spark",
-    supportTitle: "Support Shadow’s Temptation",
-    supportBody: "Your voluntary support helps create new experiences and special moments.",
-    openPaypal: "Open PayPal",
-    paypalTrust: "Secure payment processing by PayPal.",
-    closeDonation: "Close donation dialog",
-    donateWithPaypal: "Donate with PayPal",
   },
 };
 const storedLanguage = window.localStorage.getItem(languageStorageKey);
@@ -86,12 +72,25 @@ document.querySelectorAll("[data-lang]").forEach((button) => {
 applyTranslations(initialLanguage);
 
 const paypalHostedButtonId = "U87BSM6V2TXLC";
+const paypalDonationUrl = `https://www.paypal.com/donate/?hosted_button_id=${paypalHostedButtonId}`;
 const paypalButton = document.querySelector("[data-paypal-open]");
-const paypalModal = document.querySelector("[data-paypal-modal]");
-const paypalDialog = paypalModal?.querySelector("[role='dialog']");
-const paypalFallback = document.querySelector("[data-paypal-fallback]");
-const paypalCloseButton = paypalModal?.querySelector(".donation-modal__close");
-let paypalReturnFocus = null;
+const paypalPageBlur = document.querySelector("[data-paypal-page-blur]");
+let paypalDonationActive = false;
+let paypalStartedAt = 0;
+let paypalOverlayObserved = false;
+
+const setPaypalDonationActive = (active) => {
+  paypalDonationActive = active;
+  if (!active) paypalOverlayObserved = false;
+  document.body.classList.toggle("paypal-donation-active", active);
+  if (paypalPageBlur) paypalPageBlur.hidden = !active;
+};
+
+const getOfficialPaypalButton = () => document.querySelector(
+  "#donate-button-container #donate-button img, "
+  + "#donate-button-container #donate-button input[type='image'], "
+  + "#donate-button-container #donate-button button",
+);
 
 const renderPaypalDonationButton = () => {
   const container = document.querySelector("#donate-button");
@@ -107,70 +106,47 @@ const renderPaypalDonationButton = () => {
           alt: "Donate with PayPal button",
           title: "PayPal - The safer, easier way to pay online!",
         },
+        onComplete: () => setPaypalDonationActive(false),
       }).render("#donate-button");
-      const officialButton = container.querySelector("img, input[type='image'], button");
-      if (officialButton) {
-        officialButton.setAttribute("role", "button");
-        officialButton.setAttribute("tabindex", "0");
-        officialButton.dataset.linktreeI18nAria = "donateWithPaypal";
-        officialButton.setAttribute(
-          "aria-label",
-          translations[document.documentElement.lang]?.donateWithPaypal || translations.en.donateWithPaypal,
-        );
-        officialButton.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          officialButton.click();
-        });
-        if (paypalFallback) paypalFallback.hidden = true;
-      }
     } catch {
-      if (paypalFallback) paypalFallback.hidden = false;
+      // The visible CTA falls back to PayPal's hosted donation page.
     }
   }
 };
 
-const openPaypalModal = () => {
-  if (!paypalModal) return;
-  paypalReturnFocus = document.activeElement;
-  paypalModal.hidden = false;
-  document.body.classList.add("modal-open");
-  paypalCloseButton?.focus({ preventScroll: true });
-};
-
-const closePaypalModal = () => {
-  if (!paypalModal || paypalModal.hidden) return;
-  paypalModal.hidden = true;
-  document.body.classList.remove("modal-open");
-  if (paypalReturnFocus instanceof HTMLElement) paypalReturnFocus.focus({ preventScroll: true });
-};
-
-paypalModal?.querySelectorAll("[data-paypal-close]").forEach((element) => {
-  element.addEventListener("click", closePaypalModal);
-});
-
-paypalModal?.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closePaypalModal();
+const startPaypalDonation = () => {
+  if (paypalDonationActive) return;
+  const officialButton = getOfficialPaypalButton();
+  if (!officialButton) {
+    window.location.assign(paypalDonationUrl);
     return;
   }
-  if (event.key !== "Tab" || !paypalDialog) return;
 
-  const focusable = [...paypalDialog.querySelectorAll(
-    "a[href]:not([hidden]), button:not([disabled]), [tabindex]:not([tabindex='-1'])",
-  )];
-  if (!focusable.length) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
+  paypalStartedAt = Date.now();
+  setPaypalDonationActive(true);
+  officialButton.click();
+};
+
+const clearPaypalBlurAfterReturn = () => {
+  if (!paypalDonationActive || Date.now() - paypalStartedAt < 500) return;
+  window.setTimeout(() => setPaypalDonationActive(false), 180);
+};
+
+window.addEventListener("focus", clearPaypalBlurAfterReturn);
+window.addEventListener("pageshow", () => setPaypalDonationActive(false));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") clearPaypalBlurAfterReturn();
+});
+
+const paypalOverlayObserver = new MutationObserver(() => {
+  const overlayExists = Boolean(document.querySelector(".paypal-checkout-sandbox"));
+  if (overlayExists) {
+    paypalOverlayObserved = true;
+  } else if (paypalDonationActive && paypalOverlayObserved) {
+    setPaypalDonationActive(false);
   }
 });
+paypalOverlayObserver.observe(document.body, { childList: true, subtree: true });
 
 if (window.PayPal?.Donation?.Button || document.readyState === "complete") {
   renderPaypalDonationButton();
@@ -178,4 +154,4 @@ if (window.PayPal?.Donation?.Button || document.readyState === "complete") {
   window.addEventListener("load", renderPaypalDonationButton, { once: true });
 }
 
-paypalButton?.addEventListener("click", openPaypalModal);
+paypalButton?.addEventListener("click", startPaypalDonation);
