@@ -8,8 +8,8 @@
 | Admin Worker | Altersprüfung, Nutzer-, Zahlungs-, Content- und Kommentarmoderation |
 | Identity Worker | privater E-Mail-Versand über Microsoft Graph |
 | Maintenance Worker | Ablauf, Löschung, Retention, Erinnerungen und E-Mail-Retries |
-| D1 | maßgebliche Identitäts-, Geschäfts-, Mitgliedschafts- und Auditdaten |
-| private R2-Buckets | kurzlebige Altersnachweise und geschützter Creator-Content |
+| D1 | maßgebliche Identitäts-, Geschäfts-, Mitgliedschafts-, Newsletter-, Reichweiten- und Auditdaten |
+| private R2-Buckets | kurzlebige Altersnachweise, geschützter Creator-Content, integre Rechnungskopien und zwei rotierende D1-Sicherungen |
 
 ## Anfrageweg
 
@@ -36,5 +36,14 @@ Entitlements, Altersentscheidungen und Audits unverändert zugeordnet bleiben.
 - Auditdaten: höchstens 730 Tage und höchstens 30 Tage nach Accountlöschung.
 - Finanz- und Rechnungsdaten: getrennte gesetzliche Aufbewahrung; kein
   pauschales Löschen vor Fristablauf.
+- Rechnungskopien: privates R2 mit SHA-256-Integritätsnachweis; ausschließlich
+  für den betroffenen Nutzer und berechtigte Administratoren abrufbar.
+- Reichweitenmessung: Tagesaggregate und definierte Conversion-Ereignisse ohne
+  gespeicherte IP-Adresse, User-Agent, Konto-ID oder geräteübergreifende
+  Kennung; Löschung nach 90 Tagen.
+- Newsletter: bestätigtes Double-Opt-in, direkte Abmeldung in jeder Nachricht,
+  Versanddetails höchstens 30 Tage.
+- D1-Sicherung: täglicher privater Export, höchstens zwei Stände; Time Travel
+  bleibt die automatische kurzfristige Wiederherstellungsebene.
 - Appwrite bleibt während des begrenzten Rollback-Fensters unverändert, ist aber
   nicht Teil des produktiven Anfragewegs.

@@ -1,33 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { countryOptions, usRegions } from "./lib/privacy";
 
-const choiceKeys = [
-  "marketingOptOut",
-  "saleShareOptOut",
-  "targetedAdsOptOut",
-  "profilingOptOut",
-  "sensitiveDataLimit",
-];
-
 function dateLabel(value, language) {
   if (!value) return "—";
   return new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-US", {
     dateStyle: "medium",
   }).format(new Date(value));
-}
-
-function Toggle({ name, checked, onChange, title, text, disabled }) {
-  return <label className="privacy-toggle">
-    <span><strong>{title}</strong><small>{text}</small></span>
-    <input
-      name={name}
-      type="checkbox"
-      checked={checked}
-      onChange={onChange}
-      disabled={disabled}
-    />
-    <span className="privacy-toggle__control" aria-hidden="true" />
-  </label>;
 }
 
 export default function PrivacyPanel({
@@ -36,7 +14,8 @@ export default function PrivacyPanel({
   loading,
   busy,
   onSaveLocation,
-  onSaveChoices,
+  onSubscribeNewsletter,
+  onUnsubscribeNewsletter,
   onExport,
   onCreateRequest,
   onCancelRequest,
@@ -45,7 +24,6 @@ export default function PrivacyPanel({
   const de = language === "de";
   const [countryCode, setCountryCode] = useState("DE");
   const [regionCode, setRegionCode] = useState("");
-  const [choices, setChoices] = useState(Object.fromEntries(choiceKeys.map((key) => [key, false])));
   const [requestType, setRequestType] = useState("RESTRICT_PROCESSING");
   const [requestNote, setRequestNote] = useState("");
   const [deletionReason, setDeletionReason] = useState("");
@@ -57,7 +35,6 @@ export default function PrivacyPanel({
     if (!privacy) return;
     setCountryCode(privacy.profile?.countryCode || "DE");
     setRegionCode(privacy.profile?.regionCode || "");
-    setChoices(Object.fromEntries(choiceKeys.map((key) => [key, Boolean(privacy.choices?.[key])])));
   }, [privacy]);
 
   if (loading && !privacy) {
@@ -81,10 +58,6 @@ export default function PrivacyPanel({
     event.preventDefault();
     onSaveLocation({ countryCode, regionCode: isUS ? regionCode : null });
   };
-  const submitChoices = (event) => {
-    event.preventDefault();
-    onSaveChoices(choices);
-  };
   const submitRequest = async (event) => {
     event.preventDefault();
     await onCreateRequest(requestType, requestNote);
@@ -105,8 +78,8 @@ export default function PrivacyPanel({
         <p className="eyebrow">{de ? "DEINE DATEN. DEINE KONTROLLE." : "YOUR DATA. YOUR CONTROL."}</p>
         <h3>{de ? "Privacy Center" : "Privacy center"}</h3>
         <p>{de
-          ? "Verwalte deinen Wohnsitz, deine Datenschutzentscheidungen und deine gesetzlichen Betroffenenrechte an einem Ort."
-          : "Manage your residence, privacy choices and statutory data rights in one place."}</p>
+          ? "Verwalte deinen Wohnsitz, deine Datenkopie und deine gesetzlichen Betroffenenrechte an einem Ort."
+          : "Manage your residence, data copy and statutory privacy rights in one place."}</p>
       </div>
       <span className="privacy-regime-badge">{regimeLabel}</span>
     </section>
@@ -166,43 +139,34 @@ export default function PrivacyPanel({
       </section>
     </div>
 
-    <form className="privacy-card privacy-card--choices" onSubmit={submitChoices}>
+    <section className="privacy-card privacy-card--newsletter">
       <div className="privacy-card__heading">
         <span>03</span>
-        <div><h4>{de ? "Datenschutzentscheidungen" : "Privacy choices"}</h4>
+        <div><h4>{de ? "New Drops Newsletter" : "New Drops newsletter"}</h4>
           <p>{de
-            ? "Wir verkaufen keine personenbezogenen Daten und nutzen kein Cross-Context-Targeting. Deine Entscheidungen werden trotzdem verbindlich gespeichert."
-            : "We do not sell personal data or use cross-context targeting. Your choices are still stored and enforced."}</p></div>
-      </div>
-      <div className="privacy-choice-list">
-        <Toggle name="marketingOptOut" checked={choices.marketingOptOut} disabled={busy}
-          onChange={(event) => setChoices((current) => ({ ...current, marketingOptOut: event.target.checked }))}
-          title={de ? "Keine nicht notwendigen Marketing-E-Mails" : "No non-essential marketing emails"}
-          text={de ? "Service-, Sicherheits- und Rechnungsnachrichten bleiben aktiv." : "Service, security and invoice messages remain active."} />
-        <Toggle name="saleShareOptOut" checked={choices.saleShareOptOut} disabled={busy}
-          onChange={(event) => setChoices((current) => ({ ...current, saleShareOptOut: event.target.checked }))}
-          title={de ? "Verkauf / Weitergabe ablehnen" : "Opt out of sale / sharing"}
-          text={de ? "Gilt vorsorglich; aktuell findet kein Verkauf oder Ad-Sharing statt." : "Stored as a precaution; no sale or ad-sharing currently occurs."} />
-        <Toggle name="targetedAdsOptOut" checked={choices.targetedAdsOptOut} disabled={busy}
-          onChange={(event) => setChoices((current) => ({ ...current, targetedAdsOptOut: event.target.checked }))}
-          title={de ? "Gezielte Werbung ablehnen" : "Opt out of targeted advertising"}
-          text={de ? "Wir betreiben derzeit keine verhaltensbasierte Werbung." : "We currently do not operate behavioural advertising."} />
-        <Toggle name="profilingOptOut" checked={choices.profilingOptOut} disabled={busy}
-          onChange={(event) => setChoices((current) => ({ ...current, profilingOptOut: event.target.checked }))}
-          title={de ? "Bedeutsames automatisiertes Profiling ablehnen" : "Opt out of significant automated profiling"}
-          text={de ? "Zugangs- und Altersentscheidungen erfolgen nicht ausschließlich automatisiert." : "Access and age decisions are not made solely by automation."} />
-        <Toggle name="sensitiveDataLimit" checked={choices.sensitiveDataLimit} disabled={busy}
-          onChange={(event) => setChoices((current) => ({ ...current, sensitiveDataLimit: event.target.checked }))}
-          title={de ? "Nutzung sensibler Daten begrenzen" : "Limit use of sensitive data"}
-          text={de ? "Notwendige Verarbeitung für Altersprüfung, Sicherheit und Rechtspflichten bleibt möglich." : "Processing required for age checks, security and legal duties may continue."} />
+            ? "Erhalte neue Veröffentlichungen, ausgewählte Einblicke und Membership-Impulse. Freiwillig, mit einmaliger E-Mail-Bestätigung und jederzeit abbestellbar."
+            : "Receive new releases, selected previews and membership inspiration. Voluntary, confirmed once by email and cancellable at any time."}</p></div>
       </div>
       <div className="privacy-card__actions">
-        <button className="secondary-action" disabled={busy || !profile.complete}>
-          {de ? "Entscheidungen speichern" : "Save choices"}
-        </button>
-        {privacy?.choices?.updatedAt && <span>{de ? "Zuletzt gespeichert" : "Last saved"}: {dateLabel(privacy.choices.updatedAt, language)}</span>}
+        {privacy?.newsletter?.status === "SUBSCRIBED"
+          ? <button type="button" className="secondary-action" disabled={busy} onClick={onUnsubscribeNewsletter}>
+            {de ? "Newsletter abbestellen" : "Unsubscribe"}
+          </button>
+          : <button type="button" className="primary-action" disabled={busy || !profile.complete} onClick={onSubscribeNewsletter}>
+            {privacy?.newsletter?.status === "PENDING"
+              ? (de ? "Bestätigung erneut senden" : "Resend confirmation")
+              : (de ? "New Drops erhalten" : "Get New Drops")}
+          </button>}
+        <span>{privacy?.newsletter?.status === "SUBSCRIBED"
+          ? (de ? "Aktiv und bestätigt" : "Active and confirmed")
+          : privacy?.newsletter?.status === "PENDING"
+            ? (de ? "Bestätigung ausstehend" : "Confirmation pending")
+            : (de ? "Nicht abonniert" : "Not subscribed")}</span>
       </div>
-    </form>
+      <p className="privacy-fineprint">{de
+        ? "Der Newsletter enthält immer einen direkten Abmeldelink. Sicherheits-, Konto- und Rechnungsnachrichten sind davon unabhängig."
+        : "Every newsletter includes a direct unsubscribe link. Security, account and invoice messages are independent of this choice."}</p>
+    </section>
 
     <div className="privacy-grid">
       <form className="privacy-card" onSubmit={submitRequest}>
@@ -254,8 +218,8 @@ export default function PrivacyPanel({
         <span>06</span>
         <div><h4>{de ? "Konto und Daten löschen" : "Delete account and data"}</h4>
           <p>{de
-            ? "Du kannst dein Konto auch mit aktiver Membership löschen. Personenbezogene Kontodaten und Prüfnachweise werden entfernt; gesetzlich erforderliche Transaktionsnachweise bleiben nur im notwendigen Umfang pseudonymisiert erhalten."
-            : "You may delete your account even with an active membership. Personal account data and verification evidence are removed; legally required transaction records remain only to the necessary extent in pseudonymised form."}</p></div>
+            ? "Du kannst dein Konto auch mit aktiver Membership löschen. Kontodaten und Prüfnachweise werden entfernt. Gesetzlich aufzubewahrende Rechnungen und die darin vorgeschriebenen Empfängerdaten bleiben getrennt und ausschließlich für Aufbewahrungs- und Nachweispflichten erhalten."
+            : "You may delete your account even with an active membership. Account data and verification evidence are removed. Invoices and mandatory recipient details are retained separately only where required for statutory record-keeping."}</p></div>
       </div>
       <label className="field"><span>{de ? "Grund / Hinweis zur Löschung" : "Deletion reason / note"}</span>
         <textarea value={deletionReason} onChange={(event) => setDeletionReason(event.target.value)}
@@ -264,8 +228,8 @@ export default function PrivacyPanel({
       <label className="consent-check">
         <input type="checkbox" checked={deletionConfirmed} onChange={(event) => setDeletionConfirmed(event.target.checked)} required />
         <span>{de
-          ? "Ich verstehe, dass mein Zugang sofort widerrufen und mein Konto unwiderruflich gelöscht wird. Gesetzlich aufzubewahrende Rechnungsdaten bleiben nur pseudonymisiert erhalten."
-          : "I understand that access is revoked immediately and my account is permanently deleted. Legally retained invoice records remain only in pseudonymised form."}</span>
+          ? "Ich verstehe, dass mein Zugang sofort widerrufen und mein Konto unwiderruflich gelöscht wird. Gesetzlich vorgeschriebene Rechnungsunterlagen bleiben getrennt für die gesetzliche Aufbewahrungsfrist erhalten."
+          : "I understand that access is revoked immediately and my account is permanently deleted. Statutorily required invoice records remain separately stored for the legal retention period."}</span>
       </label>
       <label className="field"><span>{de ? "Zur Bestätigung LÖSCHEN eingeben" : "Type DELETE to confirm"}</span>
         <input value={deletionPhrase} onChange={(event) => setDeletionPhrase(event.target.value)}

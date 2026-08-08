@@ -36,9 +36,11 @@ import {
   verifyAppwriteUserEmail,
 } from "../shared/identity-service";
 import { ageDeletionReceiptReference } from "../shared/age-verification-email";
-import { sha256Hex, validateDeviceToken } from "../shared/security";
+import { randomBase64Url, sha256Hex, validateDeviceToken } from "../shared/security";
+import { decryptTotpSecret, encryptTotpSecret } from "../shared/totp";
 import type {
   AgeEvidenceKind,
+  AuthenticatedIdentity,
   EntitlementRow,
   MembershipEnv,
   UserProfileRow,
@@ -1473,6 +1475,7 @@ function sepaOrderResponse(
     invoiceNumber?: string | null;
     invoiceStatus?: string | null;
     invoiceEmailStatus?: string | null;
+    invoiceArchiveAvailable?: boolean;
   },
 ): Record<string, unknown> {
   const instructions = sepaInstructions(env);
@@ -1495,6 +1498,9 @@ function sepaOrderResponse(
       number: order.invoiceNumber,
       status: order.invoiceStatus ?? "OPEN",
       emailStatus: order.invoiceEmailStatus ?? "PENDING",
+      copyUrl: order.invoiceArchiveAvailable
+        ? `/api/member/v1/payments/orders/${encodeURIComponent(order.id)}/invoice`
+        : null,
     } : null,
     beneficiary: instructions.beneficiary,
     iban: instructions.iban,
@@ -1546,6 +1552,7 @@ async function createSepaOrder(
       s.payment_due_at, s.created_at, p.display_name AS product_name, p.sku,
       p.duration_unit, p.duration_value, i.invoice_number, i.status AS invoice_status,
       i.email_status AS invoice_email_status
+      , i.archive_object_key
     FROM subscriptions s
     JOIN products p ON p.id = s.product_id
     LEFT JOIN invoices i ON i.subscription_id = s.id
@@ -1565,6 +1572,7 @@ async function createSepaOrder(
     invoice_number: string | null;
     invoice_status: string | null;
     invoice_email_status: string | null;
+    archive_object_key: string | null;
   }>();
   if (replay) {
     return sepaOrderResponse(env, {
@@ -1582,6 +1590,7 @@ async function createSepaOrder(
       invoiceNumber: replay.invoice_number,
       invoiceStatus: replay.invoice_status,
       invoiceEmailStatus: replay.invoice_email_status,
+      invoiceArchiveAvailable: Boolean(replay.archive_object_key),
     });
   }
 
@@ -1627,6 +1636,9 @@ async function createSepaOrder(
   const reference = createSepaTransferPurpose(crypto.randomUUID().replace(/-/g, ""));
   const invoiceId = billing ? crypto.randomUUID() : null;
   const number = billing ? invoiceNumber(orderId, now) : null;
+  const invoiceRetentionUntil = billing
+    ? new Date(Date.UTC(new Date(now).getUTCFullYear() + 9, 0, 1)).toISOString()
+    : null;
   const sellerName = env.INVOICE_SELLER_NAME?.trim() || "Jason Shadow · Inhaber Jason Winckler";
   const sellerAddress = env.INVOICE_SELLER_ADDRESS?.trim() || "Kleiberweg 24, 48432 Rheine, Deutschland";
   const sellerEmail = env.INVOICE_SELLER_EMAIL?.trim() || "info@exclusive.jason-shadow.com";
@@ -1641,6 +1653,43 @@ async function createSepaOrder(
   ) throw new ApiError(503, "INVOICE_TAX_IDENTIFIER_NOT_CONFIGURED");
   const taxNote = env.INVOICE_TAX_NOTE?.trim() ||
     "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
+  const instructions = billing ? sepaInstructions(env) : null;
+  const invoiceHtml = billing && number && instructions
+    ? invoiceEmailHtml({
+      locale,
+      invoiceNumber: number,
+      customerName: billing.name,
+      customerStreet: billing.street,
+      customerPostalCode: billing.postalCode,
+      customerCity: billing.city,
+      customerCountryCode: billing.countryCode,
+      productName: product.display_name,
+      amountMinor: product.amount_minor,
+      currency: product.currency,
+      issuedAt: now,
+      dueAt: paymentDueAt,
+      reference,
+      beneficiary: instructions.beneficiary,
+      iban: instructions.iban,
+      bic: instructions.bic,
+      sellerName,
+      sellerAddress,
+      sellerEmail,
+      taxIdentifier: taxIdentifier!,
+      taxNote,
+    })
+    : null;
+  const archiveObjectKey = invoiceHtml && invoiceId
+    ? `invoices/${now.slice(0, 4)}/${invoiceId}.html`
+    : null;
+  const archiveSha256 = invoiceHtml ? await sha256Hex(invoiceHtml) : null;
+  if (invoiceHtml && archiveObjectKey) {
+    await env.INVOICE_ARCHIVE.put(archiveObjectKey, invoiceHtml, {
+      httpMetadata: { contentType: "text/html; charset=utf-8", cacheControl: "no-store" },
+      customMetadata: { invoiceId: invoiceId!, invoiceNumber: number!, sha256: archiveSha256! },
+      onlyIf: { etagDoesNotMatch: "*" },
+    });
+  }
   const statements = [
     env.DB.prepare(`
       INSERT INTO subscriptions (
@@ -1648,8 +1697,9 @@ async function createSepaOrder(
         amount_minor, currency, status, payment_due_at, idempotency_key,
         billing_name, billing_street, billing_postal_code, billing_city,
         billing_country_code, customer_locale, terms_version, terms_accepted_at,
-        digital_content_consent_at, withdrawal_acknowledged_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        digital_content_consent_at, withdrawal_acknowledged_at, created_at, updated_at,
+        retention_until
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderId,
       userId,
@@ -1673,6 +1723,7 @@ async function createSepaOrder(
       now,
       now,
       now,
+      invoiceRetentionUntil,
     ),
   ];
   if (billing && invoiceId && number) {
@@ -1681,8 +1732,9 @@ async function createSepaOrder(
         id, subscription_id, invoice_number, status, billing_name, billing_street,
         billing_postal_code, billing_city, billing_country_code, seller_name,
         seller_address, seller_email, seller_tax_identifier, amount_minor, tax_amount_minor, currency,
-        tax_note, issued_at, due_at, email_status, created_at, updated_at
-      ) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'PENDING', ?, ?)
+        tax_note, issued_at, due_at, email_status, archive_object_key, archive_sha256,
+        archive_content_type, archive_created_at, created_at, updated_at
+      ) VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
     `).bind(
       invoiceId,
       orderId,
@@ -1701,18 +1753,28 @@ async function createSepaOrder(
       taxNote,
       now,
       paymentDueAt,
+      archiveObjectKey,
+      archiveSha256,
+      "text/html; charset=utf-8",
+      now,
       now,
       now,
     ));
   }
-  const writeResults = await env.DB.batch(statements);
+  let writeResults: D1Result<unknown>[];
+  try {
+    writeResults = await env.DB.batch(statements);
+  } catch {
+    if (archiveObjectKey) await env.INVOICE_ARCHIVE.delete(archiveObjectKey).catch(() => undefined);
+    throw new ApiError(503, "ORDER_CREATION_FAILED");
+  }
   if (writeResults.some((result) => (result.meta.changes ?? 0) !== 1)) {
+    if (archiveObjectKey) await env.INVOICE_ARCHIVE.delete(archiveObjectKey);
     throw new ApiError(503, "ORDER_CREATION_INCOMPLETE");
   }
 
   let invoiceEmailStatus: string | null = null;
   if (billing && invoiceId && number) {
-    const instructions = sepaInstructions(env);
     const messageId = `inv-${orderId.replace(/-/g, "").slice(0, 32)}`;
     try {
       await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
@@ -1721,29 +1783,7 @@ async function createSepaOrder(
         subject: locale === "de"
           ? `Dein Zugang ist reserviert · Rechnung ${number}`
           : `Your access is reserved · Invoice ${number}`,
-        html: invoiceEmailHtml({
-          locale,
-          invoiceNumber: number,
-          customerName: billing.name,
-          customerStreet: billing.street,
-          customerPostalCode: billing.postalCode,
-          customerCity: billing.city,
-          customerCountryCode: billing.countryCode,
-          productName: product.display_name,
-          amountMinor: product.amount_minor,
-          currency: product.currency,
-          issuedAt: now,
-          dueAt: paymentDueAt,
-          reference,
-          beneficiary: instructions.beneficiary,
-          iban: instructions.iban,
-          bic: instructions.bic,
-          sellerName,
-          sellerAddress,
-          sellerEmail,
-          taxIdentifier: taxIdentifier!,
-          taxNote,
-        }),
+        html: invoiceHtml!,
       });
       invoiceEmailStatus = "SENT";
       await env.DB.prepare(`
@@ -1774,6 +1814,7 @@ async function createSepaOrder(
     invoiceNumber: number,
     invoiceStatus: number ? "OPEN" : null,
     invoiceEmailStatus,
+    invoiceArchiveAvailable: Boolean(archiveObjectKey),
   });
 }
 
@@ -1785,7 +1826,8 @@ async function listUserPaymentOrders(
     SELECT s.id, s.transfer_reference, s.amount_minor, s.currency, s.status,
       s.payment_due_at, s.created_at, s.cancelled_at, s.cancellation_source,
       p.display_name AS product_name, p.sku, p.duration_unit, p.duration_value,
-      i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status
+      i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status,
+      i.archive_object_key
     FROM subscriptions s
     JOIN products p ON p.id = s.product_id
     LEFT JOIN invoices i ON i.subscription_id = s.id
@@ -1808,6 +1850,7 @@ async function listUserPaymentOrders(
     invoice_number: string | null;
     invoice_status: string | null;
     invoice_email_status: string | null;
+    archive_object_key: string | null;
   }>();
   return {
     orders: orders.results.map((order) => sepaOrderResponse(env, {
@@ -1827,6 +1870,7 @@ async function listUserPaymentOrders(
       invoiceNumber: order.invoice_number,
       invoiceStatus: order.invoice_status,
       invoiceEmailStatus: order.invoice_email_status,
+      invoiceArchiveAvailable: Boolean(order.archive_object_key),
     })),
   };
 }
@@ -1874,17 +1918,49 @@ async function cancelUserPaymentOrder(
   return { orderId, status: "CANCELLED", existing: false };
 }
 
+async function getUserInvoiceCopy(
+  env: MembershipEnv,
+  userId: string,
+  orderId: string,
+  correlationId: string,
+): Promise<Response> {
+  const invoice = await env.DB.prepare(`SELECT i.archive_object_key, i.archive_sha256,
+      i.archive_content_type, i.invoice_number
+    FROM invoices i JOIN subscriptions s ON s.id = i.subscription_id
+    WHERE s.id = ? AND s.appwrite_user_id = ? AND i.archive_object_key IS NOT NULL`)
+    .bind(orderId, userId)
+    .first<{ archive_object_key: string; archive_sha256: string; archive_content_type: string; invoice_number: string }>();
+  if (!invoice) throw new ApiError(404, "INVOICE_COPY_NOT_FOUND");
+  const object = await env.INVOICE_ARCHIVE.get(invoice.archive_object_key);
+  if (!object) throw new ApiError(503, "INVOICE_ARCHIVE_UNAVAILABLE");
+  const body = await object.text();
+  if (await sha256Hex(body) !== invoice.archive_sha256) {
+    throw new ApiError(503, "INVOICE_INTEGRITY_CHECK_FAILED");
+  }
+  return new Response(body, {
+    headers: {
+      "Content-Type": invoice.archive_content_type || "text/html; charset=utf-8",
+      "Content-Disposition": `inline; filename="${invoice.invoice_number.replace(/[^A-Z0-9-]/gi, "-")}.html"`,
+      "Cache-Control": "private, no-store, max-age=0",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' cid: data:; base-uri 'none'; form-action 'none'",
+      "X-Content-Type-Options": "nosniff",
+      "X-Request-Id": correlationId,
+    },
+  });
+}
+
 async function premiumTelegramPerk(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
   const now = isoNow();
   const access = await env.DB.prepare(`
-    SELECT p.account_status, p.age_status, e.expires_at
+    SELECT p.account_status, p.age_status, e.id AS entitlement_id,
+      e.tier, e.expires_at
     FROM user_profiles p
     LEFT JOIN entitlements e
       ON e.appwrite_user_id = p.appwrite_user_id
-      AND e.tier = 'EXCLUSIVE_PREMIUM'
+      AND e.tier IN ('EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP')
       AND e.status = 'ACTIVE'
       AND e.starts_at <= ?
       AND e.expires_at > ?
@@ -1895,18 +1971,66 @@ async function premiumTelegramPerk(
   `).bind(now, now, userId).first<{
     account_status: string;
     age_status: string;
+    entitlement_id: string | null;
+    tier: string | null;
     expires_at: string | null;
   }>();
   if (!access || access.account_status !== "ACTIVE" || access.age_status !== "APPROVED") {
     throw new ApiError(403, "PREMIUM_PERK_NOT_AVAILABLE");
   }
-  if (!access.expires_at) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
-  if (!env.PREMIUM_TELEGRAM_INVITE_URL) {
-    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
+  if (!access.expires_at || !access.entitlement_id) {
+    throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
   }
+  let inviteValue: string | null = null;
+  if (env.TELEGRAM_INVITE_ENCRYPTION_KEY) {
+    const stored = await env.DB.prepare(`SELECT invite_ciphertext, encryption_key_version
+      FROM telegram_invites WHERE appwrite_user_id = ? AND entitlement_id = ? AND expires_at > ?`)
+      .bind(userId, access.entitlement_id, now)
+      .first<{ invite_ciphertext: string; encryption_key_version: string }>();
+    if (stored) {
+      inviteValue = await decryptTotpSecret(
+        stored.invite_ciphertext,
+        env.TELEGRAM_INVITE_ENCRYPTION_KEY,
+      );
+    }
+  }
+  if (!inviteValue && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID && env.TELEGRAM_INVITE_ENCRYPTION_KEY) {
+    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: env.TELEGRAM_CHAT_ID,
+        name: `Shadow member ${access.entitlement_id.slice(0, 8)}`,
+        expire_date: Math.floor(Date.parse(access.expires_at) / 1000),
+        member_limit: 1,
+        creates_join_request: false,
+      }),
+    });
+    if (!response.ok) throw new ApiError(503, "TELEGRAM_INVITE_CREATION_FAILED");
+    const payload = await response.json<{ ok?: boolean; result?: { invite_link?: string } }>();
+    inviteValue = payload.ok && typeof payload.result?.invite_link === "string"
+      ? payload.result.invite_link
+      : null;
+    if (!inviteValue) throw new ApiError(503, "TELEGRAM_INVITE_CREATION_FAILED");
+    await env.DB.prepare(`INSERT INTO telegram_invites (
+      id, appwrite_user_id, entitlement_id, invite_ciphertext,
+      encryption_key_version, expires_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(appwrite_user_id, entitlement_id) DO UPDATE SET
+      invite_ciphertext = excluded.invite_ciphertext,
+      encryption_key_version = excluded.encryption_key_version,
+      expires_at = excluded.expires_at`)
+      .bind(
+        crypto.randomUUID(), userId, access.entitlement_id,
+        await encryptTotpSecret(inviteValue, env.TELEGRAM_INVITE_ENCRYPTION_KEY),
+        env.TELEGRAM_INVITE_KEY_VERSION?.trim() || "v1", access.expires_at, now,
+      ).run();
+  }
+  if (!inviteValue) inviteValue = env.PREMIUM_TELEGRAM_INVITE_URL ?? null;
+  if (!inviteValue) throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
   let inviteUrl: URL;
   try {
-    inviteUrl = new URL(env.PREMIUM_TELEGRAM_INVITE_URL);
+    inviteUrl = new URL(inviteValue);
   } catch {
     throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
   }
@@ -1916,6 +2040,8 @@ async function premiumTelegramPerk(
   return {
     available: true,
     inviteUrl: inviteUrl.toString(),
+    singleMemberInvite: Boolean(env.TELEGRAM_BOT_TOKEN),
+    tier: access.tier,
     entitlementExpiresAt: access.expires_at,
   };
 }
@@ -2689,11 +2815,198 @@ async function authorizeContent(
   return new Response(object.body, { status, headers });
 }
 
+const ANALYTICS_EVENTS = new Set([
+  "page_view",
+  "registration_started",
+  "registration_completed",
+  "age_started",
+  "age_submitted",
+  "checkout_started",
+  "order_created",
+  "newsletter_opt_in",
+]);
+
+async function recordAnalyticsEvent(
+  request: Request,
+  env: MembershipEnv,
+): Promise<Record<string, unknown>> {
+  const body = await readJsonBody<unknown>(request, 2048);
+  exactObjectKeys(body, ["eventName", "sessionToken", "locale"]);
+  const eventName = typeof body.eventName === "string" ? body.eventName : "";
+  const sessionToken = typeof body.sessionToken === "string" ? body.sessionToken : "";
+  if (!ANALYTICS_EVENTS.has(eventName)) throw new ApiError(400, "INVALID_ANALYTICS_EVENT");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(sessionToken)) {
+    throw new ApiError(400, "INVALID_ANALYTICS_SESSION");
+  }
+  const now = isoNow();
+  const day = now.slice(0, 10);
+  const sessionHash = await sha256Hex(`analytics-v1:${day}:${sessionToken}`);
+  const locale = body.locale === "en" ? "en" : "de";
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO analytics_daily_sessions (
+        day, session_sha256, first_seen_at, last_seen_at, page_views, locale
+      ) VALUES (?, ?, ?, ?, 1, ?)
+      ON CONFLICT(day, session_sha256) DO UPDATE SET
+        last_seen_at = excluded.last_seen_at,
+        page_views = page_views + CASE WHEN ? = 'page_view' THEN 1 ELSE 0 END,
+        locale = excluded.locale
+    `).bind(day, sessionHash, now, now, locale, eventName),
+    env.DB.prepare(`
+      INSERT INTO analytics_daily_events (day, event_name, event_count, updated_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(day, event_name) DO UPDATE SET
+        event_count = event_count + 1,
+        updated_at = excluded.updated_at
+    `).bind(day, eventName, now),
+  ]);
+  return { accepted: true };
+}
+
+function newsletterEmailHtml(input: {
+  locale: "de" | "en";
+  title: string;
+  intro: string;
+  actionLabel: string;
+  actionUrl: string;
+  unsubscribeUrl?: string;
+}): string {
+  const de = input.locale === "de";
+  return `<!doctype html><html lang="${input.locale}"><body style="margin:0;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="Shadow's Temptation" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${escapeHtml(input.title)}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${escapeHtml(input.intro)}</p><p style="text-align:center;margin:30px 0"><a href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#fff;text-decoration:none;font-weight:bold">${escapeHtml(input.actionLabel)} →</a></p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">Shadow's Temptation · Desire lives in the shadows.<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">Legal &amp; Privacy</a> · <a href="mailto:info@exclusive.jason-shadow.com" style="color:#e6c77c">Support</a>${input.unsubscribeUrl ? `<br><a href="${escapeHtml(input.unsubscribeUrl)}" style="display:inline-block;margin-top:10px;color:#968681">${de ? "Newsletter abbestellen" : "Unsubscribe from newsletter"}</a>` : ""}</td></tr></table></td></tr></table></body></html>`;
+}
+
+async function issueNewsletterToken(
+  env: MembershipEnv,
+  input: { userId: string; purpose: "CONFIRM" | "UNSUBSCRIBE"; ttlHours: number },
+): Promise<string> {
+  const raw = randomBase64Url(32);
+  const now = isoNow();
+  await env.DB.prepare(`INSERT INTO newsletter_action_tokens (
+    id, appwrite_user_id, purpose, token_sha256, expires_at, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(
+      crypto.randomUUID(), input.userId, input.purpose, await sha256Hex(raw),
+      new Date(Date.now() + input.ttlHours * 3_600_000).toISOString(), now,
+    ).run();
+  return raw;
+}
+
+function newsletterActionUrl(token: string, purpose: "CONFIRM" | "UNSUBSCRIBE"): string {
+  return `https://exclusive.jason-shadow.com/api/member/v1/newsletter/action?purpose=${purpose.toLowerCase()}&token=${encodeURIComponent(token)}`;
+}
+
+async function subscribeNewsletter(
+  request: Request,
+  env: MembershipEnv,
+  identity: AuthenticatedIdentity,
+): Promise<Record<string, unknown>> {
+  requireIdempotencyKey(request);
+  const body = await readJsonBody<unknown>(request, 4096);
+  exactObjectKeys(body, ["consent", "locale"]);
+  if (body.consent !== true) throw new ApiError(400, "NEWSLETTER_CONSENT_REQUIRED");
+  const locale: "de" | "en" = body.locale === "en" ? "en" : "de";
+  const now = isoNow();
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM newsletter_action_tokens
+      WHERE appwrite_user_id = ? AND purpose = 'CONFIRM' AND used_at IS NULL`).bind(identity.userId),
+    env.DB.prepare(`INSERT INTO newsletter_subscriptions (
+      appwrite_user_id, status, locale, source, consent_text_version,
+      consented_at, confirmed_at, unsubscribed_at, created_at, updated_at
+    ) VALUES (?, 'PENDING', ?, 'DASHBOARD', 'newsletter-v1', ?, NULL, NULL, ?, ?)
+    ON CONFLICT(appwrite_user_id) DO UPDATE SET
+      status = 'PENDING', locale = excluded.locale, source = excluded.source,
+      consent_text_version = excluded.consent_text_version,
+      consented_at = excluded.consented_at, confirmed_at = NULL,
+      unsubscribed_at = NULL, updated_at = excluded.updated_at`)
+      .bind(identity.userId, locale, now, now, now),
+  ]);
+  const token = await issueNewsletterToken(env, {
+    userId: identity.userId,
+    purpose: "CONFIRM",
+    ttlHours: 48,
+  });
+  const de = locale === "de";
+  await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+    userId: identity.userId,
+    messageId: `newsletter-confirm-${crypto.randomUUID()}`,
+    subject: de ? "Dein Zugang zu New Drops" : "Your access to New Drops",
+    html: newsletterEmailHtml({
+      locale,
+      title: de ? "New Drops – nur wenn du willst" : "New Drops – only if you want them",
+      intro: de
+        ? "Bestätige einmalig, dass du neue Veröffentlichungen, ausgewählte Einblicke und Membership-Impulse per E-Mail erhalten möchtest."
+        : "Confirm once to receive new releases, selected previews and membership inspiration by email.",
+      actionLabel: de ? "Newsletter bestätigen" : "Confirm newsletter",
+      actionUrl: newsletterActionUrl(token, "CONFIRM"),
+    }),
+  });
+  return { status: "PENDING", confirmationSent: true };
+}
+
+async function unsubscribeNewsletterForUser(
+  request: Request,
+  env: MembershipEnv,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  requireIdempotencyKey(request);
+  const now = isoNow();
+  await env.DB.prepare(`INSERT INTO newsletter_subscriptions (
+    appwrite_user_id, status, locale, source, consent_text_version,
+    unsubscribed_at, created_at, updated_at
+  ) SELECT appwrite_user_id, 'UNSUBSCRIBED', preferred_locale, 'DASHBOARD',
+    'newsletter-v1', ?, ?, ? FROM user_profiles WHERE appwrite_user_id = ?
+  ON CONFLICT(appwrite_user_id) DO UPDATE SET status = 'UNSUBSCRIBED',
+    unsubscribed_at = excluded.unsubscribed_at, updated_at = excluded.updated_at`)
+    .bind(now, now, now, userId).run();
+  return { status: "UNSUBSCRIBED" };
+}
+
+function newsletterActionPage(locale: "de" | "en", success: boolean): Response {
+  const de = locale === "de";
+  const title = success
+    ? (de ? "Einstellung gespeichert" : "Preference saved")
+    : (de ? "Link nicht mehr gültig" : "Link no longer valid");
+  const copy = success
+    ? (de ? "Deine Newsletter-Einstellung wurde sicher übernommen." : "Your newsletter preference has been saved securely.")
+    : (de ? "Fordere im Privacy Center bei Bedarf einen neuen Link an." : "Request a new link from the Privacy Center if needed.");
+  return new Response(`<!doctype html><html lang="${locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title} · Shadow's Temptation</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><main style="width:min(90%,620px);box-sizing:border-box;padding:42px;border:1px solid #6d2432;border-radius:28px;background:#21070d;text-align:center"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:42px;font-weight:normal">${title}</h1><p style="color:#d8c4bd;line-height:1.7">${copy}</p><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;margin-top:18px;padding:15px 24px;border-radius:999px;background:#c83a22;color:white;text-decoration:none;font-weight:bold">${de ? "Zum Konto" : "Open account"} →</a></main></body></html>`, {
+    status: success ? 200 : 400,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+async function applyNewsletterAction(request: Request, env: MembershipEnv): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token") ?? "";
+  const purpose = url.searchParams.get("purpose") === "unsubscribe" ? "UNSUBSCRIBE" : "CONFIRM";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return newsletterActionPage("de", false);
+  const now = isoNow();
+  const row = await env.DB.prepare(`SELECT t.id, t.appwrite_user_id, s.locale
+    FROM newsletter_action_tokens t
+    LEFT JOIN newsletter_subscriptions s ON s.appwrite_user_id = t.appwrite_user_id
+    WHERE t.token_sha256 = ? AND t.purpose = ? AND t.used_at IS NULL AND t.expires_at > ?`)
+    .bind(await sha256Hex(token), purpose, now)
+    .first<{ id: string; appwrite_user_id: string; locale: "de" | "en" | null }>();
+  const locale = row?.locale === "en" ? "en" : "de";
+  if (!row) return newsletterActionPage(locale, false);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE newsletter_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`)
+      .bind(now, row.id),
+    env.DB.prepare(`UPDATE newsletter_subscriptions SET status = ?,
+      confirmed_at = CASE WHEN ? = 'CONFIRM' THEN ? ELSE confirmed_at END,
+      unsubscribed_at = CASE WHEN ? = 'UNSUBSCRIBE' THEN ? ELSE NULL END,
+      updated_at = ? WHERE appwrite_user_id = ?`)
+      .bind(purpose === "CONFIRM" ? "SUBSCRIBED" : "UNSUBSCRIBED",
+        purpose, now, purpose, now, now, row.appwrite_user_id),
+  ]);
+  return newsletterActionPage(locale, true);
+}
+
 async function privacyOverview(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
-  const [profileResult, requestsResult] = await env.DB.batch([
+  const [profileResult, requestsResult, newsletterResult] = await env.DB.batch([
     env.DB.prepare(`
       SELECT country_code, region_code, privacy_regime,
         privacy_notice_version, privacy_notice_acknowledged_at, preferred_locale,
@@ -2708,8 +3021,14 @@ async function privacyOverview(
       WHERE appwrite_user_id = ?
       ORDER BY created_at DESC LIMIT 50
     `).bind(userId),
+    env.DB.prepare(`
+      SELECT status, locale, consented_at, confirmed_at, unsubscribed_at, updated_at
+      FROM newsletter_subscriptions WHERE appwrite_user_id = ?
+    `).bind(userId),
   ]);
-  if (!profileResult || !requestsResult) throw new ApiError(503, "PRIVACY_DATA_UNAVAILABLE");
+  if (!profileResult || !requestsResult || !newsletterResult) {
+    throw new ApiError(503, "PRIVACY_DATA_UNAVAILABLE");
+  }
   const profile = profileResult.results[0] as {
     country_code: string | null;
     region_code: string | null;
@@ -2768,6 +3087,16 @@ async function privacyOverview(
       targetedAdvertising: false,
       solelyAutomatedSignificantDecisions: false,
     },
+    newsletter: newsletterResult.results[0]
+      ? {
+        status: (newsletterResult.results[0] as Record<string, unknown>).status,
+        locale: (newsletterResult.results[0] as Record<string, unknown>).locale,
+        consentedAt: (newsletterResult.results[0] as Record<string, unknown>).consented_at,
+        confirmedAt: (newsletterResult.results[0] as Record<string, unknown>).confirmed_at,
+        unsubscribedAt: (newsletterResult.results[0] as Record<string, unknown>).unsubscribed_at,
+        updatedAt: (newsletterResult.results[0] as Record<string, unknown>).updated_at,
+      }
+      : { status: "UNSUBSCRIBED", locale: profile.preferred_locale },
   };
 }
 
@@ -3283,6 +3612,17 @@ async function route(
     env.USER_RATE_LIMITER,
     request.headers.get("CF-Connecting-IP") ?? "unknown",
   );
+  if (request.method === "POST" && requestUrl.pathname === "/v1/analytics/event") {
+    return jsonResponse(await recordAnalyticsEvent(request, env), {
+      status: 202,
+      origin,
+      origins,
+      requestId: correlationId,
+    });
+  }
+  if (request.method === "GET" && requestUrl.pathname === "/v1/newsletter/action") {
+    return withRequestId(await applyNewsletterAction(request, env), correlationId);
+  }
   if (request.method === "POST" && requestUrl.pathname === "/v1/auth/password-reset/request") {
     if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
       throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
@@ -3314,6 +3654,8 @@ async function route(
   const ageSubmitPath = /^\/v1\/age-verification\/cases\/([0-9a-f-]{36})\/submit$/i
     .exec(requestUrl.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([0-9a-f-]{36})$/i
+    .exec(requestUrl.pathname);
+  const invoiceCopyPath = /^\/v1\/payments\/orders\/([0-9a-f-]{36})\/invoice$/i
     .exec(requestUrl.pathname);
   const contentCommentsPath = /^\/v1\/content\/([a-z0-9-]{1,128})\/comments$/
     .exec(requestUrl.pathname);
@@ -3351,7 +3693,9 @@ async function route(
     result = await createSepaOrder(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/payments/orders") {
     result = await listUserPaymentOrders(env, identity.userId);
-  } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/premium-telegram") {
+  } else if (request.method === "GET" && invoiceCopyPath) {
+    return getUserInvoiceCopy(env, identity.userId, invoiceCopyPath[1]!, correlationId);
+  } else if (request.method === "GET" && ["/v1/perks/telegram", "/v1/perks/premium-telegram"].includes(requestUrl.pathname)) {
     result = await premiumTelegramPerk(env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/vip-whatsapp") {
     result = await vipWhatsappPerk(env, identity.userId);
@@ -3361,6 +3705,10 @@ async function route(
     result = await requestDeletion(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/privacy") {
     result = await privacyOverview(env, identity.userId);
+  } else if (request.method === "POST" && requestUrl.pathname === "/v1/newsletter/subscription") {
+    result = await subscribeNewsletter(request, env, identity);
+  } else if (request.method === "DELETE" && requestUrl.pathname === "/v1/newsletter/subscription") {
+    result = await unsubscribeNewsletterForUser(request, env, identity.userId);
   } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/profile") {
     result = await updatePrivacyProfile(request, env, identity.userId);
   } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/privacy/choices") {

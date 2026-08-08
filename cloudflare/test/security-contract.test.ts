@@ -191,7 +191,8 @@ describe("browser and repository security contract", () => {
     if (!insert?.[1] || !insert[2]) throw new Error("SEPA subscription insert not found");
     const columns = insert[1].split(",").map((column) => column.trim()).filter(Boolean);
     const values = insert[2].split(",").map((value) => value.trim()).filter(Boolean);
-    expect(columns).toHaveLength(22);
+    expect(columns).toHaveLength(23);
+    expect(columns).toContain("retention_until");
     expect(values).toHaveLength(columns.length);
     expect(values.every((value) => value === "?")).toBe(true);
   });

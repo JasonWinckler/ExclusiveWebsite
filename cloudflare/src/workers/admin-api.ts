@@ -1223,6 +1223,7 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
       p.duration_value, u.email, u.display_name,
       i.invoice_number, i.status AS invoice_status, i.email_status AS invoice_email_status,
       i.email_last_error_code,
+      CASE WHEN i.archive_object_key IS NOT NULL THEN 1 ELSE 0 END AS invoice_archive_available,
       (
         SELECT e.activation_email_status FROM entitlements e
         WHERE e.subscription_id = s.id
@@ -1242,6 +1243,57 @@ async function listPaymentOrders(env: AdminEnv): Promise<Record<string, unknown>
     LIMIT 200
   `).all();
   return { orders: orders.results };
+}
+
+async function streamInvoiceCopy(
+  env: AdminEnv,
+  orderId: string,
+  administratorUserId: string,
+  correlationId: string,
+  origin: string | null,
+  origins: ReadonlySet<string>,
+): Promise<Response> {
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new ApiError(400, "INVALID_PAYMENT_ORDER_ID");
+  const invoice = await env.DB.prepare(`SELECT i.archive_object_key, i.archive_sha256,
+      i.archive_content_type, i.invoice_number, s.appwrite_user_id
+    FROM invoices i JOIN subscriptions s ON s.id = i.subscription_id
+    WHERE s.id = ? AND i.archive_object_key IS NOT NULL`)
+    .bind(orderId)
+    .first<{
+      archive_object_key: string;
+      archive_sha256: string;
+      archive_content_type: string;
+      invoice_number: string;
+      appwrite_user_id: string;
+    }>();
+  if (!invoice) throw new ApiError(404, "INVOICE_COPY_NOT_FOUND");
+  const object = await env.INVOICE_ARCHIVE.get(invoice.archive_object_key);
+  if (!object) throw new ApiError(503, "INVOICE_ARCHIVE_UNAVAILABLE");
+  const body = await object.text();
+  if (await sha256Hex(body) !== invoice.archive_sha256) {
+    throw new ApiError(503, "INVOICE_INTEGRITY_CHECK_FAILED");
+  }
+  const now = isoNow();
+  await auditStatement(env.DB, {
+    administratorUserId,
+    action: "INVOICE_COPY_ACCESSED",
+    targetType: "PAYMENT_ORDER",
+    targetId: orderId,
+    subjectUserId: invoice.appwrite_user_id,
+    previousState: null,
+    newState: { invoiceNumber: invoice.invoice_number },
+    reason: "Authorised invoice support access",
+    correlationId,
+    now,
+  }).run();
+  const headers = corsHeaders(origin, origins);
+  headers.set("Content-Type", invoice.archive_content_type || "text/html; charset=utf-8");
+  headers.set("Content-Disposition", `inline; filename="${invoice.invoice_number.replace(/[^A-Z0-9-]/gi, "-")}.html"`);
+  headers.set("Cache-Control", "private, no-store, max-age=0");
+  headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' cid: data:; base-uri 'none'; form-action 'none'");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Request-Id", correlationId);
+  return new Response(body, { headers });
 }
 
 async function manuallyActivatePaymentOrder(
@@ -2937,6 +2989,131 @@ async function decidePrivacyRequest(
   return { requestId: privacyRequestId, status: nextStatus, response, updatedAt: now };
 }
 
+async function systemMonitoring(env: AdminEnv): Promise<Record<string, unknown>> {
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const [visits, events, users, age, orders, entitlements, newsletter, jobs] = await env.DB.batch([
+    env.DB.prepare(`SELECT day, COUNT(*) AS visitors, SUM(page_views) AS page_views
+      FROM analytics_daily_sessions WHERE day >= ? GROUP BY day ORDER BY day`).bind(since),
+    env.DB.prepare(`SELECT day, event_name, event_count FROM analytics_daily_events
+      WHERE day >= ? ORDER BY day, event_name`).bind(since),
+    env.DB.prepare(`SELECT COUNT(*) AS total,
+      SUM(CASE WHEN account_status = 'ACTIVE' THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN email_verified = 1 THEN 1 ELSE 0 END) AS email_verified,
+      SUM(CASE WHEN account_status = 'RESTRICTED' THEN 1 ELSE 0 END) AS restricted
+      FROM user_profiles WHERE account_status <> 'DELETED'`),
+    env.DB.prepare(`SELECT
+      SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN evidence_deleted_at IS NULL AND status <> 'PENDING' THEN 1 ELSE 0 END) AS cleanup_pending
+      FROM age_verification_cases`),
+    env.DB.prepare(`SELECT COUNT(*) AS total,
+      SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status IN ('PAID','ACTIVE') THEN 1 ELSE 0 END) AS paid
+      FROM subscriptions WHERE archived_at IS NULL`),
+    env.DB.prepare(`SELECT COUNT(*) AS active FROM entitlements
+      WHERE status = 'ACTIVE' AND paused_at IS NULL AND expires_at > ?`).bind(isoNow()),
+    env.DB.prepare(`SELECT
+      SUM(CASE WHEN status = 'SUBSCRIBED' THEN 1 ELSE 0 END) AS subscribed,
+      SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status = 'UNSUBSCRIBED' THEN 1 ELSE 0 END) AS unsubscribed
+      FROM newsletter_subscriptions`),
+    env.DB.prepare(`SELECT job_name, status, started_at, completed_at, duration_ms,
+      summary_json, error_code FROM system_job_runs ORDER BY started_at DESC LIMIT 30`),
+  ]);
+  if (!visits || !events || !users || !age || !orders || !entitlements || !newsletter || !jobs) {
+    throw new ApiError(503, "MONITORING_QUERY_INCOMPLETE");
+  }
+  let backups: Array<Record<string, unknown>> = [];
+  let backupStatus = "AVAILABLE";
+  try {
+    const listed = await env.SYSTEM_BACKUPS.list({ prefix: "d1/", limit: 10 });
+    backups = listed.objects
+      .sort((left, right) => right.uploaded.getTime() - left.uploaded.getTime())
+      .map((object) => ({
+        key: object.key,
+        size: object.size,
+        uploadedAt: object.uploaded.toISOString(),
+        etag: object.etag,
+      }));
+  } catch {
+    backupStatus = "UNAVAILABLE";
+  }
+  const first = (result: D1Result<unknown>) => result.results[0] ?? {};
+  return {
+    generatedAt: isoNow(),
+    technical: {
+      hosting: "Cloudflare Pages",
+      api: "Cloudflare Workers (same-origin service bindings)",
+      database: "Cloudflare D1",
+      privateStorage: "Cloudflare R2",
+      authentication: "Cloudflare-native HttpOnly sessions",
+      adminSessionMaximumMinutes: parsePositiveInt(env.ADMIN_SESSION_MINUTES, 10, 10),
+      publicWorkerSubdomains: false,
+      previewProductionApiAccess: false,
+      analytics: "First-party aggregate, no stored IP or user agent",
+    },
+    visits: visits.results,
+    events: events.results,
+    funnel: {
+      users: first(users),
+      ageVerification: first(age),
+      orders: first(orders),
+      entitlements: first(entitlements),
+      newsletter: first(newsletter),
+    },
+    jobs: jobs.results,
+    backups: { status: backupStatus, retainedMaximum: 2, objects: backups },
+  };
+}
+
+async function queueNewDropCampaign(
+  request: Request,
+  env: AdminEnv,
+  administratorUserId: string,
+  correlationId: string,
+): Promise<Record<string, unknown>> {
+  requireIdempotencyKey(request);
+  const body = await readJsonBody<unknown>(request, 8192);
+  exactKeys(body, ["contentItemId"]);
+  const contentItemId = typeof body.contentItemId === "string" ? body.contentItemId : "";
+  if (!/^[0-9a-f-]{36}$/i.test(contentItemId)) throw new ApiError(400, "INVALID_CONTENT_ID");
+  const item = await env.DB.prepare(`SELECT id, title, body_text, content_status
+    FROM content_items WHERE id = ?`).bind(contentItemId)
+    .first<{ id: string; title: string; body_text: string | null; content_status: string }>();
+  if (!item || item.content_status !== "ACTIVE") throw new ApiError(409, "ACTIVE_CONTENT_REQUIRED");
+  const now = isoNow();
+  const campaignId = crypto.randomUUID();
+  const preview = (item.body_text?.trim() || "A new private moment is waiting for you.").slice(0, 500);
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO newsletter_campaigns (
+      id, campaign_type, content_item_id, subject_de, subject_en,
+      preview_de, preview_en, status, created_by_appwrite_user_id,
+      queued_at, created_at, updated_at
+    ) VALUES (?, 'NEW_DROP', ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`)
+      .bind(campaignId, item.id, `Neu für dich: ${item.title}`, `New for you: ${item.title}`,
+        preview, preview, administratorUserId, now, now, now, now),
+    env.DB.prepare(`INSERT INTO newsletter_deliveries (
+      id, campaign_id, appwrite_user_id, locale, status, next_attempt_at,
+      created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), ?, appwrite_user_id, locale, 'PENDING', ?, ?, ?
+      FROM newsletter_subscriptions WHERE status = 'SUBSCRIBED'`)
+      .bind(campaignId, now, now, now),
+    auditStatement(env.DB, {
+      administratorUserId,
+      action: "NEWSLETTER_NEW_DROP_QUEUED",
+      targetType: "NEWSLETTER_CAMPAIGN",
+      targetId: campaignId,
+      previousState: null,
+      newState: { contentItemId: item.id, status: "QUEUED" },
+      reason: "New Drop campaign queued for confirmed subscribers",
+      correlationId,
+      now,
+    }),
+  ]);
+  const deliveries = Number(results[1]?.meta.changes ?? 0);
+  return { campaignId, status: "QUEUED", deliveries };
+}
+
 async function route(request: Request, env: AdminEnv): Promise<Response> {
   const origins = allowedOrigins(env.SITE_ORIGINS);
   if (request.method === "OPTIONS") return preflight(request, origins);
@@ -2986,6 +3163,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const ageDecisionPath = /^\/v1\/age-verification\/cases\/([^/]+)\/decision$/.exec(url.pathname);
   const paymentActivationPath = /^\/v1\/payments\/orders\/([^/]+)\/activate$/.exec(url.pathname);
   const paymentCancellationPath = /^\/v1\/payments\/orders\/([^/]+)\/cancel$/.exec(url.pathname);
+  const paymentInvoicePath = /^\/v1\/payments\/orders\/([^/]+)\/invoice$/.exec(url.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([^/]+)$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
   const contentItemPath = /^\/v1\/content\/items\/([^/]+)$/.exec(url.pathname);
@@ -3064,6 +3242,10 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   } else if (request.method === "GET" && url.pathname === "/v1/users") {
     result = await listUsers(env);
+  } else if (request.method === "GET" && url.pathname === "/v1/system/monitoring") {
+    result = await systemMonitoring(env);
+  } else if (request.method === "POST" && url.pathname === "/v1/newsletter/new-drop") {
+    result = await queueNewDropCampaign(request, env, administrator.userId, correlationId);
   } else if (request.method === "DELETE" && userDeletePath) {
     result = await scheduleAdminAccountDeletion(
       request,
@@ -3086,6 +3268,15 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   } else if (request.method === "GET" && url.pathname === "/v1/payments/orders") {
     result = await listPaymentOrders(env);
+  } else if (request.method === "GET" && paymentInvoicePath) {
+    return streamInvoiceCopy(
+      env,
+      decodeURIComponent(paymentInvoicePath[1]!),
+      administrator.userId,
+      correlationId,
+      origin,
+      origins,
+    );
   } else if (request.method === "POST" && paymentActivationPath) {
     result = await manuallyActivatePaymentOrder(
       request,

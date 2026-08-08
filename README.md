@@ -11,9 +11,11 @@ membership platform at `exclusive.jason-shadow.com`.
   600,000 iterations; D1 stores only a second server-peppered HMAC. Session
   tokens are stored only as SHA-256 hashes and sent in `Secure`, `HttpOnly`,
   `SameSite=Strict` cookies.
-- D1 is authoritative for accounts, privacy choices, age decisions, products,
-  SEPA orders, entitlements, devices, posts, comments and audit state.
-- Private R2 buckets store short-lived age evidence and creator media.
+- D1 is authoritative for accounts, privacy profiles and requests, confirmed
+  newsletters, privacy-safe reach aggregates, age decisions, products, SEPA
+  orders, entitlements, devices, posts, comments and audit state.
+- Private R2 buckets store short-lived age evidence, creator media, exact
+  invoice copies and no more than two rotating daily D1 exports.
 - Membership, Admin, Identity and Maintenance Workers communicate through
   Cloudflare service bindings. The private Identity Worker sends branded mail
   through Microsoft Graph and has no public route.

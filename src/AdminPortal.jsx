@@ -14,9 +14,12 @@ import {
   adminListContent,
   adminListContentComments,
   adminListPaymentOrders,
+  adminFetchInvoiceCopy,
   adminListPrivacyRequests,
   adminListUserDevices,
   adminListUsers,
+  adminGetSystemMonitoring,
+  adminQueueNewDrop,
   adminRevokeUserDevice,
   adminSetUserDeviceLock,
   adminDecidePrivacyRequest,
@@ -191,6 +194,14 @@ const formatDate = (value, language) => value
     }).format(new Date(value))
   : "–";
 
+const eventTotal = (monitoring, eventName) => (monitoring?.events || [])
+  .filter((event) => event.event_name === eventName)
+  .reduce((sum, event) => sum + Number(event.event_count || 0), 0);
+
+const conversionRate = (numerator, denominator) => denominator > 0
+  ? `${Math.min(100, (numerator / denominator) * 100).toFixed(1)}%`
+  : "—";
+
 export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const t = copy[language] || copy.de;
   const [tab, setTab] = useState("overview");
@@ -220,6 +231,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [importSummary, setImportSummary] = useState(null);
   const [checkedReviewItems, setCheckedReviewItems] = useState([]);
   const [sessionSeconds, setSessionSeconds] = useState(600);
+  const [monitoring, setMonitoring] = useState(null);
+  const [simulationRole, setSimulationRole] = useState("EXCLUSIVE_BASIC");
 
   const loadCases = async () => {
     const result = await adminListAgeCases();
@@ -249,6 +262,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminListPrivacyRequests();
     setPrivacyRequests(result.requests || []);
   };
+  const loadMonitoring = async () => {
+    const result = await adminGetSystemMonitoring();
+    setMonitoring(result);
+  };
   const loadAll = async () => {
     setBusy(true);
     setError("");
@@ -261,6 +278,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         loadUsers(),
         loadMembershipProducts(),
         loadPrivacyRequests(),
+        loadMonitoring(),
       ]);
     } catch (requestError) {
       setError(friendlyErrorMessage(requestError, language, t.genericError));
@@ -517,6 +535,45 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const openInvoiceCopy = async (order) => {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await adminFetchInvoiceCopy(order.id);
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (caught) {
+      setError(friendlyErrorMessage(caught, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const queueNewDrop = async (item) => {
+    if (!window.confirm(language === "de"
+      ? `„${item.title}“ als New Drop an alle bestätigten Newsletter-Abonnenten senden?`
+      : `Send “${item.title}” as a New Drop to all confirmed newsletter subscribers?`)) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await adminQueueNewDrop(item.id);
+      setNotice(language === "de"
+        ? `New Drop wurde für ${result.deliveries || 0} bestätigte Abonnenten eingeplant.`
+        : `New Drop was queued for ${result.deliveries || 0} confirmed subscribers.`);
+      await loadMonitoring();
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const grantMembership = async (profile) => {
     const reason = String(userReasons[profile.appwrite_user_id] || "").trim();
     const productSku = membershipSelections[profile.appwrite_user_id] ||
@@ -679,6 +736,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         ["users", language === "de" ? "Nutzer" : "Users"],
         ["age", t.age], ["content", t.content], ["payments", t.payments],
         ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
+        ["monitoring", "System Monitoring"],
+        ["simulation", language === "de" ? "Website-Simulation" : "Website simulation"],
       ].map(([key, label]) => <button type="button" className={tab === key ? "is-active" : ""} onClick={() => { setTab(key); setNotice(""); setError(""); }} key={key}>{label}</button>)}</nav>
       {busy && <p className="form-notice" role="status">{t.loading}</p>}
       {notice && <p className="form-notice form-notice--success" role="status">{notice}</p>}
@@ -690,6 +749,51 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</span><strong>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("privacy")}>{language === "de" ? "Bearbeiten →" : "Review →"}</button></article>
+      </section>}
+
+      {tab === "monitoring" && <section className="admin-panel system-monitoring">
+        <div className="admin-panel__heading"><div><p className="eyebrow">PRIVACY-SAFE OPERATIONS</p><h2>System Monitoring</h2><p className="admin-note">{language === "de" ? "Technischer Zustand und aggregierte Conversion-Kennzahlen ohne gespeicherte IP-Adresse, User-Agent oder Werbe-Cookies." : "Technical health and aggregate conversion metrics without stored IP addresses, user agents or advertising cookies."}</p></div><span>{monitoring?.generatedAt ? formatDate(monitoring.generatedAt, language) : "—"}</span></div>
+        <div className="admin-overview-grid">
+          <article className="admin-metric-card"><span>{language === "de" ? "Besucher · 30 Tage" : "Visitors · 30 days"}</span><strong>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.visitors || 0), 0)}</strong><small>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.page_views || 0), 0)} Page Views</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "Aktive Konten" : "Active accounts"}</span><strong>{Number(monitoring?.funnel?.users?.active || 0)}</strong><small>{Number(monitoring?.funnel?.users?.total || 0)} {language === "de" ? "gesamt" : "total"}</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "Offene Altersprüfungen" : "Pending age reviews"}</span><strong>{Number(monitoring?.funnel?.ageVerification?.pending || 0)}</strong><small>{Number(monitoring?.funnel?.ageVerification?.cleanup_pending || 0)} cleanup pending</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "Bezahlte Aufträge" : "Paid orders"}</span><strong>{Number(monitoring?.funnel?.orders?.paid || 0)}</strong><small>{Number(monitoring?.funnel?.orders?.pending || 0)} {language === "de" ? "offen" : "pending"}</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "Aktive Memberships" : "Active memberships"}</span><strong>{Number(monitoring?.funnel?.entitlements?.active || 0)}</strong></article>
+          <article className="admin-metric-card"><span>Newsletter</span><strong>{Number(monitoring?.funnel?.newsletter?.subscribed || 0)}</strong><small>{Number(monitoring?.funnel?.newsletter?.pending || 0)} Double-Opt-in pending</small></article>
+        </div>
+        <div className="monitoring-conversions">
+          {[
+            [language === "de" ? "Registrierung abgeschlossen" : "Registration completed", "registration_completed", "registration_started"],
+            [language === "de" ? "Altersprüfung eingereicht" : "Age review submitted", "age_submitted", "age_started"],
+            [language === "de" ? "Auftrag erstellt" : "Order created", "order_created", "checkout_started"],
+            [language === "de" ? "Newsletter-Opt-in gestartet" : "Newsletter opt-in started", "newsletter_opt_in", "page_view"],
+          ].map(([label, resultEvent, sourceEvent]) => {
+            const result = eventTotal(monitoring, resultEvent);
+            const source = eventTotal(monitoring, sourceEvent);
+            return <article key={resultEvent}><span>{label}</span><strong>{result}</strong><small>{conversionRate(result, source)} {language === "de" ? "vom vorherigen Schritt" : "from previous step"}</small></article>;
+          })}
+        </div>
+        <article className="monitoring-visit-trend">
+          <div><h3>{language === "de" ? "Besuche der letzten 30 Tage" : "Visits in the last 30 days"}</h3><p className="admin-note">{language === "de" ? "Tagesaggregate ohne gespeicherte IP-Adressen oder geräteübergreifende Kennung." : "Daily aggregates without stored IP addresses or cross-device identifiers."}</p></div>
+          <div className="monitoring-bars">{(monitoring?.visits || []).map((day) => {
+            const maximum = Math.max(1, ...(monitoring?.visits || []).map((entry) => Number(entry.page_views || 0)));
+            return <span key={day.day} title={`${day.day}: ${day.page_views} Page Views`} style={{ "--bar-size": `${Math.max(4, Number(day.page_views || 0) / maximum * 100)}%` }}><i /><small>{String(day.day).slice(5)}</small></span>;
+          })}</div>
+        </article>
+        <div className="monitoring-grid">
+          <article><h3>{language === "de" ? "Technik" : "Technical"}</h3><dl className="admin-facts">{Object.entries(monitoring?.technical || {}).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{String(value)}</dd></div>)}</dl></article>
+          <article><h3>{language === "de" ? "Wartungsjobs" : "Maintenance jobs"}</h3><div className="monitoring-list">{(monitoring?.jobs || []).length ? monitoring.jobs.map((job, index) => <div key={`${job.job_name}-${job.started_at}-${index}`}><span><strong>{job.job_name}</strong><small>{formatDate(job.started_at, language)} · {job.duration_ms ?? "—"} ms</small></span><span className={`order-status order-status--${String(job.status).toLowerCase()}`}>{job.status}</span></div>) : <p>{language === "de" ? "Noch keine protokollierten Läufe." : "No recorded runs yet."}</p>}</div></article>
+          <article><h3>{language === "de" ? "D1-Sicherungen" : "D1 backups"}</h3><p className="admin-note">{language === "de" ? "Private R2-Sicherungen, maximal zwei rotierende Stände." : "Private R2 backups with no more than two rotating snapshots."}</p><div className="monitoring-list">{(monitoring?.backups?.objects || []).map((backup) => <div key={backup.key}><span><strong>{backup.key.split("/").pop()}</strong><small>{formatBytes(backup.size)} · {formatDate(backup.uploadedAt, language)}</small></span><span className="order-status">PRIVATE</span></div>)}</div></article>
+        </div>
+      </section>}
+
+      {tab === "simulation" && <section className="admin-panel role-simulation-panel">
+        <div className="admin-panel__heading"><div><p className="eyebrow">SAFE ROLE PREVIEW</p><h2>{language === "de" ? "Website aus Nutzersicht" : "Website from a member perspective"}</h2><p className="admin-note">{language === "de" ? "Diese Vorschau simuliert ausschließlich Darstellung und CTAs. Sie verändert keine Berechtigung und lädt niemals geschützte Medien." : "This preview simulates presentation and calls to action only. It changes no permission and never loads protected media."}</p></div></div>
+        <label className="form-field simulation-role-select"><span>{language === "de" ? "Rolle / Membership" : "Role / membership"}</span><select value={simulationRole} onChange={(event) => setSimulationRole(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Age pending</option><option value="FREE">Age verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Exclusive Basic</option><option value="EXCLUSIVE_PREMIUM">Exclusive Premium</option><option value="EXCLUSIVE_VIP">Exclusive VIP</option></select></label>
+        <div className={`role-simulation role-simulation--${simulationRole.toLowerCase()}`}>
+          <div className="role-simulation__banner"><img src="/linktree/uploads/banner.png" alt="" /><div><img src="/linktree/uploads/profile.png" alt="Shadow's Temptation" /><p className="eyebrow">SHADOW'S TEMPTATION</p><h3>{language === "de" ? "Desire lives in the shadows." : "Desire lives in the shadows."}</h3><span className="order-status">{simulationRole.replace("EXCLUSIVE_", "Exclusive ")}</span></div></div>
+          <div className="role-simulation__content"><article><p className="eyebrow">{simulationRole === "GUEST" ? "LOCKED PREVIEW" : simulationRole === "REGISTERED" ? "VERIFY & ENTER" : "NEW FOR YOU"}</p><h3>{simulationRole === "GUEST" ? (language === "de" ? "Registrieren & Zugang entdecken" : "Register & discover access") : simulationRole === "REGISTERED" ? (language === "de" ? "Altersprüfung abschließen" : "Complete age verification") : (language === "de" ? "Deine private Auswahl" : "Your private selection")}</h3><p>{language === "de" ? "Neutrale Platzhalter zeigen hier die spätere Beitragserfahrung – ohne echte Medien oder Berechtigungsumgehung." : "Neutral placeholders show the future post experience here—without real media or permission bypass."}</p><button className="primary-action" type="button">{simulationRole === "GUEST" ? "Register & Unlock Now" : simulationRole === "REGISTERED" ? (language === "de" ? "Sicher verifizieren" : "Verify securely") : (language === "de" ? "Galerie entdecken" : "Explore gallery")}</button></article><div className="role-simulation__placeholder"><span>18+</span><strong>{language === "de" ? "Geschützter Beitrag" : "Protected post"}</strong><small>{language === "de" ? "Keine echten Medien in der Simulation" : "No real media in simulation"}</small></div></div>
+        </div>
       </section>}
 
       {tab === "users" && <section className="admin-panel user-management">
@@ -767,7 +871,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         </article>
         <article className="admin-panel">
           <h2>{t.currentContent}</h2>
-          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
+          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => queueNewDrop(item)}>{language === "de" ? "Als New Drop senden" : "Send as New Drop"}</button><button className="secondary-action" type="button" disabled={busy} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
         </article>
         <article className="admin-panel admin-panel--wide comment-moderation">
           <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>
@@ -847,11 +951,12 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
                 <div><dt>{language === "de" ? "Zahlbar bis" : "Due by"}</dt><dd>{formatDate(order.payment_due_at, language)}</dd></div>
                 {order.settled_at && <div><dt>{language === "de" ? "Freigeschaltet" : "Activated"}</dt><dd>{formatDate(order.settled_at, language)}</dd></div>}
                 {order.activation_email_status && <div><dt>{language === "de" ? "Aktivierungs-Mail" : "Activation email"}</dt><dd>{order.activation_email_status}</dd></div>}
+                {order.invoice_number && <div><dt>{language === "de" ? "Rechnung" : "Invoice"}</dt><dd>{order.invoice_number} · {order.invoice_email_status || "PENDING"}</dd></div>}
               </dl>
               <div className="manual-payment-review">
                 <label className="form-field"><span>{t.manualReason}</span><textarea minLength="3" maxLength="500" value={reason} onChange={(event) => setPaymentReasons((current) => ({ ...current, [order.id]: event.target.value }))} /></label>
                 {canActivate && <><label className="checkout-confirmation"><input type="checkbox" checked={Boolean(paymentConfirmations[order.id])} onChange={(event) => setPaymentConfirmations((current) => ({ ...current, [order.id]: event.target.checked }))} /><span>{t.manualConfirmation}</span></label><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3 || !paymentConfirmations[order.id]} onClick={() => activatePayment(order.id)}>{t.manualActivate}</button></>}
-                <div className="order-admin-actions">{order.status === "PENDING" && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "CANCEL")}>{language === "de" ? "Auftrag stornieren" : "Cancel order"}</button>}{["CANCELLED","EXPIRED","REFUNDED"].includes(order.status) && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "ARCHIVE")}>{language === "de" ? "Archivieren" : "Archive"}</button>}</div>
+                <div className="order-admin-actions">{order.invoice_archive_available === 1 && <button className="secondary-action" type="button" disabled={busy} onClick={() => openInvoiceCopy(order)}>{language === "de" ? "Rechnungskopie öffnen" : "Open invoice copy"}</button>}{order.status === "PENDING" && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "CANCEL")}>{language === "de" ? "Auftrag stornieren" : "Cancel order"}</button>}{["CANCELLED","EXPIRED","REFUNDED"].includes(order.status) && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => managePaymentOrder(order, "ARCHIVE")}>{language === "de" ? "Archivieren" : "Archive"}</button>}</div>
               </div>
             </section>;
           })}</div> : <p>{t.noOrders}</p>}

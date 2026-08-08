@@ -1,4 +1,4 @@
-# Deployment und Rollback
+# Produktives Deployment und Rollback
 
 ## Automatischer Frontend-Rollout
 
@@ -15,8 +15,9 @@ stellen das Same-Origin-Gateway bereit; Bindings stehen in `wrangler.jsonc`.
 4. Verschlüsselte Secrets/Bidings kontrollieren.
 5. Pages-Preview veröffentlichen und negative/positive Pfade prüfen.
 6. Produktion veröffentlichen.
-7. Erst danach Namecheap-CNAME `exclusive` von Appwrite auf
-   `shadows-temptation.pages.dev` ändern.
+7. Pages-Produktion und Custom Domain `exclusive.jason-shadow.com` prüfen. Der
+   Namecheap-CNAME zeigt bereits auf Cloudflare Pages und wird bei gewöhnlichen
+   Releases nicht verändert.
 
 ## Rollback
 
@@ -25,9 +26,8 @@ stellen das Same-Origin-Gateway bereit; Bindings stehen in `wrangler.jsonc`.
 - Datenbank: ausschließlich bei bestätigtem Schemafehler den unmittelbar vor
   der Migration notierten D1-Time-Travel-Bookmark verwenden. Nach produktiven
   Schreibvorgängen ist zuerst eine fachliche Delta-Prüfung nötig.
-- DNS: während des begrenzten Rollback-Fensters kann der vorherige Appwrite-
-  CNAME wiederhergestellt werden. Appwrite ist ansonsten kein produktiver
-  Authentifizierungs- oder Datenpfad.
+- DNS: wird bei Code-, Worker- oder Schema-Rollbacks nicht verändert. Appwrite
+  ist kein produktiver Authentifizierungs-, Daten- oder Hostingpfad.
 
 Ein Rollout ist erst abgeschlossen, wenn Typecheck, Worker-Tests, Frontend-
 Build, Pages-Healthcheck und die zentralen Produktivpfade erfolgreich sind.

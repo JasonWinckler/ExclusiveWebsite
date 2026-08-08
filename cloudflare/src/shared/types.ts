@@ -61,7 +61,15 @@ export interface AuthEnv extends BaseEnv {
   IDENTITY_PROJECTION: Service;
   AUTH_EMAIL_SERVICE_SECRET: string;
   AUTH_ENCRYPTION_KEY: string;
+  AUTH_ENCRYPTION_KEY_CURRENT?: string;
+  AUTH_ENCRYPTION_KEY_VERSION?: string;
+  AUTH_ENCRYPTION_KEY_PREVIOUS?: string;
+  AUTH_ENCRYPTION_KEY_PREVIOUS_VERSION?: string;
   AUTH_PASSWORD_PEPPER: string;
+  AUTH_PASSWORD_PEPPER_CURRENT?: string;
+  AUTH_PASSWORD_PEPPER_VERSION?: string;
+  AUTH_PASSWORD_PEPPER_PREVIOUS?: string;
+  AUTH_PASSWORD_PEPPER_PREVIOUS_VERSION?: string;
   SESSION_DAYS?: string;
   DEVICE_LIMIT?: string;
 }
@@ -70,6 +78,7 @@ export interface MembershipEnv extends BaseEnv {
   USER_RATE_LIMITER: RateLimit;
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
+  INVOICE_ARCHIVE: R2Bucket;
   IDENTITY_PROJECTION: Service;
   MAINTENANCE_JOBS: Service;
   LABEL_SYNC_SERVICE_SECRET: string;
@@ -95,6 +104,10 @@ export interface MembershipEnv extends BaseEnv {
   INVOICE_TAX_IDENTIFIER?: string;
   INVOICE_TAX_NOTE?: string;
   PREMIUM_TELEGRAM_INVITE_URL?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_INVITE_ENCRYPTION_KEY?: string;
+  TELEGRAM_INVITE_KEY_VERSION?: string;
   VIP_WHATSAPP_NUMBER?: string;
 }
 
@@ -106,6 +119,8 @@ export interface AdminEnv extends BaseEnv {
   LABEL_SYNC_SERVICE_SECRET: string;
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
+  INVOICE_ARCHIVE: R2Bucket;
+  SYSTEM_BACKUPS: R2Bucket;
   AGE_APPROVAL_VALID_DAYS?: string;
   ADMIN_SESSION_MINUTES?: string;
   N26_CSV_IMPORT_MODE?: string;
@@ -144,6 +159,8 @@ export interface MaintenanceEnv {
   ACCOUNT_LIFECYCLE_SERVICE_SECRET: string;
   VERIFICATION_UPLOADS: R2Bucket;
   CONTENT_MEDIA: R2Bucket;
+  INVOICE_ARCHIVE: R2Bucket;
+  SYSTEM_BACKUPS: R2Bucket;
   INACTIVE_ACCOUNT_DAYS?: string;
   DELETION_GRACE_DAYS?: string;
   MAINTENANCE_BATCH_SIZE?: string;

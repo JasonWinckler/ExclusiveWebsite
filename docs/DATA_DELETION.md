@@ -34,7 +34,18 @@ Nutzer und Administrator können eine zweistufig bestätigte Löschung auslösen
 Der Prozess löscht das Cloudflare-Authkonto, Sitzungen, Geräte, Kommentare,
 Authentifizierungs-Tokens und Altersnachweise. Das D1-Profil wird anonymisiert.
 Gesetzlich notwendige Rechnungs- und Zahlungsdaten werden getrennt
-weitergespeichert und soweit möglich pseudonymisiert.
+weitergespeichert. Vorgeschriebene Empfängerangaben bleiben dabei vollständig;
+die private Rechnungskopie wird zusammen mit einem SHA-256-Integritätswert
+aufbewahrt und ist nicht öffentlich abrufbar.
+
+## Weitere produktive Fristen
+
+- Reichweiten-Tagesaggregate und definierte Conversion-Ereignisse: 90 Tage;
+- Newsletter-Versanddetails: 30 Tage, Einwilligungsstatus bis zur Abmeldung;
+- technische Jobprotokolle: 90 Tage;
+- stornierte Zahlungsaufträge: zwei Tage nach Stornierung aus der normalen
+  Historie entfernt;
+- private D1-Sicherungen: ausschließlich die zwei neuesten täglichen Exporte.
 
 Administrative oder gesetzliche Holds blockieren eine automatische Löschung.
 Eine manuelle Betroffenenlöschung darf nur blockiert werden, wenn eine

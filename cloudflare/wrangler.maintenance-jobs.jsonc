@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-maintenance-jobs",
   "main": "src/workers/maintenance-jobs.ts",
-  "compatibility_date": "2026-07-26",
+  "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": {
@@ -23,7 +23,9 @@
       "bucket_name": "exclusive-age-evidence",
       "jurisdiction": "eu"
     },
-    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" }
+    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" },
+    { "binding": "INVOICE_ARCHIVE", "bucket_name": "exclusive-invoice-archive", "jurisdiction": "eu" },
+    { "binding": "SYSTEM_BACKUPS", "bucket_name": "exclusive-system-backups", "jurisdiction": "eu" }
   ],
   "services": [{
     "binding": "IDENTITY_PROJECTION",
@@ -47,7 +49,9 @@
       }],
       "r2_buckets": [
         { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" },
-        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" }
+        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" },
+        { "binding": "INVOICE_ARCHIVE", "bucket_name": "exclusive-invoice-archive-preview" },
+        { "binding": "SYSTEM_BACKUPS", "bucket_name": "exclusive-system-backups-preview" }
       ],
       "services": [{
         "binding": "IDENTITY_PROJECTION",

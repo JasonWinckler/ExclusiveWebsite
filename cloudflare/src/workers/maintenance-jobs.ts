@@ -1,7 +1,8 @@
 import { getUserProfile, isoNow } from "../shared/db";
-import { logEvent, parsePositiveInt } from "../shared/http";
+import { ApiError, logEvent, parsePositiveInt } from "../shared/http";
 import {
   deleteAppwriteUser,
+  sendTransactionalEmail,
   syncAppwriteLabel,
   updateAppwriteUserName,
 } from "../shared/identity-service";
@@ -13,6 +14,7 @@ import {
   sendAgeVerificationDeletionConfirmation,
 } from "../shared/age-verification-email";
 import { deletionBlockers } from "../shared/policy";
+import { randomBase64Url, sha256Hex } from "../shared/security";
 import type {
   MaintenanceEnv,
   PaymentStatus,
@@ -836,6 +838,149 @@ async function applyAuditRetention(
   }
 }
 
+async function cleanupOperationalData(env: MaintenanceEnv, now: string): Promise<void> {
+  const analyticsCutoff = new Date(Date.parse(now) - 90 * 86_400_000).toISOString().slice(0, 10);
+  const deliveryCutoff = new Date(Date.parse(now) - 30 * 86_400_000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM analytics_daily_sessions WHERE day < ?`).bind(analyticsCutoff),
+    env.DB.prepare(`DELETE FROM analytics_daily_events WHERE day < ?`).bind(analyticsCutoff),
+    env.DB.prepare(`DELETE FROM newsletter_action_tokens WHERE expires_at <= ? OR used_at < ?`)
+      .bind(now, deliveryCutoff),
+    env.DB.prepare(`DELETE FROM newsletter_deliveries
+      WHERE created_at < ? AND status IN ('SENT','FAILED','SKIPPED')`).bind(deliveryCutoff),
+    env.DB.prepare(`DELETE FROM telegram_invites WHERE expires_at <= ?`).bind(now),
+    env.DB.prepare(`DELETE FROM system_job_runs WHERE created_at < ?`).bind(
+      new Date(Date.parse(now) - 90 * 86_400_000).toISOString(),
+    ),
+  ]);
+}
+
+async function cleanupExpiredInvoiceArchives(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<number> {
+  const invoices = await env.DB.prepare(`SELECT i.id, i.subscription_id, i.archive_object_key
+    FROM invoices i JOIN subscriptions s ON s.id = i.subscription_id
+    WHERE s.retention_until IS NOT NULL AND s.retention_until <= ?
+    ORDER BY s.retention_until ASC LIMIT ?`)
+    .bind(now, batchSize)
+    .all<{ id: string; subscription_id: string; archive_object_key: string | null }>();
+  let removed = 0;
+  for (const invoice of invoices.results) {
+    try {
+      if (invoice.archive_object_key) await env.INVOICE_ARCHIVE.delete(invoice.archive_object_key);
+      const results = await env.DB.batch([
+        env.DB.prepare(`DELETE FROM invoices WHERE id = ?`).bind(invoice.id),
+        env.DB.prepare(`UPDATE subscriptions SET billing_name = NULL, billing_street = NULL,
+          billing_postal_code = NULL, billing_city = NULL, billing_country_code = NULL,
+          retention_until = NULL, updated_at = ? WHERE id = ?`)
+          .bind(now, invoice.subscription_id),
+      ]);
+      if ((results[0]?.meta.changes ?? 0) === 1) removed += 1;
+    } catch {
+      logEvent("error", "invoice_archive_retention_cleanup_failed", { requestId: invoice.id });
+    }
+  }
+  return removed;
+}
+
+function escapeNewsletterHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+  })[character]!);
+}
+
+async function processNewsletterDeliveries(
+  env: MaintenanceEnv,
+  now: string,
+  batchSize: number,
+): Promise<number> {
+  const deliveries = await env.DB.prepare(`SELECT d.id, d.campaign_id,
+      d.appwrite_user_id, d.locale, d.attempt_count, c.subject_de, c.subject_en,
+      c.preview_de, c.preview_en, c.content_item_id, n.status AS subscription_status
+    FROM newsletter_deliveries d
+    JOIN newsletter_campaigns c ON c.id = d.campaign_id
+    LEFT JOIN newsletter_subscriptions n ON n.appwrite_user_id = d.appwrite_user_id
+    WHERE d.status IN ('PENDING','FAILED')
+      AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= ?)
+      AND c.status IN ('QUEUED','SENDING')
+    ORDER BY d.created_at LIMIT ?`)
+    .bind(now, batchSize).all<{
+      id: string; campaign_id: string; appwrite_user_id: string; locale: "de" | "en";
+      attempt_count: number; subject_de: string; subject_en: string;
+      preview_de: string; preview_en: string; content_item_id: string | null;
+      subscription_status: string | null;
+    }>();
+  let sent = 0;
+  for (const delivery of deliveries.results) {
+    if (delivery.subscription_status !== "SUBSCRIBED") {
+      await env.DB.prepare(`UPDATE newsletter_deliveries SET status = 'SKIPPED',
+        last_error_code = 'NOT_SUBSCRIBED', updated_at = ? WHERE id = ?`)
+        .bind(now, delivery.id).run();
+      continue;
+    }
+    const claimed = await env.DB.prepare(`UPDATE newsletter_deliveries SET status = 'SENDING',
+      attempt_count = attempt_count + 1, updated_at = ?
+      WHERE id = ? AND status IN ('PENDING','FAILED')`).bind(now, delivery.id).run();
+    if ((claimed.meta.changes ?? 0) !== 1) continue;
+    const token = randomBase64Url(32);
+    const unsubscribeUrl = `https://exclusive.jason-shadow.com/api/member/v1/newsletter/action?purpose=unsubscribe&token=${encodeURIComponent(token)}`;
+    const de = delivery.locale === "de";
+    const subject = de ? delivery.subject_de : delivery.subject_en;
+    const preview = de ? delivery.preview_de : delivery.preview_en;
+    const actionUrl = delivery.content_item_id
+      ? "https://exclusive.jason-shadow.com/?action=new-drop"
+      : "https://exclusive.jason-shadow.com/";
+    const html = `<!doctype html><html lang="${delivery.locale}"><body style="margin:0;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="Shadow's Temptation" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">NEW DROP · SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${escapeNewsletterHtml(subject)}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${escapeNewsletterHtml(preview)}</p><p style="text-align:center;margin:30px 0"><a href="${actionUrl}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#fff;text-decoration:none;font-weight:bold">${de ? "Jetzt entdecken" : "Discover now"} →</a></p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">Shadow's Temptation · Desire lives in the shadows.<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">Legal &amp; Privacy</a><br><a href="${unsubscribeUrl}" style="display:inline-block;margin-top:10px;color:#968681">${de ? "Newsletter abbestellen" : "Unsubscribe from newsletter"}</a></td></tr></table></td></tr></table></body></html>`;
+    try {
+      await env.DB.prepare(`INSERT INTO newsletter_action_tokens (
+        id, appwrite_user_id, purpose, token_sha256, expires_at, created_at
+      ) VALUES (?, ?, 'UNSUBSCRIBE', ?, ?, ?)`)
+        .bind(crypto.randomUUID(), delivery.appwrite_user_id, await sha256Hex(token),
+          new Date(Date.parse(now) + 400 * 86_400_000).toISOString(), now).run();
+      await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+        userId: delivery.appwrite_user_id,
+        messageId: `nl-${delivery.id}`,
+        subject,
+        html,
+      });
+      await env.DB.prepare(`UPDATE newsletter_deliveries SET status = 'SENT',
+        message_id = ?, sent_at = ?, next_attempt_at = NULL, last_error_code = NULL,
+        updated_at = ? WHERE id = ?`).bind(`nl-${delivery.id}`, now, now, delivery.id).run();
+      sent += 1;
+    } catch {
+      const attempt = delivery.attempt_count + 1;
+      const status = attempt >= 4 ? "SKIPPED" : "FAILED";
+      const next = attempt >= 4
+        ? null
+        : new Date(Date.parse(now) + Math.min(24, 2 ** attempt) * 3_600_000).toISOString();
+      await env.DB.prepare(`UPDATE newsletter_deliveries SET status = ?,
+        next_attempt_at = ?, last_error_code = 'NEWSLETTER_DELIVERY_FAILED',
+        updated_at = ? WHERE id = ?`).bind(status, next, now, delivery.id).run();
+    }
+  }
+  await env.DB.prepare(`UPDATE newsletter_campaigns SET status = 'COMPLETED',
+    completed_at = ?, updated_at = ? WHERE status IN ('QUEUED','SENDING')
+    AND NOT EXISTS (SELECT 1 FROM newsletter_deliveries d
+      WHERE d.campaign_id = newsletter_campaigns.id AND d.status IN ('PENDING','SENDING','FAILED'))`)
+    .bind(now, now).run();
+  await env.DB.prepare(`UPDATE newsletter_campaigns SET status = 'SENDING', updated_at = ?
+    WHERE status = 'QUEUED' AND EXISTS (SELECT 1 FROM newsletter_deliveries d
+      WHERE d.campaign_id = newsletter_campaigns.id AND d.status IN ('PENDING','SENDING','FAILED'))`)
+    .bind(now).run();
+  return sent;
+}
+
+async function pruneSystemBackups(env: MaintenanceEnv): Promise<number> {
+  const listed = await env.SYSTEM_BACKUPS.list({ prefix: "d1/", limit: 100 });
+  const stale = listed.objects
+    .sort((left, right) => right.uploaded.getTime() - left.uploaded.getTime())
+    .slice(2);
+  await Promise.all(stale.map((object) => env.SYSTEM_BACKUPS.delete(object.key)));
+  return stale.length;
+}
+
 async function runMaintenance(env: MaintenanceEnv): Promise<void> {
   const now = isoNow();
   const ownerId = crypto.randomUUID();
@@ -845,6 +990,11 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
   }
   const batchSize = parsePositiveInt(env.MAINTENANCE_BATCH_SIZE, 50, 250);
   const inactiveDays = parsePositiveInt(env.INACTIVE_ACCOUNT_DAYS, 30, 3650);
+  const started = Date.now();
+  await env.DB.prepare(`INSERT INTO system_job_runs (
+    id, job_name, status, started_at, created_at
+  ) VALUES (?, 'hourly-maintenance', 'RUNNING', ?, ?)`)
+    .bind(ownerId, now, now).run();
   try {
     await expireRecords(env, now, batchSize);
     await cleanupRetainedEvidence(env, now, batchSize);
@@ -870,7 +1020,24 @@ async function runMaintenance(env: MaintenanceEnv): Promise<void> {
       parsePositiveInt(env.AUDIT_RETENTION_DAYS, 730, 730),
       batchSize,
     );
+    const newslettersSent = await processNewsletterDeliveries(env, now, batchSize);
+    const invoicesRemoved = await cleanupExpiredInvoiceArchives(env, now, batchSize);
+    await cleanupOperationalData(env, now);
+    const deletedBackups = await pruneSystemBackups(env);
+    const completedAt = isoNow();
+    await env.DB.prepare(`UPDATE system_job_runs SET status = 'SUCCEEDED',
+      completed_at = ?, duration_ms = ?, summary_json = ? WHERE id = ?`)
+      .bind(completedAt, Date.now() - started, JSON.stringify({ deletedBackups, newslettersSent, invoicesRemoved }), ownerId).run();
     logEvent("info", "maintenance_completed", { requestId: ownerId });
+  } catch (error) {
+    await env.DB.prepare(`UPDATE system_job_runs SET status = 'FAILED',
+      completed_at = ?, duration_ms = ?, error_code = ? WHERE id = ?`)
+      .bind(
+        isoNow(), Date.now() - started,
+        error instanceof ApiError ? error.code : "MAINTENANCE_FAILED",
+        ownerId,
+      ).run();
+    throw error;
   } finally {
     await releaseLock(env.DB, "daily-maintenance", ownerId);
   }

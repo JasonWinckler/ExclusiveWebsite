@@ -1,13 +1,13 @@
 # Datenschutz-Folgenabschätzung: manuelle Altersverifikation
 
-Version: 1.3
+Version: 1.4
 
 Stand: 8. August 2026
 
 Betriebsstatus: produktiv eingesetzt
 
-Änderungsgrund: Vollständige Cloudflare-Migration, produktiver
-Löschbestätigungsprozess und klare Betreiberverantwortung
+Änderungsgrund: Produktive Cloudflare-Architektur, lokale Qualitätskontrollen,
+verpflichtende Admin-MFA und aktualisierte Datenminimierung
 
 Verantwortlicher: Jason Winckler, handelnd unter Jason Shadow
 
@@ -174,7 +174,7 @@ mittel oder hoch.
 | Risiko | Ausgangsrisiko | Maßnahmen | Restrisiko |
 |---|---|---|---|
 | Unbefugter Abruf von Ausweis oder Video | hoch | private R2-Ablage, JWT, Adminrolle, gerätegebundene 10-Minuten-Sitzung, aktive-Fall-Prüfung, Audit | niedrig bis mittel |
-| Kompromittiertes Adminkonto | hoch | kurzes Admin-Token, Gerätebindung, Sitzungswiderruf, MFA-Empfehlung, Zugriffsaudit | mittel |
+| Kompromittiertes Adminkonto | hoch | verpflichtende TOTP-MFA, kurzes Admin-Token, Gerätebindung, Sitzungswiderruf, Zugriffsaudit | niedrig bis mittel |
 | Öffentliche Objekt-URL oder Cachekopie | hoch | keine öffentliche R2-URL, `no-store`, Blob-Widerruf, CSP | niedrig |
 | Hochladen alter oder fremder Aufnahmen | hoch | Live-Kamera-UI, neuer Zufallscode, Dokument im Video, Bewegungsabfolge, manuelle Prüfung | mittel |
 | Zu viele Dokumentdaten | hoch | Schwärzungshinweis, Zweckbindung, sofortige Nachweislöschung, keine OCR-Datenbank | mittel |
@@ -185,8 +185,10 @@ mittel oder hoch.
 
 ## 10. Betroffenenrechte und Vorfälle
 
-Das Nutzer-Dashboard ermöglicht Auskunft, Berichtigung, Datenschutzanfragen,
-Opt-outs und eine zweistufig bestätigte Kontolöschung. Sicherheitsvorfälle mit
+Das Nutzer-Dashboard ermöglicht Auskunft, Berichtigung, Newsletter-Einwilligung,
+Datenschutzanfragen und eine zweistufig bestätigte Kontolöschung. Leere Opt-out-
+Schalter für nicht stattfindenden Datenverkauf oder zielgerichtete Werbung
+werden nicht angezeigt. Sicherheitsvorfälle mit
 möglichem Risiko für Betroffene sind zu dokumentieren, einzudämmen und nach den
 Artikeln 33 und 34 DSGVO auf Melde- und Benachrichtigungspflichten zu prüfen.
 

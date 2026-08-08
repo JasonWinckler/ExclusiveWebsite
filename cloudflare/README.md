@@ -14,7 +14,9 @@ pnpm exec wrangler d1 migrations apply exclusive-membership-preview \
 
 ## Provision
 
-Production D1, private R2 and Worker bindings are provisioned. For a new preview
+Production D1, private R2 and Worker bindings are provisioned. The private
+`exclusive-invoice-archive` and `exclusive-system-backups` EU buckets have no
+public development URL. For a new preview
 environment or disaster recovery, create separate resources, replace only the
 preview zero-UUID placeholders and apply migrations through the membership
 configuration so every Worker binds to the same environment-specific database.
@@ -29,7 +31,7 @@ Transactional email runs only inside the private identity Worker.
 `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID` and `GRAPH_CLIENT_SECRET` are encrypted
 Worker secrets; the Entra service principal uses the administrator-approved
 Microsoft Graph application permission `Mail.Send`. The identity Worker has no
-public route, resolves recipients from Appwrite and fixes the sender to
+public route, resolves recipients from the authoritative D1 account record and fixes the sender to
 `GRAPH_SENDER_MAILBOX=info@exclusive.jason-shadow.com`. Production uses
 `AUTH_EMAIL_MODE=CUSTOM`, so verification and recovery use the branded,
 hashed, single-use D1 token flow. The `EMAIL_ASSETS` binding embeds the brand
@@ -40,3 +42,14 @@ the broader organization-wide Graph grant must be removed because the
 permission systems are additive.
 
 Store the seller's invoice identifier only as the encrypted `INVOICE_TAX_IDENTIFIER` secret on the membership Worker. New invoices fail closed when that secret is absent or malformed and persist the identifier used for the invoice as a D1 snapshot; never add the value to Wrangler config or the repository.
+
+Newsletter campaigns use confirmed double opt-in subscriptions only. The
+Maintenance Worker sends small, retryable batches through the same private
+Microsoft Graph service and includes a single-use unsubscribe link. Do not add
+bulk-marketing providers, tracking pixels or link instrumentation.
+
+Password-pepper and TOTP encryption rotation is versioned. The original
+`AUTH_PASSWORD_PEPPER` and `AUTH_ENCRYPTION_KEY` remain legacy-v1 secrets while
+new material is written with `AUTH_PASSWORD_PEPPER_CURRENT` and
+`AUTH_ENCRYPTION_KEY_CURRENT` (v2). Successful login/MFA use upgrades v1 rows;
+legacy secrets must not be removed until no v1 rows remain.

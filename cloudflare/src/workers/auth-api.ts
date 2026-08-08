@@ -37,6 +37,44 @@ type TokenPurpose = "VERIFY_EMAIL" | "RESET_PASSWORD" | "CHANGE_EMAIL";
 
 const SESSION_COOKIE = `${AUTH_COOKIE_NAME}=`;
 
+function currentPasswordPepperVersion(env: AuthEnv): string {
+  return env.AUTH_PASSWORD_PEPPER_VERSION?.trim() || "v1";
+}
+
+function currentPasswordPepper(env: AuthEnv): string {
+  return env.AUTH_PASSWORD_PEPPER_CURRENT?.trim() || env.AUTH_PASSWORD_PEPPER;
+}
+
+function passwordPepperForVersion(env: AuthEnv, version: string): string {
+  if (version === currentPasswordPepperVersion(env)) return currentPasswordPepper(env);
+  if (env.AUTH_PASSWORD_PEPPER_CURRENT && version === env.AUTH_PASSWORD_PEPPER_PREVIOUS_VERSION) {
+    return env.AUTH_PASSWORD_PEPPER;
+  }
+  if (env.AUTH_PASSWORD_PEPPER_PREVIOUS && version === env.AUTH_PASSWORD_PEPPER_PREVIOUS_VERSION) {
+    return env.AUTH_PASSWORD_PEPPER_PREVIOUS;
+  }
+  throw new ApiError(503, "PASSWORD_PEPPER_VERSION_UNAVAILABLE");
+}
+
+function currentEncryptionKeyVersion(env: AuthEnv): string {
+  return env.AUTH_ENCRYPTION_KEY_VERSION?.trim() || "v1";
+}
+
+function currentEncryptionKey(env: AuthEnv): string {
+  return env.AUTH_ENCRYPTION_KEY_CURRENT?.trim() || env.AUTH_ENCRYPTION_KEY;
+}
+
+function encryptionKeyForVersion(env: AuthEnv, version: string): string {
+  if (version === currentEncryptionKeyVersion(env)) return currentEncryptionKey(env);
+  if (env.AUTH_ENCRYPTION_KEY_CURRENT && version === env.AUTH_ENCRYPTION_KEY_PREVIOUS_VERSION) {
+    return env.AUTH_ENCRYPTION_KEY;
+  }
+  if (env.AUTH_ENCRYPTION_KEY_PREVIOUS && version === env.AUTH_ENCRYPTION_KEY_PREVIOUS_VERSION) {
+    return env.AUTH_ENCRYPTION_KEY_PREVIOUS;
+  }
+  throw new ApiError(503, "AUTH_ENCRYPTION_KEY_VERSION_UNAVAILABLE");
+}
+
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -201,7 +239,7 @@ async function register(request: Request, env: AuthEnv): Promise<{
   const existing = await env.DB.prepare(`SELECT user_id FROM auth_accounts WHERE email = ? COLLATE NOCASE`)
     .bind(email).first<{ user_id: string }>();
   if (existing) throw new ApiError(409, "EMAIL_ALREADY_REGISTERED");
-  const passwordHash = await hashPasswordVerifier(passwordCredential, env.AUTH_PASSWORD_PEPPER);
+  const passwordHash = await hashPasswordVerifier(passwordCredential, currentPasswordPepper(env));
   const userId = crypto.randomUUID();
   const now = isoNow();
   const privacyRegime = country === "US" ? "US_STATE_PRIVACY"
@@ -220,10 +258,11 @@ async function register(request: Request, env: AuthEnv): Promise<{
         now, now, now),
     env.DB.prepare(`INSERT INTO auth_accounts (
       user_id, email, password_hash, password_salt, password_iterations,
-      role, mfa_required, migration_required, password_changed_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'USER', 0, 0, ?, ?, ?)`)
+      password_pepper_version, role, mfa_required, migration_required,
+      password_changed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'USER', 0, 0, ?, ?, ?)`)
       .bind(userId, email, passwordHash, passwordCredential.salt,
-        passwordCredential.iterations, now, now, now),
+        passwordCredential.iterations, currentPasswordPepperVersion(env), now, now, now),
   ]);
   const session = await createSession(env, userId, request, "ACTIVE");
   try {
@@ -247,6 +286,7 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
   const row = await env.DB.prepare(`
     SELECT a.user_id, a.password_hash, a.password_salt, a.password_iterations,
       a.mfa_enabled, a.migration_required, a.failed_login_count, a.locked_until,
+      a.password_pepper_version,
       p.account_status
     FROM auth_accounts a JOIN user_profiles p ON p.appwrite_user_id = a.user_id
     WHERE a.email = ? COLLATE NOCASE
@@ -254,6 +294,7 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
     user_id: string; password_hash: string | null; password_salt: string | null;
     password_iterations: number; mfa_enabled: number; migration_required: number;
     failed_login_count: number; locked_until: string | null; account_status: string;
+    password_pepper_version: string;
   }>();
   if (!row) throw new ApiError(401, "INVALID_EMAIL_OR_PASSWORD");
   if (row.locked_until && Date.parse(row.locked_until) > Date.now()) throw new ApiError(429, "LOGIN_TEMPORARILY_LOCKED");
@@ -265,7 +306,7 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
     row.password_hash,
     row.password_salt,
     row.password_iterations,
-    env.AUTH_PASSWORD_PEPPER,
+    passwordPepperForVersion(env, row.password_pepper_version),
   );
   if (!valid) {
     const failures = row.failed_login_count + 1;
@@ -276,8 +317,19 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
   }
   if (row.account_status === "RESTRICTED") throw new ApiError(403, "ACCOUNT_RESTRICTED");
   if (row.account_status === "DELETION_PENDING" || row.account_status === "DELETED") throw new ApiError(403, "ACCOUNT_DELETION_PENDING");
-  await env.DB.prepare(`UPDATE auth_accounts SET failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
-    .bind(isoNow(), row.user_id).run();
+  const currentPepperVersion = currentPasswordPepperVersion(env);
+  if (row.password_pepper_version !== currentPepperVersion) {
+    const upgradedHash = await hashPasswordVerifier(
+      { verifier: passwordVerifier, salt: row.password_salt, iterations: row.password_iterations },
+      currentPasswordPepper(env),
+    );
+    await env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_pepper_version = ?,
+      failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
+      .bind(upgradedHash, currentPepperVersion, isoNow(), row.user_id).run();
+  } else {
+    await env.DB.prepare(`UPDATE auth_accounts SET failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
+      .bind(isoNow(), row.user_id).run();
+  }
   const state = row.mfa_enabled === 1 ? "MFA_PENDING" : "ACTIVE";
   const session = await createSession(env, row.user_id, request, state);
   return {
@@ -309,13 +361,15 @@ async function actionToken(
   if (!row) throw new ApiError(400, "AUTH_TOKEN_INVALID_OR_EXPIRED");
   if (row.purpose === "RESET_PASSWORD") {
     const passwordCredential = validatePasswordVerifierCredential(body.passwordCredential);
-    const passwordHash = await hashPasswordVerifier(passwordCredential, env.AUTH_PASSWORD_PEPPER);
+    const passwordHash = await hashPasswordVerifier(passwordCredential, currentPasswordPepper(env));
     try {
       await env.DB.batch([
         env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
           password_iterations = ?, migration_required = 0, password_changed_at = ?,
-          failed_login_count = 0, locked_until = NULL, updated_at = ? WHERE user_id = ?`)
-          .bind(passwordHash, passwordCredential.salt, passwordCredential.iterations, now, now, row.user_id),
+          password_pepper_version = ?, failed_login_count = 0, locked_until = NULL,
+          updated_at = ? WHERE user_id = ?`)
+          .bind(passwordHash, passwordCredential.salt, passwordCredential.iterations, now,
+            currentPasswordPepperVersion(env), now, row.user_id),
         env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_RESET'
           WHERE user_id = ? AND revoked_at IS NULL`).bind(now, row.user_id),
         env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`)
@@ -364,9 +418,10 @@ async function mfaStatus(request: Request, env: AuthEnv): Promise<Record<string,
 async function startMfa(request: Request, env: AuthEnv): Promise<Record<string, unknown>> {
   const identity = await requireSession(request, env);
   const secret = createTotpSecret();
-  const encrypted = await encryptTotpSecret(secret, env.AUTH_ENCRYPTION_KEY);
-  await env.DB.prepare(`UPDATE auth_accounts SET totp_secret_ciphertext = ?, mfa_enabled = 0, updated_at = ? WHERE user_id = ?`)
-    .bind(encrypted, isoNow(), identity.userId).run();
+  const encrypted = await encryptTotpSecret(secret, currentEncryptionKey(env));
+  await env.DB.prepare(`UPDATE auth_accounts SET totp_secret_ciphertext = ?, totp_key_version = ?,
+    mfa_enabled = 0, updated_at = ? WHERE user_id = ?`)
+    .bind(encrypted, currentEncryptionKeyVersion(env), isoNow(), identity.userId).run();
   const issuer = encodeURIComponent("Shadow's Temptation");
   const account = encodeURIComponent(identity.email);
   return { secret, uri: `otpauth://totp/${issuer}:${account}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30` };
@@ -376,10 +431,13 @@ async function confirmMfa(request: Request, env: AuthEnv): Promise<Record<string
   const identity = await requireSession(request, env);
   const body = await readJsonBody<Record<string, unknown>>(request, 4096);
   const otp = typeof body.otp === "string" ? body.otp.replace(/\s/g, "") : "";
-  const row = await env.DB.prepare(`SELECT totp_secret_ciphertext FROM auth_accounts WHERE user_id = ?`)
-    .bind(identity.userId).first<{ totp_secret_ciphertext: string | null }>();
+  const row = await env.DB.prepare(`SELECT totp_secret_ciphertext, totp_key_version FROM auth_accounts WHERE user_id = ?`)
+    .bind(identity.userId).first<{ totp_secret_ciphertext: string | null; totp_key_version: string }>();
   if (!row?.totp_secret_ciphertext) throw new ApiError(409, "MFA_ENROLLMENT_NOT_STARTED");
-  const secret = await decryptTotpSecret(row.totp_secret_ciphertext, env.AUTH_ENCRYPTION_KEY);
+  const secret = await decryptTotpSecret(
+    row.totp_secret_ciphertext,
+    encryptionKeyForVersion(env, row.totp_key_version),
+  );
   if (!await verifyTotp(secret, otp)) throw new ApiError(400, "INVALID_MFA_CODE");
   const codes = createRecoveryCodes();
   const now = isoNow();
@@ -403,18 +461,21 @@ async function completeMfa(request: Request, env: AuthEnv): Promise<Record<strin
   const otp = typeof body.otp === "string" ? body.otp.trim().toUpperCase() : "";
   const now = isoNow();
   const row = await env.DB.prepare(`
-    SELECT s.id, s.user_id, a.totp_secret_ciphertext
+    SELECT s.id, s.user_id, a.totp_secret_ciphertext, a.totp_key_version
     FROM auth_sessions s JOIN auth_accounts a ON a.user_id = s.user_id
     WHERE s.token_sha256 = ? AND s.state = 'MFA_PENDING'
       AND s.revoked_at IS NULL AND s.expires_at > ?
   `).bind(await sha256Hex(rawToken), now).first<{
-    id: string; user_id: string; totp_secret_ciphertext: string | null;
+    id: string; user_id: string; totp_secret_ciphertext: string | null; totp_key_version: string;
   }>();
   if (!row?.totp_secret_ciphertext) throw new ApiError(401, "MFA_CHALLENGE_REQUIRED");
   let valid = false;
   if (/^\d{6}$/.test(otp)) {
     valid = await verifyTotp(
-      await decryptTotpSecret(row.totp_secret_ciphertext, env.AUTH_ENCRYPTION_KEY), otp,
+      await decryptTotpSecret(
+        row.totp_secret_ciphertext,
+        encryptionKeyForVersion(env, row.totp_key_version),
+      ), otp,
     );
   } else {
     const recoveryHash = await hashRecoveryCode(otp);
@@ -428,8 +489,20 @@ async function completeMfa(request: Request, env: AuthEnv): Promise<Record<strin
     }
   }
   if (!valid) throw new ApiError(400, "INVALID_MFA_CODE");
-  await env.DB.prepare(`UPDATE auth_sessions SET state = 'ACTIVE', last_seen_at = ? WHERE id = ?`)
-    .bind(now, row.id).run();
+  const statements = [env.DB.prepare(`UPDATE auth_sessions SET state = 'ACTIVE', last_seen_at = ? WHERE id = ?`)
+    .bind(now, row.id)];
+  if (row.totp_key_version !== currentEncryptionKeyVersion(env)) {
+    const secret = await decryptTotpSecret(
+      row.totp_secret_ciphertext,
+      encryptionKeyForVersion(env, row.totp_key_version),
+    );
+    statements.push(env.DB.prepare(`UPDATE auth_accounts SET totp_secret_ciphertext = ?,
+      totp_key_version = ?, updated_at = ? WHERE user_id = ?`).bind(
+      await encryptTotpSecret(secret, currentEncryptionKey(env)),
+      currentEncryptionKeyVersion(env), now, row.user_id,
+    ));
+  }
+  await env.DB.batch(statements);
   const identity = await requireSession(request, env);
   return { session: { $id: row.id }, user: publicUser(identity), sessionReady: true };
 }
@@ -466,7 +539,7 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     return response({
       salt: account?.password_salt && /^[A-Za-z0-9_-]{22}$/.test(account.password_salt)
         ? account.password_salt
-        : await passwordMaterialSalt(email, env.AUTH_PASSWORD_PEPPER),
+        : await passwordMaterialSalt(email, currentPasswordPepper(env)),
       iterations: 600_000,
     });
   }
@@ -530,14 +603,16 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     const identity = await requireSession(request, env);
     const body = await readJsonBody<Record<string, unknown>>(request, 8192);
     const newEmail = normalizeEmail(body.email);
-    const account = await env.DB.prepare(`SELECT password_hash, password_salt, password_iterations FROM auth_accounts WHERE user_id = ?`)
-      .bind(identity.userId).first<{ password_hash: string; password_salt: string; password_iterations: number }>();
+    const account = await env.DB.prepare(`SELECT password_hash, password_salt, password_iterations,
+      password_pepper_version FROM auth_accounts WHERE user_id = ?`)
+      .bind(identity.userId).first<{ password_hash: string; password_salt: string;
+        password_iterations: number; password_pepper_version: string }>();
     if (!account || !await verifyPasswordVerifier(
       body.passwordVerifier,
       account.password_hash,
       account.password_salt,
       account.password_iterations,
-      env.AUTH_PASSWORD_PEPPER,
+      passwordPepperForVersion(env, account.password_pepper_version),
     )) {
       throw new ApiError(401, "CURRENT_PASSWORD_INCORRECT");
     }

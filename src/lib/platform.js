@@ -17,6 +17,7 @@ export const cloudflareConfig = Object.freeze({
 });
 
 const deviceStorageKey = "jason-shadow-device-token-v1";
+const analyticsSessionStorageKey = "shadows-temptation-analytics-session-v1";
 const adminSessionStorageKey = "shadows-temptation-admin-session-v1";
 export const ageInstructionsVersion = "manual-age-v6";
 let adminSessionPromise = null;
@@ -401,7 +402,7 @@ export const cancelPaymentOrder = (orderId, reason) => apiRequest(
   `/v1/payments/orders/${encodeURIComponent(orderId)}`,
   { method: "DELETE", json: { reason }, idempotent: true },
 );
-export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/premium-telegram");
+export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/telegram");
 export const getVipWhatsappPerk = () => apiRequest("/v1/perks/vip-whatsapp");
 function currentDeviceName() {
   const platform = navigator.userAgentData?.platform || navigator.platform || "Device";
@@ -457,6 +458,35 @@ export const requestAccountDeletion = (reason) => apiRequest("/v1/account/deleti
   method: "POST", json: { reason, confirmation: "DELETE_ACCOUNT" }, idempotent: true,
 });
 export const getPrivacyOverview = () => apiRequest("/v1/privacy");
+export const subscribeNewsletter = (locale = "de") => apiRequest("/v1/newsletter/subscription", {
+  method: "POST",
+  json: { consent: true, locale: locale === "en" ? "en" : "de" },
+  idempotent: true,
+});
+export const unsubscribeNewsletter = () => apiRequest("/v1/newsletter/subscription", {
+  method: "DELETE",
+  json: {},
+  idempotent: true,
+});
+
+function analyticsSessionToken() {
+  let token = sessionStorage.getItem(analyticsSessionStorageKey);
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    token = createDeviceToken();
+    sessionStorage.setItem(analyticsSessionStorageKey, token);
+  }
+  return token;
+}
+
+export const recordAnalyticsEvent = (eventName, locale = "de") => apiRequest("/v1/analytics/event", {
+  method: "POST",
+  json: {
+    eventName,
+    sessionToken: analyticsSessionToken(),
+    locale: locale === "en" ? "en" : "de",
+  },
+  authenticated: false,
+});
 export const updatePrivacyProfile = ({
   countryCode,
   regionCode = null,
@@ -490,6 +520,13 @@ export const fetchPrivacyExport = () => apiRequest("/v1/privacy/export", {
 });
 
 export const adminListUsers = () => apiRequest("/v1/users", { admin: true });
+export const adminGetSystemMonitoring = () => apiRequest("/v1/system/monitoring", { admin: true });
+export const adminQueueNewDrop = (contentItemId) => apiRequest("/v1/newsletter/new-drop", {
+  admin: true,
+  method: "POST",
+  json: { contentItemId },
+  idempotent: true,
+});
 export const adminListUserDevices = (userId) => apiRequest(
   `/v1/users/${encodeURIComponent(userId)}/devices`,
   { admin: true },
@@ -562,6 +599,10 @@ export const adminDecideAgeCase = (caseId, decision, reason, checklist = []) => 
 export const adminListPaymentOrders = () => apiRequest("/v1/payments/orders", {
   admin: true,
 });
+export const adminFetchInvoiceCopy = (orderId) => apiRequest(
+  `/v1/payments/orders/${encodeURIComponent(orderId)}/invoice`,
+  { admin: true, responseType: "response" },
+);
 export const adminActivatePaymentOrder = (orderId, reason) => apiRequest(
   `/v1/payments/orders/${encodeURIComponent(orderId)}/activate`,
   {

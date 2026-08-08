@@ -2,9 +2,9 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-membership-api",
   "main": "src/workers/membership-api.ts",
-  "compatibility_date": "2026-07-26",
+  "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "workers_dev": false,
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 0.1 },
@@ -22,7 +22,8 @@
       "bucket_name": "exclusive-age-evidence",
       "jurisdiction": "eu"
     },
-    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" }
+    { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media" },
+    { "binding": "INVOICE_ARCHIVE", "bucket_name": "exclusive-invoice-archive", "jurisdiction": "eu" }
   ],
   "services": [{
     "binding": "IDENTITY_PROJECTION",
@@ -53,6 +54,7 @@
     "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
     "SEPA_ORDER_EXPIRY_HOURS": "48",
     "AUTH_EMAIL_MODE": "CUSTOM",
+    "TELEGRAM_INVITE_KEY_VERSION": "v1",
     "INVOICE_SELLER_NAME": "Jason Shadow · Inhaber Jason Winckler",
     "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
     "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com",
@@ -69,7 +71,8 @@
       }],
       "r2_buckets": [
         { "binding": "VERIFICATION_UPLOADS", "bucket_name": "exclusive-age-evidence-preview" },
-        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" }
+        { "binding": "CONTENT_MEDIA", "bucket_name": "exclusive-content-media-preview" },
+        { "binding": "INVOICE_ARCHIVE", "bucket_name": "exclusive-invoice-archive-preview" }
       ],
       "services": [{
         "binding": "IDENTITY_PROJECTION",

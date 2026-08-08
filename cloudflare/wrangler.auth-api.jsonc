@@ -26,8 +26,12 @@
     "simple": { "limit": 30, "period": 60 }
   }],
   "vars": {
-    "SITE_ORIGINS": "https://exclusive.jason-shadow.com,https://shadows-temptation.pages.dev",
+    "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
     "AUTH_MODE": "CLOUDFLARE_ONLY",
+    "AUTH_PASSWORD_PEPPER_VERSION": "v2",
+    "AUTH_PASSWORD_PEPPER_PREVIOUS_VERSION": "v1",
+    "AUTH_ENCRYPTION_KEY_VERSION": "v2",
+    "AUTH_ENCRYPTION_KEY_PREVIOUS_VERSION": "v1",
     "SESSION_DAYS": "30",
     "DEVICE_LIMIT": "3"
   }

@@ -34,8 +34,10 @@ import {
   submitAgeVerificationCase,
   updateProfileEmail,
   updateProfileName,
-  updatePrivacyChoices,
   updatePrivacyProfile,
+  subscribeNewsletter,
+  unsubscribeNewsletter,
+  recordAnalyticsEvent,
   uploadAgeEvidence,
   cancelPaymentOrder,
   createPrivacyRequest,
@@ -148,6 +150,10 @@ const copy = {
     photoCapture: "Foto jetzt aufnehmen",
     photoAgain: "Foto neu aufnehmen",
     photoReady: "Live-Foto aufgenommen",
+    photoQualityReady: "Lokale Qualitätsprüfung bestanden · keine Analysedaten gespeichert",
+    photoQualityTooSmall: "Die Aufnahme ist zu klein. Halte den Ausweis näher an die Kamera und fotografiere erneut.",
+    photoQualityLighting: "Die Aufnahme ist zu dunkel oder überbelichtet. Nutze gleichmäßiges Licht ohne Spiegelung.",
+    photoQualityFocus: "Text und Sicherheitsmerkmale sind noch nicht scharf genug. Kamera ruhig halten und erneut fotografieren.",
     captureOnlyNotice: "Aus Sicherheitsgründen ist die Auswahl vorhandener Dateien deaktiviert. Nimm jede erforderliche Dokumentseite jetzt live auf.",
     consentText: "Ich bin mindestens 18 Jahre alt, verwende mein eigenes gültiges Dokument und habe die Datenschutz- und Löschhinweise gelesen.",
     beginVerification: "Sichere Prüfung starten",
@@ -257,6 +263,10 @@ const copy = {
     photoCapture: "Take photo now",
     photoAgain: "Retake photo",
     photoReady: "Live photo captured",
+    photoQualityReady: "Local quality check passed · no analysis data stored",
+    photoQualityTooSmall: "The capture is too small. Move the ID closer to the camera and try again.",
+    photoQualityLighting: "The capture is too dark or overexposed. Use even lighting without glare.",
+    photoQualityFocus: "Text and security features are not sharp enough yet. Hold the camera steady and try again.",
     captureOnlyNotice: "For security, selecting existing files is disabled. Capture every required document side live now.",
     consentText: "I am at least 18, use my own valid document and have read the privacy and deletion information.",
     beginVerification: "Start secure verification",
@@ -429,6 +439,7 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [qualityPassed, setQualityPassed] = useState(false);
 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -451,6 +462,7 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
 
   const startCamera = async () => {
     setError("");
+    setQualityPassed(false);
     onChange(null);
     stopStream();
     try {
@@ -471,6 +483,12 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
       // Mobile browsers may expire the original tap while showing the
       // permission prompt. Keep the valid stream and let autoplay resume once
       // the preview becomes visible instead of reporting a false denial.
+      if (video.readyState < 2) {
+        await new Promise((resolve) => {
+          video.addEventListener("loadedmetadata", resolve, { once: true });
+          window.setTimeout(resolve, 1_500);
+        });
+      }
       void video.play().catch(() => undefined);
     } catch {
       stopStream();
@@ -488,9 +506,39 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) return;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (canvas.width < 960 || canvas.height < 540) {
+      setError(ui.photoQualityTooSmall);
+      return;
+    }
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let total = 0;
+    let squared = 0;
+    let sharpness = 0;
+    let samples = 0;
+    let previous = -1;
+    for (let index = 0; index < pixels.length; index += 64) {
+      const luminance = .2126 * pixels[index] + .7152 * pixels[index + 1] + .0722 * pixels[index + 2];
+      total += luminance;
+      squared += luminance * luminance;
+      if (previous >= 0) sharpness += Math.abs(luminance - previous);
+      previous = luminance;
+      samples += 1;
+    }
+    const mean = total / Math.max(1, samples);
+    const contrast = Math.sqrt(Math.max(0, squared / Math.max(1, samples) - mean * mean));
+    if (mean < 45 || mean > 220 || contrast < 18) {
+      setError(ui.photoQualityLighting);
+      return;
+    }
+    if (sharpness / Math.max(1, samples - 1) < 6) {
+      setError(ui.photoQualityFocus);
+      return;
+    }
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
     if (blob) {
       onChange(new File([blob], `live-id-${side}.jpg`, { type: "image/jpeg" }));
+      setQualityPassed(true);
+      setError("");
       stopStream();
     }
   };
@@ -504,6 +552,7 @@ function LivePhotoCapture({ label, complete, value, onChange, ui, disabled, side
   return <div className={`live-photo-capture${value ? " is-complete" : ""}`}>
     <div className="live-photo-capture__head"><span aria-hidden="true">{value ? "✓" : side === "front" ? "01" : "02"}</span><div><strong>{label}</strong><small>{ui.livePhotoHint}</small></div></div>
     {error && <p className="form-notice form-notice--error" role="alert">{error}</p>}
+    {qualityPassed && value && <p className="local-quality-pass">✓ {ui.photoQualityReady}</p>}
     <div className="camera-frame" hidden={!cameraReady && !previewUrl}>
       <video ref={videoRef} muted playsInline autoPlay hidden={!cameraReady} />
       {previewUrl && !cameraReady && <img src={previewUrl} alt="" />}
@@ -680,6 +729,7 @@ function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, challenge
   const startCamera = async () => {
     setError("");
     onChange(null);
+    stopStream();
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
         throw new Error("CAMERA_UNAVAILABLE");
@@ -694,6 +744,12 @@ function LiveVideoRecorder({ ui, value, onChange, disabled, challenge, challenge
       video.srcObject = stream;
       setCameraReady(true);
       setSeconds(0);
+      if (video.readyState < 2) {
+        await new Promise((resolve) => {
+          video.addEventListener("loadedmetadata", resolve, { once: true });
+          window.setTimeout(resolve, 1_500);
+        });
+      }
       void video.play().catch(() => undefined);
     } catch {
       stopStream();
@@ -797,7 +853,10 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
       <div className="showcase-price"><strong>{formatCurrency(showcase, language)}</strong><span>{durationLabel(showcase, language)}</span></div>
     </div>
     <ul className="membership-perks">
-      {(showcasePerks.length ? showcasePerks : [{ title: ui[`${key}Text`] }]).slice(0, key === "vip" ? 5 : 4).map((perk) => <li key={perk.id || perk.title}><span>✓</span><div><strong>{perk.title}</strong>{key === "vip" && /treffen|meeting/i.test(`${perk.title} ${perk.description || ""}`) && perk.description ? <small>{perk.description}</small> : null}</div></li>)}
+      {(showcasePerks.length ? showcasePerks : [{ title: ui[`${key}Text`] }]).slice(0, key === "vip" ? 5 : 4).map((perk) => {
+        const meeting = key === "vip" && /treffen|meeting/i.test(`${perk.title} ${perk.description || ""}`);
+        return <li key={perk.id || perk.title}><span>✓</span><div><strong>{perk.title}</strong>{meeting && perk.description ? <small>{perk.description}</small> : null}{meeting ? <a className="perk-legal-link" href={language === "de" ? "/legal/eu/#vip-meeting" : "/legal/eu/#vip-meeting-en"} target="_blank" rel="noreferrer">{language === "de" ? "Hinweise" : "Details"}</a> : null}</div></li>;
+      })}
     </ul>
     <button className="membership-card-cta" type="button" onClick={() => onChoose(products)}>
       <span>{language === "de" ? "Laufzeit & Benefits wählen" : "Choose term & benefits"}</span><strong>→</strong>
@@ -862,9 +921,12 @@ function MembershipSelector({ products, language, ui, onChoose }) {
         <h3>{language === "de" ? "Deine Benefits" : "Your benefits"}</h3>
       </div>
       <ul>
-        {tierPerks.map((perk) => <li key={perk.id || perk.title}>
-          <span>✓</span><div><strong>{perk.title}</strong>{perk.description && <small>{perk.description}</small>}</div>
-        </li>)}
+        {tierPerks.map((perk) => {
+          const meeting = /treffen|meeting/i.test(`${perk.title} ${perk.description || ""}`);
+          return <li key={perk.id || perk.title}>
+            <span>✓</span><div><strong>{perk.title}</strong>{perk.description && <small>{perk.description}</small>}{meeting ? <a className="perk-legal-link" href={language === "de" ? "/legal/eu/#vip-meeting" : "/legal/eu/#vip-meeting-en"} target="_blank" rel="noreferrer">{language === "de" ? "Hinweise" : "Details"}</a> : null}</div>
+          </li>;
+        })}
       </ul>
     </section>
 
@@ -931,12 +993,16 @@ function CreatorPost({
   media,
   blurred,
   language,
+  viewerMark,
 }) {
   const accessible = item.accessible !== false;
   const mediaClass = blurred ? "creator-post__media is-sensitive-blurred" : "creator-post__media";
-  return <article className={`creator-post${accessible ? "" : " is-locked"}`}>
+  const deterDownload = (event) => {
+    if (accessible) event.preventDefault();
+  };
+  return <article className={`creator-post${accessible ? "" : " is-locked"}`} onContextMenu={deterDownload} onDragStart={deterDownload}>
     <header className="creator-post__header">
-      <img src="/linktree/uploads/profile.png" alt="" />
+      <img src="/linktree/uploads/profile.png" alt="" draggable="false" />
       <div>
         <strong>Shadow’s Temptation</strong>
         <span>{formatPostDate(item.publishedAt, language)}</span>
@@ -954,10 +1020,11 @@ function CreatorPost({
           ? <div className="creator-post__locked"><span>!</span><strong>{language === "de" ? "Medium konnte nicht geladen werden" : "Media could not be loaded"}</strong></div>
           : media?.url
             ? item.contentType.startsWith("video/")
-              ? <video src={media.url} controls playsInline preload="metadata" />
-              : <img src={media.url} alt={item.title} loading="eager" />
+              ? <video src={media.url} controls controlsList="nodownload noremoteplayback" disablePictureInPicture playsInline preload="metadata" />
+              : <img src={media.url} alt={item.title} loading="eager" draggable="false" />
             : <div className="creator-post__loading" aria-label={language === "de" ? "Medium wird geladen" : "Loading media"}><span /></div>}
       {accessible && blurred && <div className="creator-post__blur-label"><span>18+</span>{language === "de" ? "Sensibler Inhalt ausgeblendet" : "Sensitive content blurred"}</div>}
+      {accessible && viewerMark && <span className="creator-post__viewer-mark" aria-hidden="true">Shadow’s Temptation · {viewerMark}</span>}
     </div>
     <footer className="creator-post__footer">
       <span>{item.allowComments
@@ -1064,6 +1131,7 @@ export default function App() {
   const mediaBySlugRef = useRef({});
   const mediaRequestsRef = useRef(new Map());
   const mediaGenerationRef = useRef(0);
+  const analyticsEventsRef = useRef(new Set());
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
   const registrationCountries = useMemo(() => countryOptions(language), [language]);
@@ -1081,6 +1149,12 @@ export default function App() {
     ? activePostIndex % activeGalleryGroup.items.length
     : 0;
   const activePost = activeGalleryGroup?.items[normalizedPostIndex] || null;
+
+  const trackConversion = (eventName) => {
+    if (analyticsEventsRef.current.has(eventName)) return;
+    analyticsEventsRef.current.add(eventName);
+    recordAnalyticsEvent(eventName, language).catch(() => null);
+  };
 
   const refresh = async (sessionUser = null) => {
     const current = sessionUser || await getCurrentUser();
@@ -1121,7 +1195,7 @@ export default function App() {
       setMembership(nextMembership);
       setOrders(orderResult.orders || []);
       const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
-      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
+      setPremiumTelegram(["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier)
         ? await getPremiumTelegramPerk().catch(() => null)
         : null);
       setVipWhatsapp(tier === "EXCLUSIVE_VIP"
@@ -1156,6 +1230,10 @@ export default function App() {
     document.title = t.metaTitle;
     localStorage.setItem(languageKey, language);
   }, [language, t]);
+
+  useEffect(() => {
+    recordAnalyticsEvent("page_view", language).catch(() => null);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(sensitiveMediaKey, String(blurSensitiveMedia));
@@ -1221,6 +1299,15 @@ export default function App() {
             setDashboardTab("orders");
             setModal("account");
           } else if (!current) {
+            setMode("login");
+            setModal("auth");
+          }
+        }
+        if (parameters.get("action") === "new-drop") {
+          history.replaceState({}, "", "/");
+          if (current) {
+            window.setTimeout(() => document.getElementById("member-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+          } else {
             setMode("login");
             setModal("auth");
           }
@@ -1374,6 +1461,7 @@ export default function App() {
   }, [activePost?.slug, user?.$id, ageStatus]);
 
   const openAuth = (nextMode) => {
+    if (nextMode === "register") trackConversion("registration_started");
     setMode(nextMode);
     setNotice("");
     setModal("auth");
@@ -1396,11 +1484,12 @@ export default function App() {
     }
   };
 
-  const run = async (work, success, nextModal) => {
+  const run = async (work, success, nextModal, onSuccess) => {
     setBusy(true);
     setNotice("");
     try {
       const result = await work();
+      if (onSuccess) await onSuccess(result);
       const current = await refresh(result?.sessionReady ? result.user : null);
       if (
         current &&
@@ -1430,7 +1519,7 @@ export default function App() {
       privacyNoticeAccepted: data.privacyNoticeAccepted === "on",
       gpcSignal: hasGlobalPrivacyControl(),
       locale: language,
-    }), t.registrationSent, "account");
+    }), t.registrationSent, "account", () => trackConversion("registration_completed"));
     else if (mode === "reset") run(() => requestPasswordReset(data.email, language), t.resetSent);
     else if (mode === "recover") {
       const parameters = new URLSearchParams(location.search);
@@ -1539,6 +1628,7 @@ export default function App() {
         await uploadAgeEvidence(ageCase.caseId, "VIDEO", liveVideo);
       }
       await submitAgeVerificationCase(ageCase.caseId);
+      trackConversion("age_submitted");
       await refresh();
       form.reset();
       setDocumentFront(null);
@@ -1561,6 +1651,7 @@ export default function App() {
     try {
       const created = await createAgeVerificationCase({ documentType: ageDocumentType });
       setAgeSession({ ...created, evidenceKinds: [] });
+      trackConversion("age_started");
       await refresh();
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language, t.genericError));
@@ -1591,6 +1682,7 @@ export default function App() {
     setCheckoutAccepted(false);
     setDigitalConsentAccepted(false);
     setPaymentView("qr");
+    trackConversion("checkout_started");
     setModal("payment");
   };
 
@@ -1599,10 +1691,11 @@ export default function App() {
     setNotice("");
     try {
       const order = await createSepaOrder(selectedProduct.sku, billing, language, {
-        termsVersion: "EU-2026-07-27-V1",
+        termsVersion: "GLOBAL-2026-08-08-V2",
         digitalContentConsent: digitalConsentAccepted,
         withdrawalAcknowledgement: digitalConsentAccepted,
       });
+      trackConversion("order_created");
       setSepaOrder(order);
       await refresh();
     } catch (error) {
@@ -1772,11 +1865,22 @@ export default function App() {
       : "Your jurisdiction has been saved.",
   );
 
-  const savePrivacyChoices = (choices) => privacyAction(
-    () => updatePrivacyChoices(choices),
+  const subscribeToNewsletter = async () => {
+    const successful = await privacyAction(
+      () => subscribeNewsletter(language),
+      language === "de"
+        ? "Fast geschafft: Bitte bestätige den Newsletter über den Link in deiner E-Mail."
+        : "Almost there: confirm the newsletter through the link in your email.",
+    );
+    if (successful) trackConversion("newsletter_opt_in");
+    return successful;
+  };
+
+  const unsubscribeFromNewsletter = () => privacyAction(
+    () => unsubscribeNewsletter(),
     language === "de"
-      ? "Deine Datenschutzentscheidungen wurden gespeichert."
-      : "Your privacy choices have been saved.",
+      ? "Du erhältst keine weiteren Newsletter."
+      : "You will not receive further newsletters.",
   );
 
   const submitPrivacyRequest = (requestType, note) => privacyAction(
@@ -1943,7 +2047,7 @@ export default function App() {
                 <small>{group.items.length}</small>
               </button>)}
             </div>
-            {activePost && <div className="post-carousel" aria-roledescription="carousel" aria-label={`${galleryTierLabel(activeGalleryGroup.tier, language)} ${language === "de" ? "Beiträge" : "posts"}`}>
+            {activePost && <div className={`post-carousel${activeGalleryGroup.tier === "FREE" ? "" : " paid-membership-gallery"}`} aria-roledescription="carousel" aria-label={`${galleryTierLabel(activeGalleryGroup.tier, language)} ${language === "de" ? "Beiträge" : "posts"}`}>
               <div className="post-carousel__navigation">
                 <button className="post-carousel__arrow is-previous" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(-1)} aria-label={language === "de" ? "Vorheriger Beitrag" : "Previous post"}><span>←</span></button>
                 <div className="post-carousel__progress" aria-live="polite">
@@ -1953,7 +2057,7 @@ export default function App() {
                 <button className="post-carousel__arrow is-next" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(1)} aria-label={language === "de" ? "Nächster Beitrag" : "Next post"}><span>→</span></button>
               </div>
               <div className="post-carousel__slide" key={activePost.slug}>
-                <CreatorPost item={activePost} media={mediaBySlug[activePost.slug]} blurred={blurSensitiveMedia} language={language} />
+                <CreatorPost item={activePost} media={mediaBySlug[activePost.slug]} blurred={blurSensitiveMedia} language={language} viewerMark={activeGalleryGroup.tier === "FREE" ? null : String(user?.$id || user?.id || "member").slice(0, 8)} />
                 <InlineComments
                   item={activePost}
                   comments={comments}
@@ -2220,14 +2324,14 @@ export default function App() {
         {dashboardTab === "orders" && <div className="order-list">
           {orders.length ? orders.map((order) => <article className="order-card" key={order.orderId}>
             <div className="order-card__head"><div><p className="eyebrow">{order.status}</p><h3>{order.productName}</h3></div><strong>{new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", { style: "currency", currency: order.currency }).format(order.amountMinor / 100)}</strong></div>
-            <dl className="order-facts"><div><dt>{language === "de" ? "Verwendungszweck" : "Remittance information"}</dt><dd className="payment-reference">{order.reference}</dd></div><div><dt>{ui.due}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(order.paymentDueAt))}</dd></div>{order.invoice?.number && <div><dt>{language === "de" ? "Rechnung" : "Invoice"}</dt><dd>{order.invoice.number} · {order.invoice.emailStatus}</dd></div>}</dl>
+            <dl className="order-facts"><div><dt>{language === "de" ? "Verwendungszweck" : "Remittance information"}</dt><dd className="payment-reference">{order.reference}</dd></div><div><dt>{ui.due}</dt><dd>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(order.paymentDueAt))}</dd></div>{order.invoice?.number && <div><dt>{language === "de" ? "Rechnung" : "Invoice"}</dt><dd>{order.invoice.number} · {order.invoice.emailStatus}{order.invoice.copyUrl ? <> · <a href={order.invoice.copyUrl} target="_blank" rel="noreferrer">{language === "de" ? "Kopie öffnen" : "Open copy"}</a></> : null}</dd></div>}</dl>
             {order.status === "PENDING" && <div className="order-actions"><button className="secondary-action" type="button" onClick={() => { setSelectedProduct(products.find((product) => product.sku === order.productSku) || { displayName: order.productName, currency: order.currency, amountMinor: order.amountMinor, durationValue: order.durationValue, durationUnit: order.durationUnit }); setSepaOrder(order); setPaymentView("details"); setModal("payment"); }}>{language === "de" ? "Zahlungsdetails" : "Payment details"}</button><button className="danger-action" type="button" onClick={() => cancelOrder(order)}>{language === "de" ? "Auftrag stornieren" : "Cancel order"}</button></div>}
           </article>) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Bestellungen" : "No orders yet"}</h3><p>{language === "de" ? "Deine zukünftigen Zahlungsaufträge erscheinen hier." : "Your future payment orders will appear here."}</p></div>}
         </div>}
         {dashboardTab === "access" && <div className="access-perks">
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{entitlement.paused.tier.replace("EXCLUSIVE_", "Exclusive ")} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
-          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>{language === "de" ? "Privater Telegram-Kanal" : "Private Telegram channel"}</h3><p>{language === "de" ? "Nur für deine aktive Premium-Laufzeit sichtbar." : "Visible only during your active Premium term."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Telegram öffnen" : "Open Telegram"}</a></div></article>}
+          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3><p>{language === "de" ? "Exklusiv für deine aktive Premium- oder VIP-Membership. Automatisch erzeugte Einladungen gelten für genau einen Kanalbeitritt." : "Exclusive to your active Premium or VIP membership. Automatically generated invitations admit exactly one channel member."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Einladung öffnen" : "Open invitation"}</a></div></article>}
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Vorteile werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
@@ -2246,7 +2350,8 @@ export default function App() {
           loading={privacyLoading}
           busy={busy}
           onSaveLocation={savePrivacyLocation}
-          onSaveChoices={savePrivacyChoices}
+          onSubscribeNewsletter={subscribeToNewsletter}
+          onUnsubscribeNewsletter={unsubscribeFromNewsletter}
           onExport={downloadPrivacyData}
           onCreateRequest={submitPrivacyRequest}
           onCancelRequest={withdrawPrivacyRequest}
