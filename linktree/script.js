@@ -142,7 +142,7 @@ const paypalOverlayObserver = new MutationObserver(() => {
   const overlayExists = Boolean(document.querySelector(".paypal-checkout-sandbox"));
   if (overlayExists) {
     paypalOverlayObserved = true;
-  } else if (paypalDonationActive && paypalOverlayObserved) {
+  } else if (paypalDonationActive && paypalOverlayObserved && document.hasFocus()) {
     setPaypalDonationActive(false);
   }
 });
