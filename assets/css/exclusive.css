@@ -87,6 +87,7 @@ h1 {
   height: 1px;
   overflow: hidden;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 

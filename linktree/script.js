@@ -67,27 +67,58 @@ document.querySelectorAll("[data-lang]").forEach((button) => {
 });
 applyTranslations(initialLanguage);
 
-const paypalButton = document.querySelector("[data-paypal-open]");
 const paypalHostedButtonId = "U87BSM6V2TXLC";
 const paypalDonationUrl = `https://www.paypal.com/donate/?hosted_button_id=${paypalHostedButtonId}`;
+const paypalButton = document.querySelector("[data-paypal-open]");
+
+const renderPaypalDonationButton = () => {
+  const container = document.querySelector("#donate-button");
+  if (!container) return;
+
+  if (window.PayPal?.Donation?.Button) {
+    window.PayPal.Donation.Button({
+      env: "production",
+      hosted_button_id: paypalHostedButtonId,
+      image: {
+        src: "https://www.paypalobjects.com/en_US/DK/i/btn/btn_donateCC_LG.gif",
+        alt: "Donate with PayPal button",
+        title: "PayPal - The safer, easier way to pay online!",
+      },
+    }).render("#donate-button");
+    return;
+  }
+};
 
 const openPaypalDonation = () => {
+  const officialButton = document.querySelector(
+    "#donate-button-container #donate-button img, #donate-button-container input[type='image'], #donate-button-container button",
+  );
+  if (officialButton) {
+    officialButton.click();
+    return;
+  }
+
   const popupWidth = Math.min(560, window.screen.availWidth || 560);
   const popupHeight = Math.min(760, window.screen.availHeight || 760);
   const left = Math.max(0, Math.round(((window.screen.availWidth || popupWidth) - popupWidth) / 2));
   const top = Math.max(0, Math.round(((window.screen.availHeight || popupHeight) - popupHeight) / 2));
-  const donationPopup = window.open(
-    "about:blank",
-    "shadowTemptationPaypalDonation",
+  const popup = window.open(
+    paypalDonationUrl,
+    "paypalDonatePopup",
     `popup=yes,width=${popupWidth},height=${popupHeight},left=${left},top=${top}`,
   );
-  if (!donationPopup) {
+  if (!popup) {
     window.location.assign(paypalDonationUrl);
     return;
   }
-  donationPopup.opener = null;
-  donationPopup.location.replace(paypalDonationUrl);
-  donationPopup.focus();
+  popup.opener = null;
+  popup.focus();
 };
+
+if (document.readyState === "complete") {
+  renderPaypalDonationButton();
+} else {
+  window.addEventListener("load", renderPaypalDonationButton, { once: true });
+}
 
 paypalButton?.addEventListener("click", openPaypalDonation);
