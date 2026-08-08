@@ -79,15 +79,35 @@ test.describe('membership safety requirements', () => {
         window.__paypalOpenUrl = String(url || '');
         return null;
       };
+      window.PayPal = {
+        Donation: {
+          Button: (config) => ({
+            render: (selector) => {
+              window.__paypalDonationConfig = config;
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.textContent = 'Donate with PayPal';
+              button.addEventListener('click', () => window.open(
+                `https://www.paypal.com/donate/?hosted_button_id=${config.hosted_button_id}`,
+                'paypalDonatePopup',
+              ));
+              document.querySelector(selector).appendChild(button);
+            },
+          }),
+        },
+      };
     });
-    await page.route('https://www.paypalobjects.com/donate/sdk/donate-sdk.js', async (route) => {
+    await page.route('**/donate/sdk/donate-sdk.js', async (route) => {
       await route.fulfill({
         contentType: 'application/javascript',
-        body: `window.PayPal={Donation:{Button:(config)=>({render:(selector)=>{window.__paypalDonationConfig=config;const button=document.createElement('button');button.type='button';button.textContent='Donate with PayPal';button.addEventListener('click',()=>window.open('https://www.paypal.com/donate/?hosted_button_id='+config.hosted_button_id,'paypalDonatePopup'));document.querySelector(selector).appendChild(button);}})}};`,
+        body: '',
       });
     });
     await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i })).toBeVisible();
+    const donationTrigger = page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i });
+    const donationModal = page.locator('[data-paypal-modal]');
+    await expect(donationTrigger).toBeVisible();
+    await expect(donationModal).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__paypalDonationConfig), { timeout: 15_000 }).toMatchObject({
       env: 'production',
       hosted_button_id: 'U87BSM6V2TXLC',
@@ -96,7 +116,21 @@ test.describe('membership safety requirements', () => {
         alt: 'Donate with PayPal button',
       },
     });
-    await page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i }).click();
+    await donationTrigger.click();
+    await expect(donationModal).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/modal-open/);
+    await expect(page.getByRole('heading', { name: /support shadow’s temptation|shadow’s temptation unterstützen/i })).toBeVisible();
+    await expect.poll(() => page.locator('.sensitive-modal__backdrop').evaluate(
+      (element) => getComputedStyle(element).backdropFilter,
+    )).toContain('blur');
+    await expect.poll(() => page.evaluate(() => window.__paypalOpenUrl)).toBe('');
+
+    await page.keyboard.press('Escape');
+    await expect(donationModal).toBeHidden();
+    await expect(donationTrigger).toBeFocused();
+
+    await donationTrigger.click();
+    await page.getByRole('button', { name: /donate with paypal|mit paypal spenden/i }).click();
     await expect.poll(() => page.evaluate(() => window.__paypalOpenUrl)).toBe(
       'https://www.paypal.com/donate/?hosted_button_id=U87BSM6V2TXLC',
     );
