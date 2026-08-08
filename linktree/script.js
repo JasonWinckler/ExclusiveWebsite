@@ -68,37 +68,26 @@ document.querySelectorAll("[data-lang]").forEach((button) => {
 applyTranslations(initialLanguage);
 
 const paypalButton = document.querySelector("[data-paypal-open]");
-const paypalContainer = document.querySelector("#paypal-donate-button-container");
-const paypalSdk = document.querySelector("[data-paypal-sdk]");
 const paypalHostedButtonId = "U87BSM6V2TXLC";
 const paypalDonationUrl = `https://www.paypal.com/donate/?hosted_button_id=${paypalHostedButtonId}`;
 
-const renderPaypalButton = () => {
-  if (!window.PayPal?.Donation || !paypalContainer || paypalContainer.childElementCount) return;
-  window.PayPal.Donation.Button({
-    env: "production",
-    hosted_button_id: paypalHostedButtonId,
-    image: {
-      src: "https://www.paypalobjects.com/en_US/DK/i/btn/btn_donateCC_LG.gif",
-      alt: "Donate with PayPal",
-      title: "PayPal donation",
-    },
-  }).render("#paypal-donate-button-container");
-};
-
 const openPaypalDonation = () => {
-  const hostedButton = paypalContainer?.querySelector("button, input, a, img");
-  if (hostedButton) {
-    hostedButton.click();
+  const popupWidth = Math.min(560, window.screen.availWidth || 560);
+  const popupHeight = Math.min(760, window.screen.availHeight || 760);
+  const left = Math.max(0, Math.round(((window.screen.availWidth || popupWidth) - popupWidth) / 2));
+  const top = Math.max(0, Math.round(((window.screen.availHeight || popupHeight) - popupHeight) / 2));
+  const donationPopup = window.open(
+    "about:blank",
+    "shadowTemptationPaypalDonation",
+    `popup=yes,width=${popupWidth},height=${popupHeight},left=${left},top=${top}`,
+  );
+  if (!donationPopup) {
+    window.location.assign(paypalDonationUrl);
     return;
   }
-  window.open(paypalDonationUrl, "_blank", "noopener,noreferrer");
+  donationPopup.opener = null;
+  donationPopup.location.replace(paypalDonationUrl);
+  donationPopup.focus();
 };
 
 paypalButton?.addEventListener("click", openPaypalDonation);
-paypalSdk?.addEventListener("load", renderPaypalButton, { once: true });
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", renderPaypalButton, { once: true });
-} else {
-  renderPaypalButton();
-}

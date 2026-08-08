@@ -68,7 +68,31 @@ test.describe('membership safety requirements', () => {
       () => banner.evaluate((image) => image.naturalWidth),
       { timeout: 15_000 },
     ).toBeGreaterThan(0);
-    await expect(page.locator('script[src*="paypalobjects.com/donate/sdk/donate-sdk.js"]')).toHaveCount(1);
+    await expect(page.locator('script[src*="paypal" i]')).toHaveCount(0);
+  });
+
+  test('/linktree opens the PayPal donation only after an explicit click', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__paypalPopupTest = { opened: false, focused: false, url: "", name: "" };
+      window.open = (url, name) => {
+        window.__paypalPopupTest.opened = true;
+        window.__paypalPopupTest.name = name;
+        return {
+          opener: window,
+          location: { replace: (nextUrl) => { window.__paypalPopupTest.url = nextUrl; } },
+          focus: () => { window.__paypalPopupTest.focused = true; },
+        };
+      };
+    });
+    await page.goto('/linktree/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.__paypalPopupTest.opened)).toBe(false);
+    await page.getByRole('button', { name: /support.*donate|unterstützen.*spenden/i }).click();
+    await expect.poll(() => page.evaluate(() => window.__paypalPopupTest)).toMatchObject({
+      opened: true,
+      focused: true,
+      name: 'shadowTemptationPaypalDonation',
+      url: 'https://www.paypal.com/donate/?hosted_button_id=U87BSM6V2TXLC',
+    });
   });
 
   test('login keeps password recovery compact and lets users verify their input', async ({ page }) => {
