@@ -17,7 +17,10 @@
 Für den Workflow muss im GitHub-Repository `CLOUDFLARE_ACCOUNT_ID` als normale
 Actions-Variable und ausschließlich ein minimal berechtigtes
 `CLOUDFLARE_API_TOKEN` als verschlüsseltes Actions-Secret vorliegen. Das Token
-benötigt nur D1-Export- und Schreibzugriff auf den Sicherungsbucket.
+ist auf dieses Cloudflare-Konto zu beschränken und benötigt die
+Account-Berechtigungen `D1 Edit` (Export) sowie `Workers R2 Storage Edit`
+(Upload in den privaten Sicherungsbucket). Weitere Zone-, Pages-, Worker-,
+DNS- oder Benutzerrechte sind nicht erforderlich.
 
 ## Wiederherstellung
 

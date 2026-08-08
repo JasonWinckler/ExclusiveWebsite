@@ -45,6 +45,16 @@ gerätegebundenen Zehn-Minuten-Sitzung erreichbar.
 - Rechnungskopien bleiben privat und dürfen nur für Support, Betroffenenrechte
   oder steuerliche Pflichten geöffnet werden.
 
+## Persönliche Telegram-Einladungen
+
+Premium und VIP erhalten den Telegram-Vorteil. Für automatisch erzeugte,
+jeweils auf ein Mitglied begrenzte Bot-Einladungen benötigt der
+Membership-Worker die Secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` und
+`TELEGRAM_INVITE_ENCRYPTION_KEY`. Die URL wird verschlüsselt gespeichert und
+nur während der passenden aktiven Mitgliedschaft ausgeliefert. Solange diese
+Secrets fehlen, bleibt der vorhandene statische Einladungslink als
+Kompatibilitäts-Fallback aktiv.
+
 MFA ist für das Administratorkonto organisatorisch verpflichtend. Siehe
 [Sicherheit](SECURITY.md) und
 [AVS-Prüfprozess](AVS_REVIEW_PROCESS.md).

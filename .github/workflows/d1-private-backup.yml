@@ -37,6 +37,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           umask 077
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Required Cloudflare backup credential is not configured." >&2
+            exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/exclusive-backup"
           # Wrangler prints a one-hour signed download URL during export. Keep
           # that URL in the private runner temp directory instead of Actions
