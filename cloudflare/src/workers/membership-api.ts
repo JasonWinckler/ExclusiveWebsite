@@ -116,6 +116,9 @@ async function requireAdminSimulation(
     throw new ApiError(403, "ADMINISTRATOR_REQUIRED");
   }
   if (!identity.mfaEnabled) throw new ApiError(403, "ADMIN_MFA_REQUIRED");
+  if (!identity.labels.includes("age_verified")) {
+    throw new ApiError(403, "AGE_NOT_APPROVED");
+  }
   await requireActiveAdminSession(request, env.DB, identity.userId);
   return rawRole as AdminSimulationRole;
 }

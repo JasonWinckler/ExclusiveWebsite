@@ -283,6 +283,7 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain("requireActiveAdminSession(request, env.DB, identity.userId)");
     expect(membership).toContain('identity.labels.includes("admin")');
     expect(membership).toContain("identity.mfaEnabled");
+    expect(membership).toContain('identity.labels.includes("age_verified")');
     expect(membership).toContain("ADMIN_SIMULATION_READ_ONLY");
     expect(frontendApi).toContain('headers.set("X-Admin-Simulation", simulationRole)');
     expect(frontendApi).toContain('headers.set("X-Admin-Session", adminSession.token)');

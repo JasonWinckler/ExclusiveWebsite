@@ -272,7 +272,7 @@ test.describe('administrator production simulation', () => {
         name: 'Administrator',
         emailVerification: true,
         status: true,
-        labels: ['admin'],
+        labels: ['admin', 'age_verified'],
         mfa: true,
       });
       if (url.pathname === '/api/admin/v1/admin-session') return json({

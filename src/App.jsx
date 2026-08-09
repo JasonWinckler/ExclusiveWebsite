@@ -1183,7 +1183,12 @@ export default function App() {
 
   const refresh = async (sessionUser = null) => {
     const current = sessionUser || await getCurrentUser();
-    if (simulationRole && current?.labels?.includes("admin") && current.mfa === true) {
+    if (
+      simulationRole &&
+      current?.labels?.includes("admin") &&
+      current.labels.includes("age_verified") &&
+      current.mfa === true
+    ) {
       const simulatedUser = simulatedMemberUser(current, simulationRole);
       setSimulationAdmin(current);
       setUser(simulatedUser);
