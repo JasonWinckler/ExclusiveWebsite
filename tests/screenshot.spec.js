@@ -250,3 +250,70 @@ test.describe('legal notices', () => {
     expect(overflow).toBeLessThanOrEqual(1);
   });
 });
+
+test.describe('administrator production simulation', () => {
+  test('renders the complete VIP site with protected media in a read-only role view', async ({ page }) => {
+    const adminSessionToken = 'A'.repeat(43);
+    const protectedPixel = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4D8AAAAASUVORK5CYII=',
+      'base64',
+    );
+    await page.route('**/api/**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const json = (body, status = 200) => route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+      if (url.pathname === '/api/auth/v1/account') return json({
+        $id: 'admin-simulation-user',
+        email: 'admin@example.test',
+        name: 'Administrator',
+        emailVerification: true,
+        status: true,
+        labels: ['admin'],
+        mfa: true,
+      });
+      if (url.pathname === '/api/admin/v1/admin-session') return json({
+        token: adminSessionToken,
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      });
+      if (url.pathname === '/api/member/v1/products') return json({ products: [], tierPerks: {} });
+      if (url.pathname === '/api/member/v1/membership/status') return json({
+        account: { status: 'ACTIVE', emailVerified: true, displayName: 'Preview VIP', privacyProfileComplete: true },
+        ageVerification: { status: 'APPROVED' },
+        entitlement: { active: true, tier: 'EXCLUSIVE_VIP', expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(), paused: null },
+        simulation: { role: 'EXCLUSIVE_VIP', readOnly: true },
+      });
+      if (url.pathname === '/api/member/v1/content') return json({ items: [{
+        slug: 'vip-production-post',
+        title: 'VIP production post',
+        bodyText: 'Visible only through the secured simulation context.',
+        publishedAt: new Date().toISOString(),
+        tier: 'EXCLUSIVE_VIP',
+        contentType: 'image/png',
+        sizeBytes: protectedPixel.length,
+        allowComments: true,
+        commentCount: 0,
+        accessible: true,
+        denialCode: null,
+      }] });
+      if (url.pathname === '/api/member/v1/content/vip-production-post/comments') {
+        return json({ comments: [], allowComments: true, canComment: false });
+      }
+      if (url.pathname === '/api/member/v1/content/vip-production-post') {
+        return route.fulfill({ status: 200, contentType: 'image/png', body: protectedPixel });
+      }
+      return json({});
+    });
+
+    await page.goto('/?admin-simulation=EXCLUSIVE_VIP&lang=en', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.admin-simulation-toolbar')).toContainText('Exclusive VIP');
+    await expect(page.getByRole('heading', { name: /Welcome, Preview VIP/i })).toBeVisible();
+    await expect(page.getByText('VIP production post')).toBeVisible();
+    await expect(page.locator('.creator-post__media img')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Back to admin' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  });
+});

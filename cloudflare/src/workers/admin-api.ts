@@ -1,4 +1,5 @@
 import { authenticateAdministrator } from "../shared/auth";
+import { requireActiveAdminSession } from "../shared/admin-session";
 import { parseCsv } from "../shared/csv";
 import { getUserProfile, isoNow } from "../shared/db";
 import {
@@ -88,31 +89,6 @@ async function createAdminSession(
     ),
   ]);
   return { token: sessionToken, expiresAt };
-}
-
-async function requireAdminSession(
-  request: Request,
-  env: AdminEnv,
-  administratorUserId: string,
-): Promise<void> {
-  const token = request.headers.get("X-Admin-Session")?.trim() ?? "";
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(401, "ADMIN_SESSION_REQUIRED");
-  const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
-  const now = isoNow();
-  const session = await env.DB.prepare(`
-    SELECT id FROM admin_sessions
-    WHERE administrator_appwrite_user_id = ? AND session_token_sha256 = ?
-      AND device_token_sha256 = ? AND revoked_at IS NULL AND expires_at > ?
-  `).bind(
-    administratorUserId,
-    await sha256Hex(token),
-    await sha256Hex(deviceToken),
-    now,
-  ).first<{ id: string }>();
-  if (!session) throw new ApiError(401, "ADMIN_SESSION_EXPIRED");
-  await env.DB.prepare(`
-    UPDATE admin_sessions SET last_seen_at = ? WHERE id = ?
-  `).bind(now, session.id).run();
 }
 
 async function revokeAdminSession(
@@ -3140,7 +3116,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     const result = await revokeAdminSession(request, env, administrator.userId);
     return jsonResponse(result, { origin, origins, requestId: correlationId });
   }
-  await requireAdminSession(request, env, administrator.userId);
+  await requireActiveAdminSession(request, env.DB, administrator.userId);
   const evidencePath = /^\/v1\/age-verification\/evidence\/([^/]+)$/.exec(url.pathname);
   if (request.method === "GET" && evidencePath) {
     return streamAgeEvidence(

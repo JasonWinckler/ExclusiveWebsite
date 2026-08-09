@@ -1,4 +1,5 @@
 import { authenticateUser } from "../shared/auth";
+import { requireActiveAdminSession } from "../shared/admin-session";
 import {
   getAccessContext,
   getActiveEntitlement,
@@ -81,6 +82,131 @@ const PRIVACY_REQUEST_TYPES = new Set([
   "OBJECT_PROCESSING",
   "APPEAL",
 ]);
+
+const ADMIN_SIMULATION_ROLES = new Set([
+  "GUEST",
+  "REGISTERED",
+  "FREE",
+  "EXCLUSIVE_BASIC",
+  "EXCLUSIVE_PREMIUM",
+  "EXCLUSIVE_VIP",
+] as const);
+type AdminSimulationRole =
+  | "GUEST"
+  | "REGISTERED"
+  | "FREE"
+  | "EXCLUSIVE_BASIC"
+  | "EXCLUSIVE_PREMIUM"
+  | "EXCLUSIVE_VIP";
+
+async function requireAdminSimulation(
+  request: Request,
+  env: MembershipEnv,
+  identity: AuthenticatedIdentity,
+): Promise<AdminSimulationRole | null> {
+  const rawRole = request.headers.get("X-Admin-Simulation")?.trim().toUpperCase();
+  if (!rawRole) return null;
+  if (!ADMIN_SIMULATION_ROLES.has(rawRole as AdminSimulationRole)) {
+    throw new ApiError(400, "INVALID_ADMIN_SIMULATION_ROLE");
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    throw new ApiError(405, "ADMIN_SIMULATION_READ_ONLY");
+  }
+  if (!identity.labels.includes("admin")) {
+    throw new ApiError(403, "ADMINISTRATOR_REQUIRED");
+  }
+  if (!identity.mfaEnabled) throw new ApiError(403, "ADMIN_MFA_REQUIRED");
+  await requireActiveAdminSession(request, env.DB, identity.userId);
+  return rawRole as AdminSimulationRole;
+}
+
+function simulationEntitlement(role: AdminSimulationRole): EntitlementRow | null {
+  if (!role.startsWith("EXCLUSIVE_")) return null;
+  const now = isoNow();
+  return {
+    id: `admin-simulation-${role.toLowerCase()}`,
+    tier: role as EntitlementRow["tier"],
+    status: "ACTIVE",
+    starts_at: now,
+    expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+  };
+}
+
+function simulatedAccessContext<T extends {
+  profile: UserProfileRow | null;
+  entitlement: EntitlementRow | null;
+}>(context: T, role: AdminSimulationRole): T {
+  if (!context.profile) return context;
+  return {
+    ...context,
+    profile: {
+      ...context.profile,
+      account_status: "ACTIVE",
+      email_verified: 1,
+      age_status: "APPROVED",
+      administrative_hold: 0,
+      deletion_job_hold: 0,
+    },
+    entitlement: simulationEntitlement(role),
+  };
+}
+
+function requireSimulationContentAccess(role: AdminSimulationRole | null): void {
+  if (role === "GUEST") throw new ApiError(403, "AUTHENTICATION_REQUIRED");
+  if (role === "REGISTERED") throw new ApiError(403, "AGE_NOT_APPROVED");
+}
+
+function simulationStatusResponse(
+  env: MembershipEnv,
+  role: AdminSimulationRole,
+): Record<string, unknown> {
+  const entitlement = simulationEntitlement(role);
+  const registered = role !== "GUEST";
+  const ageApproved = role !== "GUEST" && role !== "REGISTERED";
+  return {
+    account: {
+      status: registered ? "ACTIVE" : "SIGNED_OUT",
+      emailVerified: registered,
+      displayName: "Simulation Member",
+      usernameChangeCount: 0,
+      usernameLastChangedAt: null,
+      usernameNextChangeAt: null,
+      usernameCanChange: false,
+      usernameSyncStatus: "SYNCED",
+      restricted: false,
+      deletionPending: false,
+      countryCode: "DE",
+      regionCode: null,
+      privacyRegime: "EU_GDPR",
+      privacyProfileComplete: true,
+    },
+    ageVerification: {
+      status: ageApproved ? "APPROVED" : "NOT_STARTED",
+      caseId: null,
+      reviewStatus: null,
+      uploadExpiresAt: null,
+      reviewExpiresAt: null,
+      instructionsVersion: AGE_INSTRUCTIONS_VERSION,
+      livenessChallenge: [],
+      livenessCode: null,
+      evidenceKinds: [],
+      verificationRoute: "MANUAL_DOCUMENT_VIDEO",
+      documentType: "NATIONAL_ID",
+      countryCode: "DE",
+      requiredEvidence: ["DOCUMENT_FRONT", "DOCUMENT_BACK", "VIDEO"],
+      methods: [{
+        id: "MANUAL_DOCUMENT_VIDEO",
+        available: true,
+        documentTypes: ["NATIONAL_ID", "PASSPORT"],
+      }],
+    },
+    entitlement: entitlement
+      ? { active: true, tier: entitlement.tier, expiresAt: entitlement.expires_at, paused: null }
+      : { active: false, tier: null, expiresAt: null, paused: null },
+    devices: { active: 1, limit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10) },
+    simulation: { role, readOnly: true },
+  };
+}
 
 function normalizeCountry(value: unknown): string {
   if (typeof value !== "string") throw new ApiError(400, "COUNTRY_REQUIRED");
@@ -208,7 +334,12 @@ function exactObjectKeys(
   }
 }
 
-async function statusResponse(env: MembershipEnv, userId: string): Promise<Record<string, unknown>> {
+async function statusResponse(
+  env: MembershipEnv,
+  userId: string,
+  simulationRole: AdminSimulationRole | null = null,
+): Promise<Record<string, unknown>> {
+  if (simulationRole) return simulationStatusResponse(env, simulationRole);
   const now = isoNow();
   const row = await env.DB.prepare(`
     WITH active_entitlement AS (
@@ -2430,10 +2561,12 @@ async function listContent(
   request: Request,
   env: MembershipEnv,
   userId: string,
+  simulationRole: AdminSimulationRole | null = null,
 ): Promise<Record<string, unknown>> {
+  requireSimulationContentAccess(simulationRole);
   const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(deviceToken);
-  const [access, content] = await Promise.all([
+  const [rawAccess, content] = await Promise.all([
     getAccessContext(env.DB, userId, tokenHash),
     env.DB.prepare(`
       SELECT c.slug, c.title, c.body_text, c.allow_comments, c.published_at,
@@ -2458,6 +2591,9 @@ async function listContent(
       comment_count: number;
     }>(),
   ]);
+  const access = simulationRole
+    ? simulatedAccessContext(rawAccess, simulationRole)
+    : rawAccess;
   const { profile, entitlement, device, activeDeviceCount } = access;
   const baseDecision = authorizeProtectedContent({
     profile,
@@ -2470,7 +2606,9 @@ async function listContent(
     jurisdictionAllowed: true,
   });
   if (!baseDecision.allowed) throw new ApiError(403, baseDecision.code);
-  await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
+  if (!simulationRole) {
+    await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
+  }
   return {
     items: content.results.map((item) => {
       const decision = authorizeProtectedContent({
@@ -2514,7 +2652,9 @@ async function commentContext(
   env: MembershipEnv,
   userId: string,
   slug: string,
+  simulationRole: AdminSimulationRole | null = null,
 ): Promise<CommentContext> {
+  requireSimulationContentAccess(simulationRole);
   if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
   const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(deviceToken);
@@ -2591,7 +2731,7 @@ async function commentContext(
     active_count: number | null;
   }>();
   if (!row) throw new ApiError(404, "CONTENT_NOT_FOUND");
-  const profile: UserProfileRow = {
+  let profile: UserProfileRow = {
     appwrite_user_id: row.appwrite_user_id,
     email: row.email,
     display_name: row.display_name,
@@ -2606,7 +2746,7 @@ async function commentContext(
     deletion_job_hold: row.deletion_job_hold,
     version: row.version,
   };
-  const entitlement: EntitlementRow | null = row.entitlement_id && row.entitlement_tier &&
+  let entitlement: EntitlementRow | null = row.entitlement_id && row.entitlement_tier &&
     row.entitlement_status && row.entitlement_starts_at && row.entitlement_expires_at ? {
       id: row.entitlement_id,
       tier: row.entitlement_tier,
@@ -2614,6 +2754,17 @@ async function commentContext(
       starts_at: row.entitlement_starts_at,
       expires_at: row.entitlement_expires_at,
     } : null;
+  if (simulationRole) {
+    profile = {
+      ...profile,
+      account_status: "ACTIVE",
+      email_verified: 1,
+      age_status: "APPROVED",
+      administrative_hold: 0,
+      deletion_job_hold: 0,
+    };
+    entitlement = simulationEntitlement(simulationRole);
+  }
   const decision = authorizeProtectedContent({
     profile,
     entitlement,
@@ -2625,11 +2776,13 @@ async function commentContext(
     jurisdictionAllowed: jurisdictionAllowed(row.jurisdiction_policy, row.jurisdiction_code),
   });
   if (!decision.allowed) throw new ApiError(403, decision.code);
-  await touchRegisteredDevice(env.DB, row.device_id!, row.device_last_seen_at);
+  if (!simulationRole) {
+    await touchRegisteredDevice(env.DB, row.device_id!, row.device_last_seen_at);
+  }
   return {
     contentId: row.content_id,
     allowComments: row.allow_comments === 1,
-    entitlementActive: Boolean(entitlement),
+    entitlementActive: Boolean(entitlement) && !simulationRole,
   };
 }
 
@@ -2638,8 +2791,9 @@ async function listContentComments(
   env: MembershipEnv,
   userId: string,
   slug: string,
+  simulationRole: AdminSimulationRole | null = null,
 ): Promise<Record<string, unknown>> {
-  const context = await commentContext(request, env, userId, slug);
+  const context = await commentContext(request, env, userId, slug, simulationRole);
   const comments = await env.DB.prepare(`
     SELECT comments.id, comments.appwrite_user_id, comments.body, comments.created_at,
       profiles.display_name, profiles.account_status
@@ -2742,14 +2896,19 @@ async function authorizeContent(
   origin: string | null,
   origins: ReadonlySet<string>,
   correlationId: string,
+  simulationRole: AdminSimulationRole | null = null,
 ): Promise<Response> {
+  requireSimulationContentAccess(simulationRole);
   if (!/^[a-z0-9-]{1,128}$/.test(slug)) throw new ApiError(400, "INVALID_CONTENT_SLUG");
   const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
   const tokenHash = await sha256Hex(deviceToken);
-  const [access, content] = await Promise.all([
+  const [rawAccess, content] = await Promise.all([
     getAccessContext(env.DB, userId, tokenHash),
     getContentItem(env.DB, slug),
   ]);
+  const access = simulationRole
+    ? simulatedAccessContext(rawAccess, simulationRole)
+    : rawAccess;
   const { profile, entitlement, device, activeDeviceCount } = access;
   if (!content) throw new ApiError(404, "CONTENT_NOT_FOUND");
   const decision = authorizeProtectedContent({
@@ -2763,7 +2922,9 @@ async function authorizeContent(
     jurisdictionAllowed: jurisdictionAllowed(content.jurisdiction_policy, profile?.jurisdiction_code ?? null),
   });
   if (!decision.allowed) throw new ApiError(403, decision.code);
-  await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
+  if (!simulationRole) {
+    await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
+  }
 
   if (env.PROTECTED_CONTENT_MODE !== "private-r2-v1") {
     throw new ApiError(503, "PROTECTED_CONTENT_DISABLED");
@@ -3648,6 +3809,7 @@ async function route(
   const identity = await authenticateUser(request, env, {
     requireVerifiedEmail: requiresVerified,
   });
+  const simulationRole = await requireAdminSimulation(request, env, identity);
   let result: Record<string, unknown>;
   const evidencePath = /^\/v1\/age-verification\/cases\/([0-9a-f-]{36})\/evidence\/([^/]+)$/i
     .exec(requestUrl.pathname);
@@ -3664,16 +3826,31 @@ async function route(
   const privacyRequestPath = /^\/v1\/privacy\/requests\/([0-9a-f-]{36})$/i
     .exec(requestUrl.pathname);
   const devicePath = /^\/v1\/devices\/([0-9a-f-]{36})$/i.exec(requestUrl.pathname);
+  if (simulationRole) {
+    const simulationPathAllowed = [
+      "/v1/membership/status",
+      "/v1/entitlements/status",
+      "/v1/payments/orders",
+      "/v1/perks/telegram",
+      "/v1/perks/premium-telegram",
+      "/v1/perks/vip-whatsapp",
+      "/v1/content",
+    ].includes(requestUrl.pathname) || Boolean(contentCommentsPath) ||
+      /^\/v1\/content\/[a-z0-9-]{1,128}$/.test(requestUrl.pathname);
+    if (!simulationPathAllowed) {
+      throw new ApiError(403, "ADMIN_SIMULATION_ROUTE_UNAVAILABLE");
+    }
+  }
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
-    result = await statusResponse(env, identity.userId);
+    result = await statusResponse(env, identity.userId, simulationRole);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request") {
     if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
       throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
     }
     result = await requestEmailVerification(request, env, identity);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/entitlements/status") {
-    const status = await statusResponse(env, identity.userId);
+    const status = await statusResponse(env, identity.userId, simulationRole);
     result = status.entitlement as Record<string, unknown>;
   } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/account/profile/name") {
     result = await updateDisplayName(request, env, identity.userId);
@@ -3692,13 +3869,17 @@ async function route(
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/payments/sepa-orders") {
     result = await createSepaOrder(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/payments/orders") {
-    result = await listUserPaymentOrders(env, identity.userId);
+    result = simulationRole ? { orders: [], simulation: true } : await listUserPaymentOrders(env, identity.userId);
   } else if (request.method === "GET" && invoiceCopyPath) {
     return getUserInvoiceCopy(env, identity.userId, invoiceCopyPath[1]!, correlationId);
   } else if (request.method === "GET" && ["/v1/perks/telegram", "/v1/perks/premium-telegram"].includes(requestUrl.pathname)) {
-    result = await premiumTelegramPerk(env, identity.userId);
+    result = simulationRole
+      ? { available: ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(simulationRole), simulated: true, tier: simulationRole }
+      : await premiumTelegramPerk(env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/vip-whatsapp") {
-    result = await vipWhatsappPerk(env, identity.userId);
+    result = simulationRole
+      ? { available: simulationRole === "EXCLUSIVE_VIP", simulated: true }
+      : await vipWhatsappPerk(env, identity.userId);
   } else if (request.method === "DELETE" && paymentOrderPath) {
     result = await cancelUserPaymentOrder(request, env, identity.userId, paymentOrderPath[1]!);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/account/deletion") {
@@ -3735,9 +3916,15 @@ async function route(
   } else if (request.method === "DELETE" && requestUrl.pathname === "/v1/devices/current") {
     result = await removeCurrentDevice(request, env, identity.userId);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/content") {
-    result = await listContent(request, env, identity.userId);
+    result = await listContent(request, env, identity.userId, simulationRole);
   } else if (request.method === "GET" && contentCommentsPath) {
-    result = await listContentComments(request, env, identity.userId, contentCommentsPath[1]!);
+    result = await listContentComments(
+      request,
+      env,
+      identity.userId,
+      contentCommentsPath[1]!,
+      simulationRole,
+    );
   } else if (request.method === "POST" && contentCommentsPath) {
     result = await createContentComment(request, env, identity.userId, contentCommentsPath[1]!);
   } else if (request.method === "DELETE" && contentCommentPath) {
@@ -3753,6 +3940,7 @@ async function route(
         origin,
         origins,
         correlationId,
+        simulationRole,
       );
     } else {
       throw new ApiError(404, "NOT_FOUND");

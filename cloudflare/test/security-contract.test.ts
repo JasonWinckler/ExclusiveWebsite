@@ -263,15 +263,32 @@ describe("browser and repository security contract", () => {
   it("limits administrator sessions to ten minutes and binds them to the current device", () => {
     const migration = read("cloudflare/migrations/0017_security_sessions_age_retention.sql");
     const admin = read("cloudflare/src/workers/admin-api.ts");
+    const adminSession = read("cloudflare/src/shared/admin-session.ts");
     const adminConfig = read("cloudflare/wrangler.admin-api.jsonc");
     const frontendApi = read("src/lib/platform.js");
     expect(migration).toContain("CREATE TABLE admin_sessions");
     expect(migration).toContain("device_token_sha256 TEXT NOT NULL");
     expect(adminConfig).toMatch(/"ADMIN_SESSION_MINUTES": "10"/);
-    expect(admin).toContain('"X-Admin-Session"');
-    expect(admin).toContain("ADMIN_SESSION_EXPIRED");
+    expect(admin).toContain("requireActiveAdminSession");
+    expect(adminSession).toContain('"X-Admin-Session"');
+    expect(adminSession).toContain("ADMIN_SESSION_EXPIRED");
     expect(frontendApi).toContain("sessionStorage.setItem(adminSessionStorageKey");
     expect(frontendApi).not.toContain("localStorage.setItem(adminSessionStorageKey");
+  });
+
+  it("keeps full-site membership simulation admin-only, MFA-bound, and read-only", () => {
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const frontendApi = read("src/lib/platform.js");
+    const app = read("src/App.jsx");
+    expect(membership).toContain("requireActiveAdminSession(request, env.DB, identity.userId)");
+    expect(membership).toContain('identity.labels.includes("admin")');
+    expect(membership).toContain("identity.mfaEnabled");
+    expect(membership).toContain("ADMIN_SIMULATION_READ_ONLY");
+    expect(frontendApi).toContain('headers.set("X-Admin-Simulation", simulationRole)');
+    expect(frontendApi).toContain('headers.set("X-Admin-Session", adminSession.token)');
+    expect(frontendApi).toContain("sessionStorage");
+    expect(app).toContain("admin-simulation-toolbar");
+    expect(app).toContain("getContentItems()");
   });
 
   it("enforces three registered devices with self-service and administrator revocation", () => {

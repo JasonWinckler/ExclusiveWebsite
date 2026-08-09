@@ -43,6 +43,9 @@ import {
   createPrivacyRequest,
   fetchPrivacyExport,
   endAdminSession,
+  exitAdminSimulation,
+  getAdminSimulationRole,
+  startAdminSimulation,
 } from "./lib/platform";
 import {
   countryOptions,
@@ -61,6 +64,22 @@ const initialLanguage = () => {
 const sensitiveMediaKey = "jason-shadow-sensitive-media-blur-v1";
 const initialSensitiveMediaBlur = () => localStorage.getItem(sensitiveMediaKey) === "true";
 const AdminPortal = React.lazy(() => import("./AdminPortal"));
+
+function simulatedMemberUser(administrator, role) {
+  if (role === "GUEST") return null;
+  const tierLabel = role.startsWith("EXCLUSIVE_") ? role.replace("EXCLUSIVE_", "") : role;
+  return {
+    ...administrator,
+    name: role === "REGISTERED" ? "New Member" : `Preview ${tierLabel}`,
+    email: "simulation@exclusive.jason-shadow.com",
+    emailVerification: true,
+    labels: [
+      ...(role !== "REGISTERED" ? ["age_verified"] : []),
+      ...(role.startsWith("EXCLUSIVE_") ? [`active_${tierLabel.toLowerCase()}`] : []),
+    ],
+    mfa: false,
+  };
+}
 
 const copy = {
   de: {
@@ -1043,6 +1062,7 @@ function InlineComments({
   userName,
   language,
   busy,
+  readOnly = false,
   onSubmit,
   onDelete,
 }) {
@@ -1064,18 +1084,18 @@ function InlineComments({
             <time>{new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
           </div>
           <p>{comment.body}</p>
-          {comment.own && <button className="text-button" type="button" onClick={() => onDelete(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}
+          {comment.own && !readOnly && <button className="text-button" type="button" onClick={() => onDelete(comment.id)}>{language === "de" ? "Löschen" : "Delete"}</button>}
         </article>)}</div>
         : <p className="upload-note">{language === "de" ? "Sei der Erste, der diesen Beitrag kommentiert." : "Be the first to comment on this post."}</p>}
     {commentAccess.canComment
       ? <form className="comment-composer" onSubmit={onSubmit}>
         <label>
           <span>{language === "de" ? "Dein Kommentar" : "Your comment"}</span>
-          <textarea name="comment" rows="3" maxLength="1200" required placeholder={language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?"} />
+          <textarea name="comment" rows="3" maxLength="1200" required disabled={readOnly} placeholder={readOnly ? (language === "de" ? "In der Simulation schreibgeschützt" : "Read-only in simulation") : (language === "de" ? "Was löst dieser Beitrag bei dir aus?" : "What does this post make you feel?")} />
         </label>
         <div>
           <small>{language === "de" ? "Respektvoll bleiben. Deine Kommentare sind nur für berechtigte Mitglieder sichtbar." : "Keep it respectful. Comments are visible only to eligible members."}</small>
-          <button className="primary-action" disabled={busy}>{language === "de" ? "Kommentar veröffentlichen" : "Post comment"}</button>
+          <button className="primary-action" disabled={busy || readOnly}>{readOnly ? (language === "de" ? "Simulation · nur ansehen" : "Simulation · view only") : (language === "de" ? "Kommentar veröffentlichen" : "Post comment")}</button>
         </div>
       </form>
       : commentAccess.allowComments && <div className="paid-comment-teaser">
@@ -1127,6 +1147,7 @@ export default function App() {
   const [vipWhatsapp, setVipWhatsapp] = useState(null);
   const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
   const [tierSelection, setTierSelection] = useState([]);
+  const [simulationAdmin, setSimulationAdmin] = useState(null);
   const initialized = useRef(false);
   const mediaBySlugRef = useRef({});
   const mediaRequestsRef = useRef(new Map());
@@ -1135,7 +1156,10 @@ export default function App() {
   const t = useMemo(() => window.SiteTranslations?.[language] || window.SiteTranslations.en, [language]);
   const ui = copy[language] || copy.de;
   const registrationCountries = useMemo(() => countryOptions(language), [language]);
-  const isAdmin = Boolean(user?.labels?.includes("admin"));
+  const simulationRole = getAdminSimulationRole();
+  const isAdminSimulation = Boolean(simulationRole && simulationAdmin);
+  const administrator = simulationAdmin || (user?.labels?.includes("admin") ? user : null);
+  const isAdmin = Boolean(administrator);
   const ageRequest = membership?.ageVerification || null;
   const activeAgeCase = ageSession?.caseId ? ageSession : ageRequest;
   const profile = membership?.account || null;
@@ -1151,6 +1175,7 @@ export default function App() {
   const activePost = activeGalleryGroup?.items[normalizedPostIndex] || null;
 
   const trackConversion = (eventName) => {
+    if (isAdminSimulation) return;
     if (analyticsEventsRef.current.has(eventName)) return;
     analyticsEventsRef.current.add(eventName);
     recordAnalyticsEvent(eventName, language).catch(() => null);
@@ -1158,6 +1183,30 @@ export default function App() {
 
   const refresh = async (sessionUser = null) => {
     const current = sessionUser || await getCurrentUser();
+    if (simulationRole && current?.labels?.includes("admin") && current.mfa === true) {
+      const simulatedUser = simulatedMemberUser(current, simulationRole);
+      setSimulationAdmin(current);
+      setUser(simulatedUser);
+      setBilling((previous) => ({ ...previous, name: previous.name || simulatedUser?.name || "" }));
+      const nextMembership = await getMembershipStatus();
+      setMembership(simulatedUser ? nextMembership : null);
+      setOrders([]);
+      const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
+      setPremiumTelegram(["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier)
+        ? { available: true, simulated: true }
+        : null);
+      setVipWhatsapp(tier === "EXCLUSIVE_VIP"
+        ? { available: true, simulated: true }
+        : null);
+      setPrivacy(null);
+      return simulatedUser;
+    }
+    if (simulationRole) {
+      const url = new URL(location.href);
+      url.searchParams.delete("admin-simulation");
+      history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    setSimulationAdmin(null);
     setUser(current);
     if (!current) {
       setMembership(null);
@@ -1232,7 +1281,7 @@ export default function App() {
   }, [language, t]);
 
   useEffect(() => {
-    recordAnalyticsEvent("page_view", language).catch(() => null);
+    if (!getAdminSimulationRole()) recordAnalyticsEvent("page_view", language).catch(() => null);
   }, []);
 
   useEffect(() => {
@@ -1335,8 +1384,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin && location.pathname !== "/admin") history.replaceState({}, "", "/admin");
-  }, [isAdmin]);
+    if (isAdmin && !isAdminSimulation && location.pathname !== "/admin") {
+      history.replaceState({}, "", "/admin");
+    }
+  }, [isAdmin, isAdminSimulation]);
 
   useEffect(() => {
     if (dashboardTab === "privacy" && user && !isAdmin) loadPrivacy();
@@ -1367,7 +1418,7 @@ export default function App() {
     let current = true;
     (async () => {
       try {
-        await registerCurrentDevice();
+        if (!isAdminSimulation) await registerCurrentDevice();
         const result = await getContentItems();
         if (current) setGallery((result.items || []).filter((item) => item.accessible));
       } catch {
@@ -1375,7 +1426,7 @@ export default function App() {
       }
     })();
     return () => { current = false; };
-  }, [user?.$id, ageStatus, entitlement?.tier, entitlement?.expiresAt]);
+  }, [user?.$id, ageStatus, entitlement?.tier, entitlement?.expiresAt, isAdminSimulation, simulationRole]);
 
   const loadProtectedMedia = async (item, retry = false) => {
     const cached = mediaBySlugRef.current[item.slug];
@@ -1452,13 +1503,15 @@ export default function App() {
       setComments(commentResult.comments || []);
       setCommentAccess({
         allowComments: Boolean(commentResult.allowComments),
-        canComment: Boolean(commentResult.canComment),
+        canComment: Boolean(commentResult.canComment || (
+          isAdminSimulation && entitlement?.active && commentResult.allowComments
+        )),
       });
     }).finally(() => {
       if (current) setCommentsLoading(false);
     });
     return () => { current = false; };
-  }, [activePost?.slug, user?.$id, ageStatus]);
+  }, [activePost?.slug, user?.$id, ageStatus, isAdminSimulation, entitlement?.active]);
 
   const openAuth = (nextMode) => {
     if (nextMode === "register") trackConversion("registration_started");
@@ -1568,6 +1621,10 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    if (isAdminSimulation) {
+      exitAdminSimulation();
+      return;
+    }
     setBusy(true);
     setNotice("");
     try {
@@ -1710,7 +1767,7 @@ export default function App() {
     setBusy(true);
     setNotice("");
     try {
-      await registerCurrentDevice();
+      if (!isAdminSimulation) await registerCurrentDevice();
       const result = await getContentItems();
       setGallery((result.items || []).filter((item) => item.accessible));
       requestAnimationFrame(() => document.getElementById("member-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -1972,7 +2029,7 @@ export default function App() {
     }
   };
 
-  if (isAdmin && user?.mfa !== true) return <main className="admin-mfa-gate">
+  if (isAdmin && !isAdminSimulation && administrator?.mfa !== true) return <main className="admin-mfa-gate">
     <section className="admin-mfa-gate__panel">
       <div className="admin-mfa-gate__intro">
         <img src="/linktree/uploads/profile.png" alt="Shadow’s Temptation" width="1536" height="1536" />
@@ -1984,14 +2041,14 @@ export default function App() {
             : "An authenticator app is required before sensitive administration features can be accessed. Setup only takes a few minutes."}</p>
         </div>
       </div>
-      <MfaPanel language={language} user={user} onUserUpdate={setUser} required />
+      <MfaPanel language={language} user={administrator} onUserUpdate={setUser} required />
       <button className="secondary-action" type="button" disabled={busy} onClick={handleAdminLogout}>
         {language === "de" ? "Abmelden" : "Sign out"}
       </button>
     </section>
   </main>;
-  if (isAdmin) return <React.Suspense fallback={<p className="app-loading">{ui.adminRedirect}</p>}>
-    <AdminPortal user={user} language={language} setLanguage={setLanguage} onLogout={handleAdminLogout} />
+  if (isAdmin && !isAdminSimulation) return <React.Suspense fallback={<p className="app-loading">{ui.adminRedirect}</p>}>
+    <AdminPortal user={administrator} language={language} setLanguage={setLanguage} onLogout={handleAdminLogout} />
   </React.Suspense>;
   if (busy && !user && location.pathname === "/admin") return <p className="app-loading">{ui.adminRedirect}</p>;
 
@@ -2000,7 +2057,12 @@ export default function App() {
 
   return <>
     <div className="ember-field" aria-hidden="true" />
-    <header className="exclusive-header"><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><nav className="main-nav desktop-nav" aria-label={t.navigation}>{user ? <><a href="#member-gallery">{language === "de" ? "Beiträge" : "Feed"}</a><a href="#pricing">Memberships</a></> : <><a href="#experience">{t.navProfile}</a><a href="#pricing">Memberships</a><a href="#exclusive">{language === "de" ? "Galerien" : "Galleries"}</a></>}</nav><div className="header-actions"><div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div></header>
+    {isAdminSimulation && <aside className="admin-simulation-toolbar" role="status">
+      <div><span>ADMIN · {language === "de" ? "SCHREIBGESCHÜTZTE PRODUKTIVANSICHT" : "READ-ONLY PRODUCTION VIEW"}</span><strong>{simulationRole.replace("EXCLUSIVE_", "Exclusive ")}</strong></div>
+      <label><span>{language === "de" ? "Perspektive" : "Perspective"}</span><select value={simulationRole} onChange={(event) => startAdminSimulation(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Age pending</option><option value="FREE">Age verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Exclusive Basic</option><option value="EXCLUSIVE_PREMIUM">Exclusive Premium</option><option value="EXCLUSIVE_VIP">Exclusive VIP</option></select></label>
+      <button className="secondary-action" type="button" onClick={exitAdminSimulation}>{language === "de" ? "Zurück zum Adminbereich" : "Back to admin"}</button>
+    </aside>}
+    <header className={`exclusive-header${isAdminSimulation ? " admin-simulation-header" : ""}`}><a className="brand brand--wordmark" href="#top">Shadow’s Temptation</a><nav className="main-nav desktop-nav" aria-label={t.navigation}>{user ? <><a href="#member-gallery">{language === "de" ? "Beiträge" : "Feed"}</a><a href="#pricing">Memberships</a></> : <><a href="#experience">{t.navProfile}</a><a href="#pricing">Memberships</a><a href="#exclusive">{language === "de" ? "Galerien" : "Galleries"}</a></>}</nav><div className="header-actions"><div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div></header>
     <main id="top">
       {user ? <>
         <section className="hero adult-hero member-hero">
@@ -2067,6 +2129,7 @@ export default function App() {
                   userName={user?.name}
                   language={language}
                   busy={busy}
+                  readOnly={isAdminSimulation}
                   onSubmit={submitComment}
                   onDelete={removeComment}
                 />
@@ -2222,6 +2285,7 @@ export default function App() {
 
     {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? entitlement.tier : ageStatus} onClose={() => setModal(null)} t={t} wide>
       {notice && <p className="form-notice" role="status">{notice}</p>}
+      {isAdminSimulation && <div className="simulation-readonly-note"><strong>{language === "de" ? "Admin-Simulation · schreibgeschützt" : "Admin simulation · read-only"}</strong><span>{language === "de" ? "Kontospezifische Sicherheits- und Datenschutzaktionen sind in dieser Rollenansicht ausgeblendet." : "Account-specific security and privacy actions are hidden in this role view."}</span></div>}
       {!user ? <button className="primary-action" onClick={() => openAuth("login")}>{t.login}</button> : <div className="account-dashboard">
         <div className="dashboard-tabs" role="tablist" aria-label={language === "de" ? "Kontobereiche" : "Account sections"}>
           {[
@@ -2232,7 +2296,7 @@ export default function App() {
             ["devices", language === "de" ? "Geräte" : "Devices"],
             ["security", language === "de" ? "Sicherheit" : "Security"],
             ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
-          ].map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
+          ].filter(([key]) => !isAdminSimulation || ["overview", "orders", "access"].includes(key)).map(([key, label]) => <button type="button" role="tab" aria-selected={dashboardTab === key} className={dashboardTab === key ? "is-active" : ""} onClick={() => setDashboardTab(key)} key={key}>{label}</button>)}
         </div>
         {dashboardTab === "overview" && <div className="dashboard-overview">
           <div className="dashboard-profile-card"><img src="/linktree/uploads/profile.png" alt="" /><div><p className="eyebrow">{language === "de" ? "WILLKOMMEN ZURÜCK" : "WELCOME BACK"}</p><h3>{profile?.displayName || user.name || user.email}</h3><p>{user.email}</p></div></div>
@@ -2331,8 +2395,8 @@ export default function App() {
         {dashboardTab === "access" && <div className="access-perks">
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Exclusive ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{entitlement.paused.tier.replace("EXCLUSIVE_", "Exclusive ")} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
-          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3><p>{language === "de" ? "Exklusiv für deine aktive Premium- oder VIP-Membership. Automatisch erzeugte Einladungen gelten für genau einen Kanalbeitritt." : "Exclusive to your active Premium or VIP membership. Automatically generated invitations admit exactly one channel member."}</p><a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Einladung öffnen" : "Open invitation"}</a></div></article>}
-          {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></div></article>}
+          {premiumTelegram && <article className="perk-access-card is-private"><span>↗</span><div><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3><p>{language === "de" ? "Exklusiv für deine aktive Premium- oder VIP-Membership. Automatisch erzeugte Einladungen gelten für genau einen Kanalbeitritt." : "Exclusive to your active Premium or VIP membership. Automatically generated invitations admit exactly one channel member."}</p>{premiumTelegram.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der Produktivansicht für diese Membership freigeschaltet." : "Unlocked for this membership in the production view."}</small> : <a className="primary-action" href={premiumTelegram.inviteUrl} target="_blank" rel="noreferrer">{language === "de" ? "Einladung öffnen" : "Open invitation"}</a>}</div></article>}
+          {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3>{vipWhatsapp.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der VIP-Produktivansicht freigeschaltet; Geheimwerte werden in der Simulation nicht ausgegeben." : "Unlocked in the VIP production view; secret values are not exposed in simulation."}</small> : <><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></>}</div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Vorteile werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
         {dashboardTab === "devices" && <DeviceManager
@@ -2357,7 +2421,7 @@ export default function App() {
           onCancelRequest={withdrawPrivacyRequest}
           onDeleteAccount={deleteAccountFromPrivacyCenter}
         />}
-        <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={handleLogout}>{ui.logout}</button></div>
+        <div className="dashboard-footer-actions"><a className="secondary-action button-link" href="#pricing" onClick={() => setModal(null)}>{ui.pricingTitle}</a><button className="text-button" onClick={handleLogout}>{isAdminSimulation ? (language === "de" ? "Simulation beenden" : "Exit simulation") : ui.logout}</button></div>
       </div>}
     </Modal>}
 

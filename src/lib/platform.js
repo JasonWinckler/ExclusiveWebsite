@@ -22,6 +22,37 @@ const adminSessionStorageKey = "shadows-temptation-admin-session-v1";
 export const ageInstructionsVersion = "manual-age-v6";
 let adminSessionPromise = null;
 
+export const adminSimulationRoles = Object.freeze([
+  "GUEST",
+  "REGISTERED",
+  "FREE",
+  "EXCLUSIVE_BASIC",
+  "EXCLUSIVE_PREMIUM",
+  "EXCLUSIVE_VIP",
+]);
+
+export function getAdminSimulationRole() {
+  const role = new URLSearchParams(location.search).get("admin-simulation")?.toUpperCase() || "";
+  return adminSimulationRoles.includes(role) ? role : null;
+}
+
+export function startAdminSimulation(role) {
+  if (!adminSimulationRoles.includes(role)) {
+    throw new CloudflareApiError("INVALID_ADMIN_SIMULATION_ROLE", 400);
+  }
+  const url = new URL(location.origin);
+  url.searchParams.set("admin-simulation", role);
+  url.searchParams.set("lang", localStorage.getItem("jason-shadow-membership-language") || "de");
+  url.hash = "top";
+  location.assign(url.toString());
+}
+
+export function exitAdminSimulation() {
+  const url = new URL(location.origin);
+  url.pathname = "/admin";
+  location.assign(url.toString());
+}
+
 export class CloudflareApiError extends Error {
   constructor(code, status, requestId = null) {
     super(code);
@@ -62,12 +93,28 @@ async function apiRequest(path, options = {}) {
       ? cloudflareConfig.adminApiBaseUrl
       : cloudflareConfig.apiBaseUrl;
   if (!baseUrl.startsWith("/")) requireApiUrl(baseUrl, "CLOUDFLARE_API_NOT_CONFIGURED");
+  const method = options.method || "GET";
+  const simulationRole = getAdminSimulationRole();
+  if (
+    simulationRole &&
+    !options.admin &&
+    method !== "GET" &&
+    method !== "HEAD"
+  ) {
+    throw new CloudflareApiError("ADMIN_SIMULATION_READ_ONLY", 405);
+  }
   const headers = new Headers(options.headers);
   headers.set("Accept", options.responseType === "response" ? "*/*" : "application/json");
   if (options.idempotent) headers.set("Idempotency-Key", options.idempotencyKey || crypto.randomUUID());
   if (options.device || options.auth) headers.set("X-Device-Token", getDeviceToken());
   if (options.admin && !options.skipAdminSession) {
     const adminSession = await ensureAdminSession();
+    headers.set("X-Admin-Session", adminSession.token);
+    headers.set("X-Device-Token", getDeviceToken());
+  }
+  if (simulationRole && options.simulation !== false && !options.admin && !options.auth) {
+    const adminSession = await ensureAdminSession();
+    headers.set("X-Admin-Simulation", simulationRole);
     headers.set("X-Admin-Session", adminSession.token);
     headers.set("X-Device-Token", getDeviceToken());
   }
@@ -82,7 +129,7 @@ async function apiRequest(path, options = {}) {
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method || "GET",
+    method,
     headers,
     body,
     credentials: "same-origin",
@@ -369,7 +416,7 @@ export const updateProfileEmail = async (email, password, locale = "de", current
 
 export const getProducts = (locale = "de") => apiRequest(
   `/v1/products?locale=${locale === "en" ? "en" : "de"}`,
-  { authenticated: false },
+  { authenticated: false, simulation: false },
 );
 export const getMembershipStatus = () => apiRequest("/v1/membership/status");
 export const getEntitlementStatus = () => apiRequest("/v1/entitlements/status");

@@ -2050,17 +2050,22 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .monitoring-list span:first-child { display: grid; gap: 3px; min-width: 0; }
 .monitoring-list small { color: var(--muted); overflow-wrap: anywhere; }
 .simulation-role-select { max-width: 420px; margin: 22px 0; }
-.role-simulation { overflow: hidden; border: 1px solid var(--line); border-radius: 28px; background: #160407; box-shadow: 0 26px 70px rgba(0,0,0,.32); }
-.role-simulation__banner { position: relative; min-height: 310px; overflow: hidden; }
-.role-simulation__banner > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .52; }
-.role-simulation__banner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg,rgba(12,2,4,.94),rgba(30,3,8,.45)); }
-.role-simulation__banner > div { position: relative; z-index: 1; display: grid; align-content: center; justify-items: start; min-height: 310px; padding: clamp(24px,5vw,64px); }
-.role-simulation__banner > div > img { width: 88px; aspect-ratio: 1; object-fit: cover; border: 2px solid var(--gold); border-radius: 50%; }
-.role-simulation__banner h3 { margin: 12px 0; font: clamp(2rem,4vw,4rem)/1 var(--display); color: var(--cream); }
-.role-simulation__content { display: grid; grid-template-columns: 1.1fr .9fr; gap: 24px; padding: clamp(24px,4vw,48px); }
-.role-simulation__placeholder { min-height: 260px; display: grid; place-content: center; justify-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 22px; background: radial-gradient(circle at 50% 30%,rgba(196,53,31,.22),rgba(5,1,2,.9)); }
-.role-simulation__placeholder span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: var(--gold); color: #1c0709; font-weight: 900; }
-@media (max-width: 850px) { .monitoring-grid,.monitoring-conversions { grid-template-columns: 1fr; } .role-simulation__content { grid-template-columns: 1fr; } }
+.simulation-launch-card { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: clamp(24px,4vw,42px); border: 1px solid rgba(255,202,144,.32); border-radius: 28px; background: radial-gradient(circle at 85% 20%,rgba(196,53,31,.24),transparent 42%),linear-gradient(145deg,rgba(255,255,255,.06),rgba(10,2,4,.72)); box-shadow: 0 26px 70px rgba(0,0,0,.28); }
+.simulation-launch-card > div { display: grid; gap: 10px; max-width: 760px; }
+.simulation-launch-card h3,.simulation-launch-card p { margin: 0; }
+.simulation-launch-card h3 { color: var(--cream); font: clamp(1.8rem,3vw,3rem)/1.05 var(--display); }
+.simulation-launch-card p { color: var(--muted); line-height: 1.65; }
+.admin-simulation-toolbar { position: sticky; z-index: 30; top: 0; display: flex; align-items: center; justify-content: center; gap: clamp(14px,3vw,34px); width: 100%; min-height: 72px; padding: 10px clamp(14px,3vw,32px); border-bottom: 1px solid rgba(255,202,144,.38); background: rgba(9,1,3,.96); box-shadow: 0 16px 40px rgba(0,0,0,.42); backdrop-filter: blur(20px); }
+.admin-simulation-toolbar > div { display: grid; gap: 2px; }
+.admin-simulation-toolbar > div span,.admin-simulation-toolbar label > span { color: var(--gold); font-size: .68rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.admin-simulation-toolbar > div strong { color: var(--cream); }
+.admin-simulation-toolbar label { display: grid; gap: 4px; }
+.admin-simulation-toolbar select { min-width: 210px; min-height: 42px; padding: 8px 36px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: #180408; color: var(--cream); font: inherit; }
+.exclusive-header.admin-simulation-header { position: relative; top: auto; }
+.simulation-readonly-note { display: grid; gap: 4px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid rgba(255,202,144,.3); border-radius: 16px; background: rgba(122,26,20,.22); }
+.simulation-readonly-note strong,.simulation-perk-state { color: var(--gold); }
+.simulation-readonly-note span,.simulation-perk-state { line-height: 1.5; }
+@media (max-width: 850px) { .monitoring-grid,.monitoring-conversions { grid-template-columns: 1fr; } .simulation-launch-card,.admin-simulation-toolbar { align-items: stretch; flex-direction: column; } .admin-simulation-toolbar { position: relative; } .admin-simulation-toolbar select { width: 100%; } }
 
 .verification-lead { max-width: 760px; margin-top: -8px; font-size: 1.02rem; }
 .verification-journey {
