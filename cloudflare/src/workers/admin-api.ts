@@ -2443,6 +2443,26 @@ async function restrictUser(
       now,
     }),
   ]);
+  try {
+    const telegramHeaders = new Headers(request.headers);
+    telegramHeaders.set("Content-Type", "application/json");
+    const telegramResponse = await env.MEMBERSHIP_API.fetch(new Request(
+      `https://member.internal/v1/telegram/admin/connections/${encodeURIComponent(userId)}`,
+      {
+        method: "POST",
+        headers: telegramHeaders,
+        body: JSON.stringify({ action: "REMOVE", reason: `Account restriction: ${reason}`.slice(0, 500) }),
+      },
+    ));
+    if (!telegramResponse.ok && telegramResponse.status !== 404) {
+      logEvent("warn", "telegram_remove_during_account_restriction_failed", {
+        requestId: correlationId,
+        code: `HTTP_${telegramResponse.status}`,
+      });
+    }
+  } catch {
+    // The membership worker's scheduled access sync is the fail-safe removal.
+  }
   let appwriteSessionRevocation = "SYNCED";
   try {
     await revokeAppwriteSessions(
@@ -2548,6 +2568,22 @@ async function unrestrictUser(
     });
   } catch {
     accessLabelSync = "FAILED";
+  }
+  if (activeEntitlement && ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(activeEntitlement.tier)) {
+    try {
+      const telegramHeaders = new Headers(request.headers);
+      telegramHeaders.set("Content-Type", "application/json");
+      await env.MEMBERSHIP_API.fetch(new Request(
+        `https://member.internal/v1/telegram/admin/connections/${encodeURIComponent(userId)}`,
+        {
+          method: "POST",
+          headers: telegramHeaders,
+          body: JSON.stringify({ action: "RESTORE", reason: `Account restored: ${reason}`.slice(0, 500) }),
+        },
+      ));
+    } catch {
+      // The administrator can retry from Telegram management without weakening account restoration.
+    }
   }
   return {
     accountStatus: nextStatus,
@@ -2688,6 +2724,26 @@ async function scheduleAdminAccountDeletion(
       now,
     }),
   ]);
+  try {
+    const telegramHeaders = new Headers(request.headers);
+    telegramHeaders.set("Content-Type", "application/json");
+    const telegramResponse = await env.MEMBERSHIP_API.fetch(new Request(
+      `https://member.internal/v1/telegram/admin/connections/${encodeURIComponent(userId)}`,
+      {
+        method: "POST",
+        headers: telegramHeaders,
+        body: JSON.stringify({ action: "UNLINK", reason: `Account deletion: ${reason}`.slice(0, 500) }),
+      },
+    ));
+    if (!telegramResponse.ok && telegramResponse.status !== 404) {
+      logEvent("warn", "telegram_unlink_before_account_deletion_failed", {
+        requestId: correlationId,
+        code: `HTTP_${telegramResponse.status}`,
+      });
+    }
+  } catch {
+    // The membership worker's scheduled access sync is the fail-safe cleanup.
+  }
   let appwriteSessionRevocation = "SYNCED";
   try {
     await revokeAppwriteSessions(
@@ -2967,7 +3023,7 @@ async function decidePrivacyRequest(
 
 async function systemMonitoring(env: AdminEnv): Promise<Record<string, unknown>> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const [visits, events, users, age, orders, entitlements, newsletter, jobs] = await env.DB.batch([
+  const [visits, events, users, age, orders, entitlements, newsletter, jobs, telegram, telegramMetrics] = await env.DB.batch([
     env.DB.prepare(`SELECT day, COUNT(*) AS visitors, SUM(page_views) AS page_views
       FROM analytics_daily_sessions WHERE day >= ? GROUP BY day ORDER BY day`).bind(since),
     env.DB.prepare(`SELECT day, event_name, event_count FROM analytics_daily_events
@@ -2995,8 +3051,16 @@ async function systemMonitoring(env: AdminEnv): Promise<Record<string, unknown>>
       FROM newsletter_subscriptions`),
     env.DB.prepare(`SELECT job_name, status, started_at, completed_at, duration_ms,
       summary_json, error_code FROM system_job_runs ORDER BY started_at DESC LIMIT 30`),
+    env.DB.prepare(`SELECT COUNT(*) AS linked,
+      SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN status = 'INVITE_SENT' THEN 1 ELSE 0 END) AS invite_sent,
+      SUM(CASE WHEN status IN ('MEMBERSHIP_INACTIVE','LEFT','ADMIN_SUSPENDED') THEN 1 ELSE 0 END) AS inactive,
+      SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS errors
+      FROM telegram_connections`),
+    env.DB.prepare(`SELECT day, event_name, event_count FROM telegram_daily_metrics
+      WHERE day >= ? ORDER BY day, event_name`).bind(since),
   ]);
-  if (!visits || !events || !users || !age || !orders || !entitlements || !newsletter || !jobs) {
+  if (!visits || !events || !users || !age || !orders || !entitlements || !newsletter || !jobs || !telegram || !telegramMetrics) {
     throw new ApiError(503, "MONITORING_QUERY_INCOMPLETE");
   }
   let backups: Array<Record<string, unknown>> = [];
@@ -3036,7 +3100,9 @@ async function systemMonitoring(env: AdminEnv): Promise<Record<string, unknown>>
       orders: first(orders),
       entitlements: first(entitlements),
       newsletter: first(newsletter),
+      telegram: first(telegram),
     },
+    telegramMetrics: telegramMetrics.results,
     jobs: jobs.results,
     backups: { status: backupStatus, retainedMaximum: 2, objects: backups },
   };
@@ -3117,6 +3183,11 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     return jsonResponse(result, { origin, origins, requestId: correlationId });
   }
   await requireActiveAdminSession(request, env.DB, administrator.userId);
+  if (url.pathname.startsWith("/v1/telegram/admin/")) {
+    const upstream = new URL(`https://member.internal${url.pathname}`);
+    upstream.search = url.search;
+    return env.MEMBERSHIP_API.fetch(new Request(upstream, request));
+  }
   const evidencePath = /^\/v1\/age-verification\/evidence\/([^/]+)$/.exec(url.pathname);
   if (request.method === "GET" && evidencePath) {
     return streamAgeEvidence(

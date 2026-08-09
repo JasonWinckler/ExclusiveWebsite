@@ -33,6 +33,11 @@ Nachweis nicht öffentlich.
 Nutzer und Administrator können eine zweistufig bestätigte Löschung auslösen.
 Der Prozess löscht das Cloudflare-Authkonto, Sitzungen, Geräte, Kommentare,
 Authentifizierungs-Tokens und Altersnachweise. Das D1-Profil wird anonymisiert.
+Eine vorhandene Telegram-Kanalberechtigung wird entzogen; Claim-Token,
+Einladungen und die Zuordnung zur numerischen Telegram-Konto-ID werden
+gelöscht. Schlägt die externe Entfernung vorübergehend fehl, übernimmt der
+stündliche Berechtigungsabgleich den erneuten Entzug und löscht die Zuordnung
+anschließend.
 Gesetzlich notwendige Rechnungs- und Zahlungsdaten werden getrennt
 weitergespeichert. Vorgeschriebene Empfängerangaben bleiben dabei vollständig;
 die private Rechnungskopie wird zusammen mit einem SHA-256-Integritätswert

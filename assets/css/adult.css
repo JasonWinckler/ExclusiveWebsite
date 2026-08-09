@@ -1060,6 +1060,19 @@ button:disabled { opacity: .58; cursor: not-allowed; }
 .perk-access-card p { color: var(--muted); line-height: 1.55; }
 .perk-access-card .primary-action { margin-top: 8px; }
 .perk-access-card.is-private { border-color: rgba(255,90,34,.36); }
+.telegram-access-card__heading { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.telegram-access-card__heading h3 { margin:0; }
+.telegram-privacy-note { padding:12px 14px; border-left:2px solid rgba(240,180,109,.72); background:rgba(255,255,255,.035); border-radius:0 10px 10px 0; font-size:.88rem; }
+.telegram-access-card .order-status { white-space:nowrap; }
+.telegram-admin-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:22px 0; }
+.telegram-admin-summary > span { display:flex; flex-direction:column; gap:5px; padding:18px; border:1px solid var(--stroke); border-radius:16px; background:rgba(255,255,255,.035); color:var(--muted); }
+.telegram-admin-summary strong { color:var(--cream); font:700 1.9rem/1 var(--display); }
+.telegram-admin-list { display:grid; gap:16px; }
+.telegram-admin-card { padding:20px; border:1px solid var(--stroke); border-radius:18px; background:rgba(17,0,6,.6); }
+.telegram-admin-card__head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.telegram-admin-card__head > div { display:grid; gap:4px; }
+.telegram-admin-card__head span:not(.order-status) { color:var(--muted); overflow-wrap:anywhere; }
+@media (max-width:720px) { .telegram-admin-summary { grid-template-columns:1fr; } .telegram-admin-card__head { flex-direction:column; } }
 .perk-access-card.is-vip {
   border-color: rgba(248,215,164,.52);
   background: linear-gradient(135deg,rgba(248,215,164,.12),rgba(105,9,22,.42));

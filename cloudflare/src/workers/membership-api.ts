@@ -38,7 +38,16 @@ import {
 } from "../shared/identity-service";
 import { ageDeletionReceiptReference } from "../shared/age-verification-email";
 import { randomBase64Url, sha256Hex, validateDeviceToken } from "../shared/security";
-import { decryptTotpSecret, encryptTotpSecret } from "../shared/totp";
+import {
+  administerTelegramConnection,
+  configureTelegramWebhook,
+  createTelegramClaim,
+  handleTelegramWebhook,
+  listTelegramConnections,
+  removeTelegramBeforeAccountDeletion,
+  syncTelegramAccess,
+  telegramPerkStatus,
+} from "../shared/telegram";
 import type {
   AgeEvidenceKind,
   AuthenticatedIdentity,
@@ -121,6 +130,16 @@ async function requireAdminSimulation(
   }
   await requireActiveAdminSession(request, env.DB, identity.userId);
   return rawRole as AdminSimulationRole;
+}
+
+async function requireTelegramAdministrator(
+  request: Request,
+  env: MembershipEnv,
+  identity: AuthenticatedIdentity,
+): Promise<void> {
+  if (!identity.labels.includes("admin")) throw new ApiError(403, "ADMINISTRATOR_REQUIRED");
+  if (!identity.mfaEnabled) throw new ApiError(403, "ADMIN_MFA_REQUIRED");
+  await requireActiveAdminSession(request, env.DB, identity.userId);
 }
 
 function simulationEntitlement(role: AdminSimulationRole): EntitlementRow | null {
@@ -2083,102 +2102,6 @@ async function getUserInvoiceCopy(
   });
 }
 
-async function premiumTelegramPerk(
-  env: MembershipEnv,
-  userId: string,
-): Promise<Record<string, unknown>> {
-  const now = isoNow();
-  const access = await env.DB.prepare(`
-    SELECT p.account_status, p.age_status, e.id AS entitlement_id,
-      e.tier, e.expires_at
-    FROM user_profiles p
-    LEFT JOIN entitlements e
-      ON e.appwrite_user_id = p.appwrite_user_id
-      AND e.tier IN ('EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP')
-      AND e.status = 'ACTIVE'
-      AND e.starts_at <= ?
-      AND e.expires_at > ?
-      AND e.paused_at IS NULL
-    WHERE p.appwrite_user_id = ?
-    ORDER BY e.expires_at DESC
-    LIMIT 1
-  `).bind(now, now, userId).first<{
-    account_status: string;
-    age_status: string;
-    entitlement_id: string | null;
-    tier: string | null;
-    expires_at: string | null;
-  }>();
-  if (!access || access.account_status !== "ACTIVE" || access.age_status !== "APPROVED") {
-    throw new ApiError(403, "PREMIUM_PERK_NOT_AVAILABLE");
-  }
-  if (!access.expires_at || !access.entitlement_id) {
-    throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
-  }
-  let inviteValue: string | null = null;
-  if (env.TELEGRAM_INVITE_ENCRYPTION_KEY) {
-    const stored = await env.DB.prepare(`SELECT invite_ciphertext, encryption_key_version
-      FROM telegram_invites WHERE appwrite_user_id = ? AND entitlement_id = ? AND expires_at > ?`)
-      .bind(userId, access.entitlement_id, now)
-      .first<{ invite_ciphertext: string; encryption_key_version: string }>();
-    if (stored) {
-      inviteValue = await decryptTotpSecret(
-        stored.invite_ciphertext,
-        env.TELEGRAM_INVITE_ENCRYPTION_KEY,
-      );
-    }
-  }
-  if (!inviteValue && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID && env.TELEGRAM_INVITE_ENCRYPTION_KEY) {
-    const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/createChatInviteLink`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
-        name: `Shadow member ${access.entitlement_id.slice(0, 8)}`,
-        expire_date: Math.floor(Date.parse(access.expires_at) / 1000),
-        member_limit: 1,
-        creates_join_request: false,
-      }),
-    });
-    if (!response.ok) throw new ApiError(503, "TELEGRAM_INVITE_CREATION_FAILED");
-    const payload = await response.json<{ ok?: boolean; result?: { invite_link?: string } }>();
-    inviteValue = payload.ok && typeof payload.result?.invite_link === "string"
-      ? payload.result.invite_link
-      : null;
-    if (!inviteValue) throw new ApiError(503, "TELEGRAM_INVITE_CREATION_FAILED");
-    await env.DB.prepare(`INSERT INTO telegram_invites (
-      id, appwrite_user_id, entitlement_id, invite_ciphertext,
-      encryption_key_version, expires_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(appwrite_user_id, entitlement_id) DO UPDATE SET
-      invite_ciphertext = excluded.invite_ciphertext,
-      encryption_key_version = excluded.encryption_key_version,
-      expires_at = excluded.expires_at`)
-      .bind(
-        crypto.randomUUID(), userId, access.entitlement_id,
-        await encryptTotpSecret(inviteValue, env.TELEGRAM_INVITE_ENCRYPTION_KEY),
-        env.TELEGRAM_INVITE_KEY_VERSION?.trim() || "v1", access.expires_at, now,
-      ).run();
-  }
-  if (!inviteValue) throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
-  let inviteUrl: URL;
-  try {
-    inviteUrl = new URL(inviteValue);
-  } catch {
-    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
-  }
-  if (inviteUrl.protocol !== "https:" || inviteUrl.hostname !== "t.me") {
-    throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
-  }
-  return {
-    available: true,
-    inviteUrl: inviteUrl.toString(),
-    singleMemberInvite: Boolean(env.TELEGRAM_BOT_TOKEN),
-    tier: access.tier,
-    entitlementExpiresAt: access.expires_at,
-  };
-}
-
 async function vipWhatsappPerk(
   env: MembershipEnv,
   userId: string,
@@ -3547,6 +3470,11 @@ async function exportPrivacyData(
       JOIN subscriptions s ON s.id = b.matched_subscription_id
       WHERE s.appwrite_user_id = ? ORDER BY b.booked_at DESC
     `).bind(userId),
+    env.DB.prepare(`
+      SELECT telegram_user_id, status, linked_at, joined_at, removed_at,
+        last_invite_created_at, last_synced_at, last_error_code, created_at, updated_at
+      FROM telegram_connections WHERE appwrite_user_id = ?
+    `).bind(userId),
   ]);
   const headers = corsHeaders(origin, origins);
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -3582,11 +3510,13 @@ async function exportPrivacyData(
     comments: results[5]!.results,
     privacyRequests: results[6]!.results,
     matchedPayments: results[7]!.results,
+    telegramAccess: results[8]!.results[0] ?? null,
     notes: [
       "Age-verification media is not included in this export.",
       "For approved cases, the deletion record and deletion reference are included after evidence deletion.",
       "Evidence media is deleted after approval; legally required transaction records may be retained.",
       "Security secrets, token hashes, internal fraud signals and data about other people are excluded.",
+      "Telegram usernames, profile photos, chat content, claim tokens and invitation links are never stored in this system.",
     ],
   };
   return new Response(JSON.stringify(payload, null, 2), { status: 200, headers });
@@ -3671,6 +3601,7 @@ async function requestDeletion(
         version = version + 1, updated_at = ? WHERE appwrite_user_id = ?
     `).bind(now, userId),
   ]);
+  await removeTelegramBeforeAccountDeletion(env, userId).catch(() => undefined);
   let appwriteSessionRevocation = "SYNCED";
   try {
     await revokeAppwriteSessions(
@@ -3775,6 +3706,13 @@ async function route(
     env.USER_RATE_LIMITER,
     request.headers.get("CF-Connecting-IP") ?? "unknown",
   );
+  if (request.method === "POST" && requestUrl.pathname === "/v1/telegram/webhook") {
+    return jsonResponse(await handleTelegramWebhook(request, env), {
+      origin,
+      origins,
+      requestId: correlationId,
+    });
+  }
   if (request.method === "POST" && requestUrl.pathname === "/v1/analytics/event") {
     return jsonResponse(await recordAnalyticsEvent(request, env), {
       status: 202,
@@ -3828,6 +3766,8 @@ async function route(
   const privacyRequestPath = /^\/v1\/privacy\/requests\/([0-9a-f-]{36})$/i
     .exec(requestUrl.pathname);
   const devicePath = /^\/v1\/devices\/([0-9a-f-]{36})$/i.exec(requestUrl.pathname);
+  const telegramAdminConnectionPath = /^\/v1\/telegram\/admin\/connections\/([A-Za-z0-9._-]{1,36})$/
+    .exec(requestUrl.pathname);
   if (simulationRole) {
     const simulationPathAllowed = [
       "/v1/membership/status",
@@ -3877,7 +3817,35 @@ async function route(
   } else if (request.method === "GET" && ["/v1/perks/telegram", "/v1/perks/premium-telegram"].includes(requestUrl.pathname)) {
     result = simulationRole
       ? { available: ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(simulationRole), simulated: true, tier: simulationRole }
-      : await premiumTelegramPerk(env, identity.userId);
+      : await telegramPerkStatus(env, identity.userId);
+  } else if (request.method === "POST" && requestUrl.pathname === "/v1/perks/telegram/claim") {
+    result = await createTelegramClaim(env, identity.userId);
+  } else if (request.method === "GET" && requestUrl.pathname === "/v1/telegram/admin/connections") {
+    await requireTelegramAdministrator(request, env, identity);
+    result = await listTelegramConnections(env);
+  } else if (request.method === "POST" && requestUrl.pathname === "/v1/telegram/admin/webhook/configure") {
+    await requireTelegramAdministrator(request, env, identity);
+    result = await configureTelegramWebhook(env);
+  } else if (request.method === "POST" && telegramAdminConnectionPath) {
+    await requireTelegramAdministrator(request, env, identity);
+    const body = await readJsonBody<Record<string, unknown>>(
+      request,
+      parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
+    );
+    if (
+      !body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).some((key) => !["action", "reason"].includes(key)) ||
+      !["REMOVE", "RESTORE", "UNLINK"].includes(String(body.action)) ||
+      typeof body.reason !== "string"
+    ) throw new ApiError(400, "INVALID_TELEGRAM_ADMIN_ACTION");
+    result = await administerTelegramConnection(
+      env,
+      identity.userId,
+      decodeURIComponent(telegramAdminConnectionPath[1]!),
+      body.action as "REMOVE" | "RESTORE" | "UNLINK",
+      body.reason,
+      correlationId,
+    );
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/perks/vip-whatsapp") {
     result = simulationRole
       ? { available: simulationRole === "EXCLUSIVE_VIP", simulated: true }
@@ -3971,5 +3939,23 @@ export default {
         requestId: correlationId,
       });
     }
+  },
+  async scheduled(
+    _controller: ScheduledController,
+    env: MembershipEnv,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    ctx.waitUntil(syncTelegramAccess(env).then((summary) => {
+      logEvent("info", "telegram_access_sync_completed", {
+        checked: summary.checked,
+        removed: summary.removed,
+        restored: summary.restored,
+        deleted: summary.deleted,
+      });
+    }).catch((error) => {
+      logEvent("error", "telegram_access_sync_failed", {
+        code: error instanceof ApiError ? error.code : "INTERNAL_ERROR",
+      });
+    }));
   },
 } satisfies ExportedHandler<MembershipEnv>;

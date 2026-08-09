@@ -45,3 +45,14 @@ Tabwechsel beziehungsweise spätestens nach zwei Minuten.
 - verschlüsselte Worker Secrets; keine Credentials in `VITE_*`, Git oder Logs;
 - personenbezogene API-Antworten und alle Bilder sind nicht cachebar;
 - keine Werbe-, Profiling- oder Social-Media-Pixel.
+
+## Telegram-Zugang
+
+Der Bot verwendet einen geheimen Telegram-Webhook-Header. Claim-Tokens sind
+256-Bit-Zufallswerte, in D1 nur als SHA-256 gespeichert, höchstens zehn Minuten
+gültig und nach Verwendung gelöscht. Kanal-Einladungen sind verschlüsselt,
+höchstens 15 Minuten gültig, auf genau eine zuvor verknüpfte numerische
+Telegram-Konto-ID festgelegt und werden nach dem bestätigten Beitritt sofort
+widerrufen. Der Browser erhält keinen Kanal-Link. Gespeichert werden weder
+Telegram-Benutzername noch Profilbild oder Chatinhalt. Der stündliche Abgleich
+entfernt Zugänge bei Membership-Ende, Sperrung oder Kontolöschung.

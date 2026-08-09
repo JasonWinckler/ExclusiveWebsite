@@ -19,6 +19,9 @@ import {
   adminListUserDevices,
   adminListUsers,
   adminGetSystemMonitoring,
+  adminListTelegramConnections,
+  adminConfigureTelegramWebhook,
+  adminManageTelegramConnection,
   adminQueueNewDrop,
   adminRevokeUserDevice,
   adminSetUserDeviceLock,
@@ -233,6 +236,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [checkedReviewItems, setCheckedReviewItems] = useState([]);
   const [sessionSeconds, setSessionSeconds] = useState(600);
   const [monitoring, setMonitoring] = useState(null);
+  const [telegramConnections, setTelegramConnections] = useState([]);
+  const [telegramReasons, setTelegramReasons] = useState({});
   const [simulationRole, setSimulationRole] = useState("EXCLUSIVE_BASIC");
 
   const loadCases = async () => {
@@ -267,6 +272,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const result = await adminGetSystemMonitoring();
     setMonitoring(result);
   };
+  const loadTelegram = async () => {
+    const result = await adminListTelegramConnections();
+    setTelegramConnections(result.connections || []);
+  };
   const loadAll = async () => {
     setBusy(true);
     setError("");
@@ -280,6 +289,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         loadMembershipProducts(),
         loadPrivacyRequests(),
         loadMonitoring(),
+        loadTelegram(),
       ]);
     } catch (requestError) {
       setError(friendlyErrorMessage(requestError, language, t.genericError));
@@ -536,6 +546,40 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     }
   };
 
+  const configureTelegram = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await adminConfigureTelegramWebhook();
+      setNotice(language === "de"
+        ? "Der Telegram-Webhook ist produktiv eingerichtet."
+        : "The Telegram webhook is configured for production.");
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const manageTelegram = async (connection, action) => {
+    const reason = String(telegramReasons[connection.appwrite_user_id] || "").trim();
+    if (reason.length < 3) return;
+    if (action === "UNLINK" && !window.confirm(language === "de"
+      ? "Telegram-Verknüpfung und gespeicherte Telegram-Konto-ID vollständig löschen?"
+      : "Delete the Telegram connection and stored Telegram account ID completely?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminManageTelegramConnection(connection.appwrite_user_id, action, reason);
+      setNotice(language === "de" ? "Telegram-Zugang wurde aktualisiert." : "Telegram access was updated.");
+      await Promise.all([loadTelegram(), loadMonitoring()]);
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openInvoiceCopy = async (order) => {
     setBusy(true);
     setError("");
@@ -737,6 +781,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         ["users", language === "de" ? "Nutzer" : "Users"],
         ["age", t.age], ["content", t.content], ["payments", t.payments],
         ["privacy", language === "de" ? "Datenschutz" : "Privacy"],
+        ["telegram", "Telegram"],
         ["monitoring", "System Monitoring"],
         ["simulation", language === "de" ? "Website-Simulation" : "Website simulation"],
       ].map(([key, label]) => <button type="button" className={tab === key ? "is-active" : ""} onClick={() => { setTab(key); setNotice(""); setError(""); }} key={key}>{label}</button>)}</nav>
@@ -750,6 +795,21 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</span><strong>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("privacy")}>{language === "de" ? "Bearbeiten →" : "Review →"}</button></article>
+        <article className="admin-metric-card"><span>Telegram</span><strong>{telegramConnections.filter((item) => item.status === "ACTIVE").length}</strong><small>{telegramConnections.length} {language === "de" ? "Verknüpfungen" : "connections"}</small><button className="text-button" type="button" onClick={() => setTab("telegram")}>{language === "de" ? "Verwalten →" : "Manage →"}</button></article>
+      </section>}
+
+      {tab === "telegram" && <section className="admin-panel telegram-admin-panel">
+        <div className="admin-panel__heading"><div><p className="eyebrow">PRIVATE COMMUNITY ACCESS</p><h2>{language === "de" ? "Telegram-Zugänge" : "Telegram access"}</h2><p className="admin-note">{language === "de" ? "Einmalige Bot-Verknüpfung, kontogebundene Einladungen und automatischer Entzug bei Membership-Ende. Gespeichert werden weder Telegram-Benutzernamen noch Profilbilder oder Chat-Inhalte." : "One-time bot linking, account-bound invitations and automatic removal when a membership ends. Telegram usernames, profile photos and chat content are never stored."}</p></div><button className="secondary-action" type="button" disabled={busy} onClick={configureTelegram}>{language === "de" ? "Webhook sicher neu verbinden" : "Securely reconnect webhook"}</button></div>
+        <div className="telegram-admin-summary"><span><strong>{telegramConnections.filter((item) => item.status === "ACTIVE").length}</strong>{language === "de" ? "Aktiv" : "Active"}</span><span><strong>{telegramConnections.filter((item) => item.status === "INVITE_SENT").length}</strong>{language === "de" ? "Einladung gesendet" : "Invite sent"}</span><span><strong>{telegramConnections.filter((item) => item.status === "ERROR").length}</strong>{language === "de" ? "Prüfung nötig" : "Needs review"}</span></div>
+        <div className="telegram-admin-list">{telegramConnections.length ? telegramConnections.map((connection) => {
+          const reason = telegramReasons[connection.appwrite_user_id] || "";
+          return <article className="telegram-admin-card" key={connection.appwrite_user_id}>
+            <div className="telegram-admin-card__head"><div><strong>{connection.display_name || "Exclusive Member"}</strong><span>{connection.email}</span></div><span className="order-status">{String(connection.status).replaceAll("_", " ")}</span></div>
+            <dl className="admin-facts"><div><dt>Membership</dt><dd>{connection.active_tier ? tierLabels[connection.active_tier] : (language === "de" ? "Nicht aktiv" : "Inactive")}</dd></div><div><dt>{language === "de" ? "Verknüpft" : "Linked"}</dt><dd>{formatDate(connection.linked_at, language)}</dd></div><div><dt>{language === "de" ? "Beigetreten" : "Joined"}</dt><dd>{formatDate(connection.joined_at, language)}</dd></div><div><dt>{language === "de" ? "Letzter Abgleich" : "Last sync"}</dt><dd>{formatDate(connection.last_synced_at, language)}</dd></div>{connection.last_error_code && <div><dt>Error</dt><dd>{connection.last_error_code}</dd></div>}</dl>
+            <label className="form-field"><span>{language === "de" ? "Nachvollziehbare Admin-Begründung" : "Documented admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setTelegramReasons((current) => ({ ...current, [connection.appwrite_user_id]: event.target.value }))} /></label>
+            <div className="decision-actions"><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || !connection.active_tier} onClick={() => manageTelegram(connection, "RESTORE")}>{language === "de" ? "Zugang neu senden" : "Resend access"}</button><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || connection.status === "ADMIN_SUSPENDED"} onClick={() => manageTelegram(connection, "REMOVE")}>{language === "de" ? "Zugang pausieren" : "Pause access"}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageTelegram(connection, "UNLINK")}>{language === "de" ? "Verknüpfung löschen" : "Delete connection"}</button></div>
+          </article>;
+        }) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Telegram-Verknüpfungen" : "No Telegram connections yet"}</h3><p>{language === "de" ? "Sobald ein Premium- oder VIP-Mitglied den Bot verbindet, erscheint der datensparsame Status hier." : "Once a Premium or VIP member connects the bot, the data-minimised status appears here."}</p></div>}</div>
       </section>}
 
       {tab === "monitoring" && <section className="admin-panel system-monitoring">
@@ -761,6 +821,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           <article className="admin-metric-card"><span>{language === "de" ? "Bezahlte Aufträge" : "Paid orders"}</span><strong>{Number(monitoring?.funnel?.orders?.paid || 0)}</strong><small>{Number(monitoring?.funnel?.orders?.pending || 0)} {language === "de" ? "offen" : "pending"}</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Aktive Memberships" : "Active memberships"}</span><strong>{Number(monitoring?.funnel?.entitlements?.active || 0)}</strong></article>
           <article className="admin-metric-card"><span>Newsletter</span><strong>{Number(monitoring?.funnel?.newsletter?.subscribed || 0)}</strong><small>{Number(monitoring?.funnel?.newsletter?.pending || 0)} Double-Opt-in pending</small></article>
+          <article className="admin-metric-card"><span>Telegram</span><strong>{Number(monitoring?.funnel?.telegram?.active || 0)}</strong><small>{Number(monitoring?.funnel?.telegram?.invite_sent || 0)} {language === "de" ? "Einladungen offen" : "invites pending"} · {Number(monitoring?.funnel?.telegram?.errors || 0)} errors</small></article>
         </div>
         <div className="monitoring-conversions">
           {[

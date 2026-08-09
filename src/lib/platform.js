@@ -450,6 +450,11 @@ export const cancelPaymentOrder = (orderId, reason) => apiRequest(
   { method: "DELETE", json: { reason }, idempotent: true },
 );
 export const getPremiumTelegramPerk = () => apiRequest("/v1/perks/telegram");
+export const createPremiumTelegramClaim = () => apiRequest("/v1/perks/telegram/claim", {
+  method: "POST",
+  json: {},
+  idempotent: true,
+});
 export const getVipWhatsappPerk = () => apiRequest("/v1/perks/vip-whatsapp");
 function currentDeviceName() {
   const platform = navigator.userAgentData?.platform || navigator.platform || "Device";
@@ -568,6 +573,17 @@ export const fetchPrivacyExport = () => apiRequest("/v1/privacy/export", {
 
 export const adminListUsers = () => apiRequest("/v1/users", { admin: true });
 export const adminGetSystemMonitoring = () => apiRequest("/v1/system/monitoring", { admin: true });
+export const adminListTelegramConnections = () => apiRequest("/v1/telegram/admin/connections", { admin: true });
+export const adminConfigureTelegramWebhook = () => apiRequest("/v1/telegram/admin/webhook/configure", {
+  admin: true,
+  method: "POST",
+  json: {},
+  idempotent: true,
+});
+export const adminManageTelegramConnection = (userId, action, reason) => apiRequest(
+  `/v1/telegram/admin/connections/${encodeURIComponent(userId)}`,
+  { admin: true, method: "POST", json: { action, reason }, idempotent: true },
+);
 export const adminQueueNewDrop = (contentItemId) => apiRequest("/v1/newsletter/new-drop", {
   admin: true,
   method: "POST",

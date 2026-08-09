@@ -388,4 +388,24 @@ describe("browser and repository security contract", () => {
     expect(read("cloudflare/src/workers/membership-api.ts"))
       .toContain("EVIDENCE_MEDIA_SIGNATURE_MISMATCH");
   });
+
+  it("binds Telegram access to one claimed account and fails closed on revocation", () => {
+    const migration = read("cloudflare/migrations/0026_telegram_account_linking.sql");
+    const telegram = read("cloudflare/src/shared/telegram.ts");
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const frontend = read("src/App.jsx");
+    expect(migration).toContain("token_sha256 TEXT NOT NULL UNIQUE");
+    expect(migration).toContain("telegram_user_id TEXT NOT NULL UNIQUE");
+    expect(migration).not.toMatch(/telegram_username|profile_photo|chat_content/i);
+    expect(telegram).toContain('request.headers.get("X-Telegram-Bot-Api-Secret-Token")');
+    expect(telegram).toContain("await secretsEqual(expected, supplied)");
+    expect(telegram).toContain('member_limit: 1');
+    expect(telegram).toContain('"revokeChatInviteLink"');
+    expect(telegram).toContain("if (failed && failClosed)");
+    expect(telegram).toContain('status = \'MEMBERSHIP_INACTIVE\'');
+    expect(telegram).toContain("sendTelegramAccessConfirmation");
+    expect(membership).toContain('requestUrl.pathname === "/v1/telegram/webhook"');
+    expect(frontend).not.toContain("premiumTelegram.inviteUrl");
+    expect(frontend).toContain("createPremiumTelegramClaim");
+  });
 });

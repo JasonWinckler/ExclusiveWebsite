@@ -47,13 +47,20 @@ gerätegebundenen Zehn-Minuten-Sitzung erreichbar.
 
 ## Persönliche Telegram-Einladungen
 
-Premium und VIP erhalten den Telegram-Vorteil. Für automatisch erzeugte,
-jeweils auf ein Mitglied begrenzte Bot-Einladungen benötigt der
-Membership-Worker die Secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` und
-`TELEGRAM_INVITE_ENCRYPTION_KEY`. Die URL wird verschlüsselt gespeichert und
-nur während der passenden aktiven Mitgliedschaft ausgeliefert. Solange diese
-Secrets fehlen, bleibt der vorhandene statische Einladungslink als
-Kompatibilitäts-Fallback aktiv.
+Premium und VIP erhalten den Telegram-Vorteil über den produktiven
+`@ShadowsTemptationAccessBot`. Das Mitglied erzeugt im Dashboard einen zehn
+Minuten gültigen Bot-Link. In D1 liegt nur dessen SHA-256-Digest. Erst nachdem
+das Mitglied den Bot selbst gestartet hat, wird die minimale numerische
+Telegram-Konto-ID mit dem Website-Konto verknüpft und ein 15 Minuten gültiger,
+auf dieses Telegram-Konto gebundener Kanal-Link im privaten Bot-Chat gesendet.
+Nach dem Beitritt widerruft der Webhook den Kanal-Link unmittelbar.
+
+Der Reiter „Telegram“ zeigt Status und technische Fehler, aber weder
+Telegram-Benutzernamen noch Profilbilder oder Chats. Dort kann der Zugang neu
+gesendet, administrativ pausiert oder die Verknüpfung vollständig gelöscht
+werden. Membership-Ende, Kontosperre und Kontolöschung entziehen den Zugang;
+eine spätere Reaktivierung sendet automatisch einen neuen Einmal-Link. Der
+stündliche Membership-Job dient zusätzlich als Abgleich-Failsafe.
 
 MFA ist für das Administratorkonto organisatorisch verpflichtend. Siehe
 [Sicherheit](SECURITY.md) und

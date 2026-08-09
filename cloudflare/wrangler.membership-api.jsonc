@@ -5,6 +5,7 @@
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "triggers": { "crons": ["7 * * * *"] },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 0.1 },
@@ -54,6 +55,10 @@
     "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
     "SEPA_ORDER_EXPIRY_HOURS": "48",
     "AUTH_EMAIL_MODE": "CUSTOM",
+    "TELEGRAM_BOT_USERNAME": "ShadowsTemptationAccessBot",
+    "TELEGRAM_WEBHOOK_URL": "https://exclusive.jason-shadow.com/api/member/v1/telegram/webhook",
+    "TELEGRAM_LINK_TOKEN_TTL_MINUTES": "10",
+    "TELEGRAM_INVITE_TTL_MINUTES": "15",
     "TELEGRAM_INVITE_KEY_VERSION": "v1",
     "INVOICE_SELLER_NAME": "Jason Shadow · Inhaber Jason Winckler",
     "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
@@ -63,6 +68,7 @@
   "env": {
     "preview": {
       "name": "exclusive-membership-api-preview",
+      "triggers": { "crons": [] },
       "d1_databases": [{
         "binding": "DB",
         "database_name": "exclusive-membership-preview",
@@ -105,6 +111,11 @@
         "SEPA_TRANSFER_MODE": "epc-qr-credit-transfer-v1",
         "SEPA_ORDER_EXPIRY_HOURS": "48",
         "AUTH_EMAIL_MODE": "CUSTOM",
+        "TELEGRAM_BOT_USERNAME": "ShadowsTemptationAccessBot",
+        "TELEGRAM_WEBHOOK_URL": "https://exclusive.jason-shadow.com/api/member/v1/telegram/webhook",
+        "TELEGRAM_LINK_TOKEN_TTL_MINUTES": "10",
+        "TELEGRAM_INVITE_TTL_MINUTES": "15",
+        "TELEGRAM_INVITE_KEY_VERSION": "v1",
         "INVOICE_SELLER_NAME": "Jason Shadow · Inhaber Jason Winckler",
         "INVOICE_SELLER_ADDRESS": "Kleiberweg 24, 48432 Rheine, Deutschland",
         "INVOICE_SELLER_EMAIL": "info@exclusive.jason-shadow.com",

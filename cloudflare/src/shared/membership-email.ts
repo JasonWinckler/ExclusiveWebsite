@@ -20,6 +20,12 @@ export interface MembershipRenewalReminderEmailInput {
   expiresAt: string;
 }
 
+export interface TelegramAccessEmailInput {
+  locale: MembershipLocale;
+  displayName: string;
+  tier: string;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -211,6 +217,113 @@ export function membershipRenewalReminderEmail(
 </body>
 </html>`,
   };
+}
+
+export function telegramAccessEmail(
+  input: TelegramAccessEmailInput,
+): { subject: string; html: string } {
+  const isGerman = input.locale === "de";
+  const memberName = escapeHtml(input.displayName || (isGerman ? "Exclusive Member" : "Exclusive Member"));
+  const tier = escapeHtml(tierName(input.tier));
+  const copy = isGerman
+    ? {
+      subject: "Dein privater Telegram-Zugang ist aktiv",
+      preheader: "Dein Telegram-Konto wurde sicher mit deiner Membership verbunden.",
+      kicker: "PRIVATE COMMUNITY · ZUGANG AKTIV",
+      title: "Du bist jetzt im inneren Kreis.",
+      greeting: `Hallo ${memberName},`,
+      intro: `dein Telegram-Konto wurde erfolgreich mit deiner ${tier} Membership verbunden. Der verwendete Einladungslink wurde direkt nach deinem Beitritt entwertet.`,
+      security: "Im Dashboard speichern wir nur die für Freigabe und späteren Entzug notwendige Telegram-Konto-ID – keinen Telegram-Benutzernamen, kein Profilbild und keine Chat-Inhalte.",
+      cta: "Membership-Dashboard öffnen",
+      legal: "Rechtliches & Datenschutz",
+    }
+    : {
+      subject: "Your private Telegram access is active",
+      preheader: "Your Telegram account is now securely linked to your membership.",
+      kicker: "PRIVATE COMMUNITY · ACCESS ACTIVE",
+      title: "You are now inside the inner circle.",
+      greeting: `Hello ${memberName},`,
+      intro: `your Telegram account has been successfully linked to your ${tier} membership. The invitation link was revoked immediately after you joined.`,
+      security: "The dashboard stores only the Telegram account ID required to grant and later revoke access—never your Telegram username, profile photo or chat content.",
+      cta: "Open membership dashboard",
+      legal: "Legal & privacy",
+    };
+  return {
+    subject: copy.subject,
+    html: `<!doctype html>
+<html lang="${input.locale}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(copy.subject)}</title></head>
+<body style="margin:0;background:#120006;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy.preheader)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#120006">
+    <tr><td align="center" style="padding:28px 12px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#25000d;border:1px solid #75452d;border-radius:22px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td style="padding:34px 38px 14px">
+          <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
+          <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
+          <p style="margin:0 0 12px;color:#fff4df;font-size:17px">${copy.greeting}</p>
+          <p style="margin:0;color:#d8c2b9;font-size:17px;line-height:1.65">${copy.intro}</p>
+        </td></tr>
+        <tr><td style="padding:18px 38px"><div style="background:#180008;border:1px solid #5b3028;border-radius:16px;padding:20px 22px;color:#d8c2b9;font-size:14px;line-height:1.65">${copy.security}</div></td></tr>
+        <tr><td align="center" style="padding:10px 38px 28px"><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:linear-gradient(135deg,#f26b2f,#9d122a);color:#fff8eb;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a></td></tr>
+        <tr><td style="padding:0 38px 34px;color:#bdaaa4;font-size:14px"><a href="https://exclusive.jason-shadow.com/legal/" style="color:#f0b46d">${copy.legal}</a></td></tr>
+      </table>
+      <p style="margin:18px 0 0;color:#806c68;font-size:12px">Shadow's Temptation · info@exclusive.jason-shadow.com</p>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  };
+}
+
+export async function sendTelegramAccessConfirmation(
+  env: MembershipEmailDeliveryEnv,
+  userId: string,
+  joinedAt: string,
+): Promise<"SENT" | "FAILED" | "ALREADY_SENT"> {
+  const connection = await env.DB.prepare(`
+    SELECT c.access_email_sent_at, c.status, u.display_name, u.preferred_locale,
+      e.tier
+    FROM telegram_connections c
+    JOIN user_profiles u ON u.appwrite_user_id = c.appwrite_user_id
+    LEFT JOIN entitlements e ON e.id = c.entitlement_id
+    WHERE c.appwrite_user_id = ?
+  `).bind(userId).first<{
+    access_email_sent_at: string | null;
+    status: string;
+    display_name: string;
+    preferred_locale: "de" | "en" | null;
+    tier: string | null;
+  }>();
+  if (!connection || connection.status !== "ACTIVE" || !connection.tier) return "FAILED";
+  if (connection.access_email_sent_at) return "ALREADY_SENT";
+  const locale = connection.preferred_locale === "en" ? "en" : "de";
+  const email = telegramAccessEmail({
+    locale,
+    displayName: connection.display_name,
+    tier: connection.tier,
+  });
+  const messageId = `tg-${userId.replace(/[^A-Za-z0-9]/g, "").slice(0, 20)}-${joinedAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+  try {
+    await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      userId,
+      messageId,
+      subject: email.subject,
+      html: email.html,
+    });
+    await env.DB.prepare(`UPDATE telegram_connections
+      SET access_email_sent_at = ?, last_error_code = NULL, updated_at = ?
+      WHERE appwrite_user_id = ? AND access_email_sent_at IS NULL`)
+      .bind(isoNow(), isoNow(), userId).run();
+    return "SENT";
+  } catch {
+    await env.DB.prepare(`UPDATE telegram_connections
+      SET last_error_code = 'TELEGRAM_ACCESS_EMAIL_FAILED', updated_at = ?
+      WHERE appwrite_user_id = ?`)
+      .bind(isoNow(), userId).run();
+    return "FAILED";
+  }
 }
 
 interface MembershipEmailDeliveryEnv {

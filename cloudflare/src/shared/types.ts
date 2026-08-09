@@ -105,6 +105,11 @@ export interface MembershipEnv extends BaseEnv {
   INVOICE_TAX_NOTE?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_BOT_USERNAME?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
+  TELEGRAM_WEBHOOK_URL?: string;
+  TELEGRAM_LINK_TOKEN_TTL_MINUTES?: string;
+  TELEGRAM_INVITE_TTL_MINUTES?: string;
   TELEGRAM_INVITE_ENCRYPTION_KEY?: string;
   TELEGRAM_INVITE_KEY_VERSION?: string;
   VIP_WHATSAPP_NUMBER?: string;
@@ -112,6 +117,7 @@ export interface MembershipEnv extends BaseEnv {
 
 export interface AdminEnv extends BaseEnv {
   ADMIN_RATE_LIMITER: RateLimit;
+  MEMBERSHIP_API: Service;
   ADMIN_LABEL?: string;
   IDENTITY_PROJECTION: Service;
   MAINTENANCE_JOBS: Service;
