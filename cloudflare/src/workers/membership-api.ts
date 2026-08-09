@@ -2160,7 +2160,6 @@ async function premiumTelegramPerk(
         env.TELEGRAM_INVITE_KEY_VERSION?.trim() || "v1", access.expires_at, now,
       ).run();
   }
-  if (!inviteValue) inviteValue = env.PREMIUM_TELEGRAM_INVITE_URL ?? null;
   if (!inviteValue) throw new ApiError(503, "PREMIUM_TELEGRAM_NOT_CONFIGURED");
   let inviteUrl: URL;
   try {

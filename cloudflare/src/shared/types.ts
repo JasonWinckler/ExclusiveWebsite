@@ -103,7 +103,6 @@ export interface MembershipEnv extends BaseEnv {
   INVOICE_SELLER_EMAIL?: string;
   INVOICE_TAX_IDENTIFIER?: string;
   INVOICE_TAX_NOTE?: string;
-  PREMIUM_TELEGRAM_INVITE_URL?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_INVITE_ENCRYPTION_KEY?: string;
