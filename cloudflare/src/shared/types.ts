@@ -25,17 +25,6 @@ export type EntitlementTier =
   | "EXCLUSIVE_PREMIUM"
   | "EXCLUSIVE_VIP";
 
-export interface AppwriteUser {
-  $id: string;
-  email: string;
-  name: string;
-  emailVerification: boolean;
-  status: boolean;
-  labels: string[];
-  mfa?: boolean;
-  accessedAt?: string;
-}
-
 export interface AuthenticatedIdentity {
   userId: string;
   email: string;
@@ -43,14 +32,11 @@ export interface AuthenticatedIdentity {
   emailVerified: boolean;
   mfaEnabled: boolean;
   labels: readonly string[];
-  appwriteAccessedAt: string | null;
+  lastAccessedAt: string | null;
 }
 
 export interface BaseEnv {
   DB: D1Database;
-  APPWRITE_ENDPOINT?: string;
-  APPWRITE_PROJECT_ID?: string;
-  AUTH_MODE?: string;
   SITE_ORIGINS?: string;
   MAX_JSON_BODY_BYTES?: string;
   MAX_UPSTREAM_JSON_BYTES?: string;

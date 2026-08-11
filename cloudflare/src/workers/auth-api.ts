@@ -275,7 +275,7 @@ async function register(request: Request, env: AuthEnv): Promise<{
   }
   const identity = await authenticateUser(new Request(request.url, {
     headers: { Cookie: `${SESSION_COOKIE}${session.token}` },
-  }), { ...env, AUTH_MODE: "CLOUDFLARE_ONLY" });
+  }), env);
   return { user: publicUser(identity), session };
 }
 
@@ -398,7 +398,7 @@ async function actionToken(
 }
 
 async function requireSession(request: Request, env: AuthEnv): Promise<AuthenticatedIdentity> {
-  return authenticateUser(request, { ...env, AUTH_MODE: "CLOUDFLARE_ONLY" });
+  return authenticateUser(request, env);
 }
 
 async function mfaStatus(request: Request, env: AuthEnv): Promise<Record<string, unknown>> {

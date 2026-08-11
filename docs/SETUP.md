@@ -19,10 +19,13 @@ Admin-MFA ist verpflichtend; Nutzer-MFA optional.
 
 ## Domain
 
-Namecheap PremiumDNS bleibt autoritativ. Es findet kein Nameserverwechsel
-statt. Der Host `exclusive` ist als Pages Custom Domain verknüpft und wird per
-CNAME auf `shadows-temptation.pages.dev` geroutet. Der Apex-Host
-`jason-shadow.com` bleibt unberührt.
+Namecheap bleibt Registrar. Die autoritativen Nameserver werden nach dem
+kontrollierten Cutover von Cloudflare betrieben; der vollständige Record-Export,
+die Cutover-Gates und der Rückfallweg stehen in
+`DNS_CUTOVER_2026-08-11.md`. `exclusive.jason-shadow.com` ist ausschließlich
+mit dem Pages-Projekt `shadows-temptation` verbunden. Der Apex,
+`www.jason-shadow.com` und `order.jason-shadow.com` gehören zu ihren jeweils
+eigenen Pages-Projekten und dürfen nicht auf dieses Projekt zeigen.
 
 ## Validierung
 

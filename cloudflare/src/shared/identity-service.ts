@@ -51,7 +51,7 @@ async function callIdentityServiceJson<T>(
   }
 }
 
-export function syncAppwriteLabel(
+export function syncIdentityLabel(
   service: Service,
   secret: string,
   input: {
@@ -63,7 +63,7 @@ export function syncAppwriteLabel(
   return callIdentityService(service, secret, "/sync-labels", input);
 }
 
-export function deleteAppwriteUser(
+export function deleteIdentityUser(
   service: Service,
   secret: string,
   userId: string,
@@ -71,7 +71,7 @@ export function deleteAppwriteUser(
   return callIdentityService(service, secret, "/delete-user", { userId });
 }
 
-export function revokeAppwriteSessions(
+export function revokeIdentitySessions(
   service: Service,
   secret: string,
   userId: string,
@@ -79,7 +79,7 @@ export function revokeAppwriteSessions(
   return callIdentityService(service, secret, "/revoke-sessions", { userId });
 }
 
-export function listAppwriteSessions(
+export function listIdentitySessions(
   service: Service,
   secret: string,
   userId: string,
@@ -87,7 +87,7 @@ export function listAppwriteSessions(
   return callIdentityServiceJson(service, secret, "/list-sessions", { userId });
 }
 
-export function deleteAppwriteSession(
+export function deleteIdentitySession(
   service: Service,
   secret: string,
   userId: string,
@@ -96,7 +96,7 @@ export function deleteAppwriteSession(
   return callIdentityService(service, secret, "/delete-session", { userId, sessionId });
 }
 
-export function updateAppwriteUserStatus(
+export function updateIdentityUserStatus(
   service: Service,
   secret: string,
   userId: string,
@@ -105,7 +105,7 @@ export function updateAppwriteUserStatus(
   return callIdentityService(service, secret, "/update-user-status", { userId, status });
 }
 
-export function verifyAppwriteUserEmail(
+export function verifyIdentityUserEmail(
   service: Service,
   secret: string,
   userId: string,
@@ -113,7 +113,7 @@ export function verifyAppwriteUserEmail(
   return callIdentityService(service, secret, "/verify-user-email", { userId });
 }
 
-export function updateAppwriteUserPassword(
+export function updateIdentityUserPassword(
   service: Service,
   secret: string,
   userId: string,
@@ -122,7 +122,7 @@ export function updateAppwriteUserPassword(
   return callIdentityService(service, secret, "/update-user-password", { userId, password });
 }
 
-export function updateAppwriteUserName(
+export function updateIdentityUserName(
   service: Service,
   secret: string,
   userId: string,

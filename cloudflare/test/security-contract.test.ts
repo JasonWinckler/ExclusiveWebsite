@@ -34,7 +34,7 @@ describe("browser and repository security contract", () => {
     const example = read(".env.example");
     expect(example).toContain("VITE_CLOUDFLARE_API_BASE_URL");
     expect(example).not.toMatch(/VITE_.*(?:KEY|SECRET|DATABASE|BUCKET|FUNCTION|COLLECTION)/);
-    expect(read("src/lib/platform.js")).not.toContain("APPWRITE_SERVER_API_KEY");
+    expect(read("src/lib/platform.js")).not.toContain("APPWRITE_");
     const wranglerConfigs = filesRecursively(cloudflareRoot)
       .filter((path) => /wrangler\..*\.jsonc$/.test(path))
       .map((path) => readFileSync(path, "utf8"))
@@ -173,8 +173,8 @@ describe("browser and repository security contract", () => {
     const membership = read("cloudflare/src/workers/membership-api.ts");
     const admin = read("cloudflare/src/workers/admin-api.ts");
     const frontendApi = read("src/lib/platform.js");
-    expect(membership).toContain("await revokeAppwriteSessions(");
-    expect(admin.match(/await revokeAppwriteSessions\(/g)).toHaveLength(2);
+    expect(membership).toContain("await revokeIdentitySessions(");
+    expect(admin.match(/await revokeIdentitySessions\(/g)).toHaveLength(2);
     const authWorker = read("cloudflare/src/workers/auth-api.ts");
     expect(read("cloudflare/src/shared/auth.ts")).toContain("__Host-shadow_session");
     expect(authWorker).toContain("Secure; HttpOnly; SameSite=Strict");

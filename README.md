@@ -19,9 +19,8 @@ membership platform at `exclusive.jason-shadow.com`.
 - Membership, Admin, Identity and Maintenance Workers communicate through
   Cloudflare service bindings. The private Identity Worker sends branded mail
   through Microsoft Graph and has no public route.
-- Appwrite is outside the production request path after the migration. Its
-  previous site and auth data are retained temporarily as rollback material;
-  they are not an authorization or data source.
+- The production system is Cloudflare-native and has no Appwrite runtime,
+  authentication, data, build or hosting dependency.
 
 Every protected operation fails closed. The browser never chooses its user ID,
 role, age status, tier or R2 object key.

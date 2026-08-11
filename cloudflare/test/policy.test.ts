@@ -24,7 +24,7 @@ const activeProfile: UserProfileRow = {
 };
 
 describe("authorization fails closed", () => {
-  it("does not grant access from an Appwrite label alone", () => {
+  it("does not grant access from a legacy label alone", () => {
     const decision = authorizeProtectedContent({
       profile: { ...activeProfile, age_status: "NOT_STARTED" },
       entitlement: {

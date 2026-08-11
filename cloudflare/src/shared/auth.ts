@@ -1,20 +1,9 @@
-import { upsertUserProjection } from "./db";
-import { ApiError, parsePositiveInt, readJsonResponse } from "./http";
+import { ApiError } from "./http";
 import { sha256Hex } from "./security";
 import type {
-  AppwriteUser,
   AuthenticatedIdentity,
   BaseEnv,
 } from "./types";
-
-function extractBearerToken(request: Request): string {
-  const authorization = request.headers.get("Authorization") ?? "";
-  const match = /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
-  if (!match?.[1] || match[1].length > 8192) {
-    throw new ApiError(401, "VALID_BEARER_TOKEN_REQUIRED");
-  }
-  return match[1];
-}
 
 export const AUTH_COOKIE_NAME = "__Host-shadow_session";
 
@@ -30,19 +19,6 @@ function sessionToken(request: Request): string | null {
   return null;
 }
 
-function secureAppwriteEndpoint(raw: string | undefined): string {
-  let endpoint: URL;
-  try {
-    endpoint = new URL(raw ?? "");
-  } catch {
-    throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  }
-  if (endpoint.protocol !== "https:") {
-    throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  }
-  return endpoint.toString().replace(/\/$/, "");
-}
-
 interface CloudflareIdentityRow {
   session_id: string;
   user_id: string;
@@ -56,7 +32,7 @@ interface CloudflareIdentityRow {
   last_seen_at: string;
 }
 
-async function authenticateCloudflareSession(
+async function authenticateSession(
   request: Request,
   env: BaseEnv,
 ): Promise<AuthenticatedIdentity | null> {
@@ -110,109 +86,17 @@ async function authenticateCloudflareSession(
     emailVerified: row.email_verified === 1,
     mfaEnabled: row.mfa_enabled === 1,
     labels: Object.freeze(labels),
-    appwriteAccessedAt: null,
+    lastAccessedAt: null,
   };
-}
-
-function trustedIso(value: string | undefined): string | null {
-  if (!value) return null;
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
-}
-
-function safeFetchError(error: unknown): { errorName: string; errorMessage: string } {
-  const errorName = error instanceof Error ? error.name : "UnknownError";
-  const rawMessage = error instanceof Error ? error.message : String(error);
-  const errorMessage = rawMessage
-    .replace(/[A-Za-z0-9._~-]{32,}/g, "[redacted]")
-    .slice(0, 256);
-  return { errorName, errorMessage };
 }
 
 export async function authenticateUser(
   request: Request,
   env: BaseEnv,
-  options: { requireVerifiedEmail?: boolean; projectUser?: boolean } = {},
+  options: { requireVerifiedEmail?: boolean } = {},
 ): Promise<AuthenticatedIdentity> {
-  const cloudflareIdentity = await authenticateCloudflareSession(request, env);
-  if (cloudflareIdentity) {
-    if (options.requireVerifiedEmail && !cloudflareIdentity.emailVerified) {
-      throw new ApiError(403, "EMAIL_NOT_VERIFIED");
-    }
-    return cloudflareIdentity;
-  }
-  if ((env.AUTH_MODE ?? "DUAL").toUpperCase() === "CLOUDFLARE_ONLY") {
-    throw new ApiError(401, "AUTHENTICATION_REQUIRED");
-  }
-  const token = extractBearerToken(request);
-  if (!env.APPWRITE_PROJECT_ID?.trim()) {
-    throw new ApiError(503, "APPWRITE_NOT_CONFIGURED");
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${secureAppwriteEndpoint(env.APPWRITE_ENDPOINT)}/account`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
-        "X-Appwrite-JWT": token,
-        "X-Appwrite-Response-Format": "1.9.5",
-      },
-      redirect: "manual",
-    });
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: "appwrite_identity_fetch_failed",
-      ...safeFetchError(error),
-    }));
-    throw new ApiError(503, "IDENTITY_PROVIDER_UNAVAILABLE");
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    throw new ApiError(401, "INVALID_OR_EXPIRED_IDENTITY");
-  }
-  if (!response.ok) {
-    console.error(JSON.stringify({
-      event: "appwrite_identity_upstream_rejected",
-      status: response.status,
-      statusText: response.statusText.slice(0, 64),
-    }));
-    throw new ApiError(503, "IDENTITY_PROVIDER_UNAVAILABLE");
-  }
-
-  const user = await readJsonResponse<AppwriteUser>(
-    response,
-    parsePositiveInt(env.MAX_UPSTREAM_JSON_BYTES, 65_536, 262_144),
-    "INVALID_IDENTITY_PROVIDER_RESPONSE",
-  );
-  if (
-    !user.$id ||
-    !user.email ||
-    user.status !== true ||
-    !Array.isArray(user.labels)
-  ) {
-    throw new ApiError(401, "ANONYMOUS_OR_DISABLED_IDENTITY");
-  }
-
-  const identity: AuthenticatedIdentity = {
-    userId: user.$id,
-    email: user.email,
-    displayName: user.name || "",
-    emailVerified: user.emailVerification === true,
-    mfaEnabled: user.mfa === true,
-    labels: Object.freeze([...user.labels]),
-    appwriteAccessedAt: trustedIso(user.accessedAt),
-  };
-
-  if (options.projectUser !== false) {
-    try {
-      await upsertUserProjection(env.DB, identity);
-    } catch {
-      throw new ApiError(503, "MEMBERSHIP_DATABASE_UNAVAILABLE");
-    }
-  }
-
+  const identity = await authenticateSession(request, env);
+  if (!identity) throw new ApiError(401, "AUTHENTICATION_REQUIRED");
   if (options.requireVerifiedEmail && !identity.emailVerified) {
     throw new ApiError(403, "EMAIL_NOT_VERIFIED");
   }

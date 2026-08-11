@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-auth-api",
   "main": "src/workers/auth-api.ts",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": {
@@ -27,7 +27,6 @@
   }],
   "vars": {
     "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
-    "AUTH_MODE": "CLOUDFLARE_ONLY",
     "AUTH_PASSWORD_PEPPER_VERSION": "v2",
     "AUTH_PASSWORD_PEPPER_PREVIOUS_VERSION": "v1",
     "AUTH_ENCRYPTION_KEY_VERSION": "v2",

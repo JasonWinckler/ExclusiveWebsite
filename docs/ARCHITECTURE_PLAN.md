@@ -45,5 +45,4 @@ Entitlements, Altersentscheidungen und Audits unverändert zugeordnet bleiben.
   Versanddetails höchstens 30 Tage.
 - D1-Sicherung: täglicher privater Export, höchstens zwei Stände; Time Travel
   bleibt die automatische kurzfristige Wiederherstellungsebene.
-- Appwrite bleibt während des begrenzten Rollback-Fensters unverändert, ist aber
-  nicht Teil des produktiven Anfragewegs.
+- Es gibt keine parallele externe Identitäts-, Datenbank- oder Hostingquelle.
