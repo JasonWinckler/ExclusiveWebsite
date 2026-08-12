@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-maintenance-jobs",
   "main": "src/workers/maintenance-jobs.ts",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": {

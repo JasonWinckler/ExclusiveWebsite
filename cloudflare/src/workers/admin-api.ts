@@ -19,12 +19,12 @@ import {
   requireIdempotencyKey,
 } from "../shared/http";
 import {
-  deleteAppwriteSession,
-  listAppwriteSessions,
-  revokeAppwriteSessions,
-  syncAppwriteLabel,
-  updateAppwriteUserStatus,
-  verifyAppwriteUserEmail,
+  deleteIdentitySession,
+  listIdentitySessions,
+  revokeIdentitySessions,
+  syncIdentityLabel,
+  updateIdentityUserStatus,
+  verifyIdentityUserEmail,
 } from "../shared/identity-service";
 import {
   sendMembershipActivationConfirmation,
@@ -253,7 +253,7 @@ async function listUserDevices(env: AdminEnv, userId: string): Promise<Record<st
       ORDER BY status ASC, last_seen_at DESC
       LIMIT 20
     `).bind(userId).all(),
-    listAppwriteSessions(
+    listIdentitySessions(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
@@ -284,7 +284,7 @@ async function revokeUserDevice(
     `).bind(targetId, userId).first<{ appwrite_session_id: string | null }>();
     if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
     if (device.appwrite_session_id) {
-      await deleteAppwriteSession(
+      await deleteIdentitySession(
         env.IDENTITY_PROJECTION,
         env.LABEL_SYNC_SERVICE_SECRET,
         userId,
@@ -298,7 +298,7 @@ async function revokeUserDevice(
     if ((result.meta.changes ?? 0) !== 1) throw new ApiError(409, "DEVICE_CONCURRENTLY_UPDATED");
   } else if (kind === "session") {
     if (!/^[A-Za-z0-9._-]{1,36}$/.test(targetId)) throw new ApiError(400, "INVALID_SESSION_ID");
-    await deleteAppwriteSession(
+    await deleteIdentitySession(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
@@ -361,7 +361,7 @@ async function setUserDeviceLock(
       WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
     `).bind(now, now, targetId, userId).run();
     if (current.appwrite_session_id) {
-      await deleteAppwriteSession(
+      await deleteIdentitySession(
         env.IDENTITY_PROJECTION,
         env.LABEL_SYNC_SERVICE_SECRET,
         userId,
@@ -661,7 +661,7 @@ async function decideAgeCase(
 
   let labelSyncStatus = "SYNCED";
   try {
-    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+    await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId: ageCase.appwrite_user_id,
       category: "AGE",
       desiredLabel,
@@ -681,11 +681,11 @@ async function decideAgeCase(
     await env.DB.batch([
       env.DB.prepare(`
         UPDATE age_verification_cases SET label_sync_status = 'FAILED',
-          label_sync_last_error_code = 'APPWRITE_SYNC_FAILED', updated_at = ? WHERE id = ?
+          label_sync_last_error_code = 'IDENTITY_SYNC_FAILED', updated_at = ? WHERE id = ?
       `).bind(now, ageCase.id),
       env.DB.prepare(`
         UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
-          last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+          last_error_code = 'IDENTITY_SYNC_FAILED', next_retry_at = ?, updated_at = ?
         WHERE id = ?
       `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, attemptId),
     ]);
@@ -1152,7 +1152,7 @@ async function grantManualMembership(
 
   let labelSyncStatus = "SYNCED";
   try {
-    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+    await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId,
       category: "ACCESS",
       desiredLabel: accessLabelForTier(effectiveTier),
@@ -1165,7 +1165,7 @@ async function grantManualMembership(
     labelSyncStatus = "FAILED";
     await env.DB.prepare(`
       UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
-        last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+        last_error_code = 'IDENTITY_SYNC_FAILED', next_retry_at = ?, updated_at = ?
       WHERE id = ?
     `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, attemptId).run();
   }
@@ -1505,7 +1505,7 @@ async function manuallyActivatePaymentOrder(
 
   let labelSyncStatus = "SYNCED";
   try {
-    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+    await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId: subscription.appwrite_user_id,
       category: "ACCESS",
       desiredLabel,
@@ -1519,7 +1519,7 @@ async function manuallyActivatePaymentOrder(
     const failedAt = isoNow();
     await env.DB.prepare(`
       UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
-        last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+        last_error_code = 'IDENTITY_SYNC_FAILED', next_retry_at = ?, updated_at = ?
       WHERE id = ?
     `).bind(
       new Date(Date.now() + 60 * 60_000).toISOString(),
@@ -1807,7 +1807,7 @@ async function importN26Csv(
 
   for (const [userId, sync] of usersToSync) {
     try {
-      await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
         userId,
         category: "ACCESS",
         desiredLabel: sync.desiredLabel,
@@ -1820,7 +1820,7 @@ async function importN26Csv(
       const now = isoNow();
       await env.DB.prepare(`
         UPDATE label_sync_attempts SET status = 'FAILED', attempt_count = 1,
-          last_error_code = 'APPWRITE_SYNC_FAILED', next_retry_at = ?, updated_at = ?
+          last_error_code = 'IDENTITY_SYNC_FAILED', next_retry_at = ?, updated_at = ?
         WHERE id = ?
       `).bind(new Date(Date.now() + 60 * 60_000).toISOString(), now, sync.attemptId).run();
     }
@@ -2463,31 +2463,31 @@ async function restrictUser(
   } catch {
     // The membership worker's scheduled access sync is the fail-safe removal.
   }
-  let appwriteSessionRevocation = "SYNCED";
+  let identitySessionRevocation = "SYNCED";
   try {
-    await revokeAppwriteSessions(
+    await revokeIdentitySessions(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
     );
   } catch {
-    appwriteSessionRevocation = "FAILED";
+    identitySessionRevocation = "FAILED";
   }
-  let appwriteStatusSync = "SYNCED";
+  let identityStatusSync = "SYNCED";
   try {
-    await updateAppwriteUserStatus(
+    await updateIdentityUserStatus(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
       false,
     );
   } catch {
-    appwriteStatusSync = "FAILED";
+    identityStatusSync = "FAILED";
   }
   return {
     accountStatus: "RESTRICTED",
-    appwriteSessionRevocation,
-    appwriteStatusSync,
+    identitySessionRevocation,
+    identityStatusSync,
   };
 }
 
@@ -2536,17 +2536,17 @@ async function unrestrictUser(
       now,
     }),
   ]);
-  let appwriteStatusSync = "SYNCED";
+  let identityStatusSync = "SYNCED";
   let accessLabelSync = "SYNCED";
   try {
-    await updateAppwriteUserStatus(
+    await updateIdentityUserStatus(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
       true,
     );
   } catch {
-    appwriteStatusSync = "FAILED";
+    identityStatusSync = "FAILED";
   }
   const activeEntitlement = await env.DB.prepare(`
     SELECT tier FROM entitlements
@@ -2561,7 +2561,7 @@ async function unrestrictUser(
     LIMIT 1
   `).bind(userId, now, now).first<{ tier: AccessTier }>();
   try {
-    await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+    await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId,
       category: "ACCESS",
       desiredLabel: activeEntitlement ? accessLabelForTier(activeEntitlement.tier) : null,
@@ -2588,7 +2588,7 @@ async function unrestrictUser(
   return {
     accountStatus: nextStatus,
     restoredEntitlements: results[1]?.meta.changes ?? 0,
-    appwriteStatusSync,
+    identityStatusSync,
     accessLabelSync,
   };
 }
@@ -2619,7 +2619,7 @@ async function manuallyVerifyUserEmail(
     };
   }
 
-  await verifyAppwriteUserEmail(
+  await verifyIdentityUserEmail(
     env.IDENTITY_PROJECTION,
     env.LABEL_SYNC_SERVICE_SECRET,
     userId,
@@ -2744,26 +2744,26 @@ async function scheduleAdminAccountDeletion(
   } catch {
     // The membership worker's scheduled access sync is the fail-safe cleanup.
   }
-  let appwriteSessionRevocation = "SYNCED";
+  let identitySessionRevocation = "SYNCED";
   try {
-    await revokeAppwriteSessions(
+    await revokeIdentitySessions(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
     );
   } catch {
-    appwriteSessionRevocation = "FAILED";
+    identitySessionRevocation = "FAILED";
   }
-  let appwriteStatusSync = "SYNCED";
+  let identityStatusSync = "SYNCED";
   try {
-    await updateAppwriteUserStatus(
+  await updateIdentityUserStatus(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
       false,
     );
   } catch {
-    appwriteStatusSync = "FAILED";
+    identityStatusSync = "FAILED";
   }
   let deletionStatus = "DELETION_PENDING";
   try {
@@ -2785,8 +2785,8 @@ async function scheduleAdminAccountDeletion(
     deletionJobId: jobId,
     status: deletionStatus,
     scheduledAt: now,
-    appwriteSessionRevocation,
-    appwriteStatusSync,
+    identitySessionRevocation,
+    identityStatusSync,
     existing: false,
   };
 }
@@ -2915,7 +2915,7 @@ async function retryLabelSync(
     status: string;
   }>();
   if (!attempt) throw new ApiError(404, "LABEL_SYNC_ATTEMPT_NOT_FOUND");
-  await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+  await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
     userId: attempt.appwrite_user_id,
     category: attempt.category,
     desiredLabel: attempt.desired_label,

@@ -1,46 +1,38 @@
-# Appwrite → Cloudflare: produktive Migration
+# Cloudflare-only production architecture
 
-## Ergebnis
+## Result
 
-Frontend, Authentifizierung, Autorisierung, Datenbank, private Medien,
-Altersprüfung, Bestellungen, Adminfunktionen, Wartung und internes Routing
-laufen in Cloudflare. Microsoft Graph bleibt ausschließlich der
-Transaktionsmail-Transport. Namecheap PremiumDNS bleibt autoritativ; es wurde
-kein Nameserverwechsel vorgenommen.
+Frontend, authentication, authorization, database, private media, age review,
+orders, administration, maintenance and internal routing run on Cloudflare.
+Microsoft Graph remains the transactional-mail transport. The repository has no
+Appwrite SDK, endpoint, credential, build or runtime fallback.
 
-## Übernommene Daten
+## Data continuity
 
-Die bisherigen D1-Datensätze waren bereits maßgeblich und wurden unverändert
-weiterverwendet: Profile, Datenschutzpräferenzen, Altersfälle/-entscheidungen,
-Produkte, SEPA-Aufträge, Rechnungen, Entitlements, Geräte, Posts, Kommentare und
-Audits. Migration `0023_cloudflare_identity.sql` ergänzt Auth-Konten,
-Sitzungen, MFA/Recovery und Einmalaktionen und verknüpft sie mit derselben
-internen Nutzer-ID.
+D1 remains authoritative for profiles, privacy state, age cases and decisions,
+products, SEPA orders, invoices, entitlements, devices, posts, comments and
+audits. Existing internal subject identifiers and historical column names remain
+stable so orders, entitlements and audit trails keep their original ownership.
+Those names do not represent an external dependency.
 
-Appwrite kann Passwort-Hashes nicht exportieren. Deshalb enthält jedes
-übernommene Bestandskonto zunächst `migration_required=1`. Der einmalige
-branded Passwortreset erzeugt im Browser einen starken, gesalzenen
-PBKDF2-Verifier. Cloudflare speichert davon nur einen zusätzlich mit einem
-serverseitigen Secret geschützten HMAC; sämtliche fachlichen Daten und
-Memberships bleiben erhalten. Neuregistrierungen landen direkt in D1.
+## Security properties
 
-## Sicherheitsverbesserungen
+- host-bound `Secure`, `HttpOnly`, `SameSite=Strict` session cookie;
+- only SHA-256 session-token hashes in D1;
+- server-side role, age and membership derivation;
+- encrypted TOTP secrets, hashed recovery codes and mandatory admin MFA;
+- private service bindings between Pages Functions and Workers;
+- private R2 objects streamed only after D1 authorization;
+- fail-closed authentication without a secondary identity-provider fallback.
 
-- kein Appwrite-JWT und kein Auth-Token in Browser-JavaScript;
-- hostgebundenes HttpOnly-Sessioncookie und ausschließlich gehashte Tokens in
-  D1;
-- serverseitig abgeleitete Rollen, Age- und Membership-Labels;
-- verschlüsselte TOTP-Secrets, gehashte Einmal-Recovery-Codes und Pflicht-MFA
-  für Admins;
-- interne Auth-/Identity-Worker ohne öffentliche Route;
-- Same-Origin-Pages-Gateway und exakte Origin-Prüfung;
-- D1-Time-Travel-Rücksetzpunkt vor der additiven Migration.
+## DNS and hosting cutover
 
-## Cutover und Rückfall
+`exclusive.jason-shadow.com` stays on its dedicated Cloudflare Pages project.
+The apex music site and `/codex/` Activity use separate Pages projects. Before
+the registrar nameserver change, all web, Microsoft 365, DKIM, SPF, DMARC and
+validation records must exist in the Cloudflare zone and be compared with the
+versioned pre-cutover DNS inventory.
 
-Vor dem DNS-Wechsel wird die vollständige Seite auf einer Pages-Deployment-URL
-getestet. Danach zeigt ausschließlich der Namecheap-CNAME `exclusive` auf
-`shadows-temptation.pages.dev`. Der Apex-Host bleibt unverändert. Appwrite wird
-für ein begrenztes Rückfallfenster nicht gelöscht, erhält aber keine
-Produktivanfragen. Erst nach stabiler Beobachtung können Site, Plattform und
-Authdaten dort in einem separaten, kontrollierten Löschvorgang entfernt werden.
+Rollback is performed per Pages project or Worker version. A nameserver rollback
+uses the recorded Namecheap nameservers and the complete pre-cutover DNS export;
+it is independent of application rollback.

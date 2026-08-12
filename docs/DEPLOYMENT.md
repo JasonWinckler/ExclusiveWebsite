@@ -26,8 +26,9 @@ stellen das Same-Origin-Gateway bereit; Bindings stehen in `wrangler.jsonc`.
 - Datenbank: ausschließlich bei bestätigtem Schemafehler den unmittelbar vor
   der Migration notierten D1-Time-Travel-Bookmark verwenden. Nach produktiven
   Schreibvorgängen ist zuerst eine fachliche Delta-Prüfung nötig.
-- DNS: wird bei Code-, Worker- oder Schema-Rollbacks nicht verändert. Appwrite
-  ist kein produktiver Authentifizierungs-, Daten- oder Hostingpfad.
+- DNS: wird bei Code-, Worker- oder Schema-Rollbacks nicht verändert. Ein
+  DNS-Rollback verwendet ausschließlich den versionierten Record-Export und
+  die zuvor dokumentierten Cloudflare-Zielhostnamen.
 
 Ein Rollout ist erst abgeschlossen, wenn Typecheck, Worker-Tests, Frontend-
 Build, Pages-Healthcheck und die zentralen Produktivpfade erfolgreich sind.

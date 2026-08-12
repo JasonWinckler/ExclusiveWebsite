@@ -40,8 +40,8 @@ Mandat und keine automatische Verlängerung. Zugriff entsteht erst nach exaktem
 Abgleich von Referenz, Betrag und Währung oder dokumentierter manueller
 Adminfreigabe. Offene Aufträge verfallen nach 48 Stunden.
 
-## Appwrite
+## Plattformgrenze
 
-Appwrite ist nach dem Cutover kein produktiver Provider mehr. Die alte Site und
-Authdaten bleiben nur zeitlich begrenzt als Rollback-Material bestehen und
-werden nicht abgefragt, beschrieben oder zur Autorisierung verwendet.
+Der produktive Request-, Authentifizierungs-, Daten-, Build- und Hostingpfad
+ist vollständig Cloudflare-native. Zusätzliche Identitäts- oder Hostingprovider
+werden nicht parallel als zweite Wahrheitsquelle betrieben.

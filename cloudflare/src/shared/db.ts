@@ -57,7 +57,7 @@ export async function upsertUserProjection(
     identity.emailVerified ? 1 : 0,
     identity.emailVerified ? "ACTIVE" : "EMAIL_PENDING",
     now,
-    identity.appwriteAccessedAt,
+    identity.lastAccessedAt,
     now,
     now,
     activityCutoff,

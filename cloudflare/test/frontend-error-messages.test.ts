@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { friendlyErrorMessage } from "../../src/lib/error-messages.js";
 
 describe("customer-facing error messages", () => {
-  it("uses the Appwrite error type instead of displaying a numeric status", () => {
+  it("uses a safe credential error type instead of displaying a numeric status", () => {
     expect(friendlyErrorMessage({
       code: 401,
       type: "user_invalid_credentials",

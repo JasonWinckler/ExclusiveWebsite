@@ -28,13 +28,13 @@ import {
 import { authorizeProtectedContent } from "../shared/policy";
 import { assertMediaSignature } from "../shared/media";
 import {
-  deleteAppwriteSession,
-  revokeAppwriteSessions,
+  deleteIdentitySession,
+  revokeIdentitySessions,
   sendTransactionalEmail,
-  updateAppwriteUserName,
-  updateAppwriteUserStatus,
-  updateAppwriteUserPassword,
-  verifyAppwriteUserEmail,
+  updateIdentityUserName,
+  updateIdentityUserStatus,
+  updateIdentityUserPassword,
+  verifyIdentityUserEmail,
 } from "../shared/identity-service";
 import { ageDeletionReceiptReference } from "../shared/age-verification-email";
 import { randomBase64Url, sha256Hex, validateDeviceToken } from "../shared/security";
@@ -993,7 +993,7 @@ async function updateDisplayName(
 
   let syncStatus: "SYNCED" | "FAILED" = "SYNCED";
   try {
-    await updateAppwriteUserName(
+    await updateIdentityUserName(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
@@ -1016,7 +1016,7 @@ async function updateDisplayName(
       SET username_sync_status = 'FAILED',
         username_sync_attempt_count = username_sync_attempt_count + 1,
         username_sync_next_retry_at = ?,
-        username_sync_last_error_code = 'APPWRITE_NAME_SYNC_FAILED',
+        username_sync_last_error_code = 'IDENTITY_NAME_SYNC_FAILED',
         version = version + 1,
         updated_at = ?
       WHERE appwrite_user_id = ? AND username_last_idempotency_key = ?
@@ -1394,13 +1394,13 @@ async function completeAuthEmailToken(
   if (claimed.alreadyCompleted) return { status: "EMAIL_VERIFIED", alreadyVerified: true };
   try {
     if (purpose === "VERIFY_EMAIL") {
-      await verifyAppwriteUserEmail(
+      await verifyIdentityUserEmail(
         env.IDENTITY_PROJECTION,
         env.LABEL_SYNC_SERVICE_SECRET,
         claimed.userId,
       );
     } else {
-      await updateAppwriteUserPassword(
+      await updateIdentityUserPassword(
         env.IDENTITY_PROJECTION,
         env.LABEL_SYNC_SERVICE_SECRET,
         claimed.userId,
@@ -2395,7 +2395,7 @@ async function removeDevice(
   }>();
   if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND");
   if (device.appwrite_session_id) {
-    await deleteAppwriteSession(
+    await deleteIdentitySession(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
@@ -2457,7 +2457,7 @@ async function setDeviceLock(
     WHERE id = ? AND appwrite_user_id = ? AND status = 'ACTIVE'
   `).bind(now, now, device.id, userId).run();
   if (device.appwrite_session_id) {
-    await deleteAppwriteSession(
+    await deleteIdentitySession(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
@@ -3602,26 +3602,26 @@ async function requestDeletion(
     `).bind(now, userId),
   ]);
   await removeTelegramBeforeAccountDeletion(env, userId).catch(() => undefined);
-  let appwriteSessionRevocation = "SYNCED";
+  let identitySessionRevocation = "SYNCED";
   try {
-    await revokeAppwriteSessions(
+    await revokeIdentitySessions(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
     );
   } catch {
-    appwriteSessionRevocation = "FAILED";
+    identitySessionRevocation = "FAILED";
   }
-  let appwriteStatusSync = "SYNCED";
+  let identityStatusSync = "SYNCED";
   try {
-    await updateAppwriteUserStatus(
+    await updateIdentityUserStatus(
       env.IDENTITY_PROJECTION,
       env.LABEL_SYNC_SERVICE_SECRET,
       userId,
       false,
     );
   } catch {
-    appwriteStatusSync = "FAILED";
+    identityStatusSync = "FAILED";
   }
   let deletionStatus = "DELETION_PENDING";
   try {
@@ -3642,8 +3642,8 @@ async function requestDeletion(
   return {
     status: deletionStatus,
     scheduledAt,
-    appwriteSessionRevocation,
-    appwriteStatusSync,
+    identitySessionRevocation,
+    identityStatusSync,
   };
 }
 

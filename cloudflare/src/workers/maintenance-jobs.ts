@@ -1,10 +1,10 @@
 import { getUserProfile, isoNow } from "../shared/db";
 import { ApiError, logEvent, parsePositiveInt } from "../shared/http";
 import {
-  deleteAppwriteUser,
+  deleteIdentityUser,
   sendTransactionalEmail,
-  syncAppwriteLabel,
-  updateAppwriteUserName,
+  syncIdentityLabel,
+  updateIdentityUserName,
 } from "../shared/identity-service";
 import {
   sendMembershipActivationConfirmation,
@@ -531,14 +531,14 @@ async function processDeletionJobs(
       `).bind(now, job.appwrite_user_id),
     ]);
     try {
-      await deleteAppwriteUser(
+      await deleteIdentityUser(
         env.IDENTITY_PROJECTION,
         env.ACCOUNT_LIFECYCLE_SERVICE_SECRET,
         job.appwrite_user_id,
       );
     } catch {
       await env.DB.prepare(`
-        UPDATE deletion_jobs SET status = 'FAILED', last_error_code = 'APPWRITE_DELETION_FAILED',
+        UPDATE deletion_jobs SET status = 'FAILED', last_error_code = 'IDENTITY_DELETION_FAILED',
           version = version + 1, updated_at = ? WHERE id = ? AND status = 'EXECUTING'
       `).bind(now, job.id).run();
       continue;
@@ -640,7 +640,7 @@ async function retryLabelSync(env: MaintenanceEnv, now: string, batchSize: numbe
   }>();
   for (const attempt of attempts.results) {
     try {
-      await syncAppwriteLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
+      await syncIdentityLabel(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
         userId: attempt.appwrite_user_id,
         category: attempt.category,
         desiredLabel: attempt.desired_label,
@@ -677,7 +677,7 @@ async function retryUsernameSync(
   }>();
   for (const profile of profiles.results) {
     try {
-      await updateAppwriteUserName(
+      await updateIdentityUserName(
         env.IDENTITY_PROJECTION,
         env.LABEL_SYNC_SERVICE_SECRET,
         profile.appwrite_user_id,
@@ -699,7 +699,7 @@ async function retryUsernameSync(
         SET username_sync_status = 'FAILED',
           username_sync_attempt_count = username_sync_attempt_count + 1,
           username_sync_next_retry_at = ?,
-          username_sync_last_error_code = 'APPWRITE_NAME_SYNC_FAILED',
+          username_sync_last_error_code = 'IDENTITY_NAME_SYNC_FAILED',
           version = version + 1,
           updated_at = ?
         WHERE appwrite_user_id = ? AND display_name = ?

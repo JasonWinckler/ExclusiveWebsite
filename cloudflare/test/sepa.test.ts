@@ -75,7 +75,7 @@ describe("SEPA transfer purpose", () => {
     expect(canManuallyActivatePaymentStatus("REFUNDED")).toBe(false);
   });
 
-  it("maps payment tiers to the Appwrite access labels", () => {
+  it("maps payment tiers to internal access labels", () => {
     expect(accessLabelForTier("EXCLUSIVE_BASIC")).toBe("active_basic");
     expect(accessLabelForTier("EXCLUSIVE_PREMIUM")).toBe("active_premium");
     expect(accessLabelForTier("EXCLUSIVE_VIP")).toBe("active_vip");

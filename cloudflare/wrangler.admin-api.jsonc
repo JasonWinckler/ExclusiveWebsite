@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "exclusive-admin-api",
   "main": "src/workers/admin-api.ts",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "observability": {
@@ -42,7 +42,6 @@
     "simple": { "limit": 30, "period": 60 }
   }],
   "vars": {
-    "AUTH_MODE": "CLOUDFLARE_ONLY",
     "SITE_ORIGINS": "https://exclusive.jason-shadow.com",
     "MAX_JSON_BODY_BYTES": "32768",
     "MAX_UPSTREAM_JSON_BYTES": "65536",
@@ -85,9 +84,6 @@
         "simple": { "limit": 60, "period": 60 }
       }],
       "vars": {
-        "APPWRITE_ENDPOINT": "https://auth-exclusive.jason-shadow.com/v1",
-        "APPWRITE_PROJECT_ID": "6a64cbeb0009826c9efc",
-        "AUTH_MODE": "DUAL",
         "SITE_ORIGINS": "http://localhost:5173",
         "MAX_JSON_BODY_BYTES": "32768",
         "MAX_UPSTREAM_JSON_BYTES": "65536",

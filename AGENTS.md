@@ -9,8 +9,8 @@ These instructions apply to the entire repository.
 This is the production Cloudflare-native single-creator adult membership
 platform. Cloudflare Pages, Workers, D1 and private R2 own frontend delivery,
 authentication, authorization, age review, SEPA orders, content and
-administration. Appwrite is legacy rollback material only and must not be added
-back to the production request path.
+administration. Do not introduce Appwrite code, configuration, credentials,
+network calls or deployment dependencies.
 
 ## Content and safety rules
 
