@@ -16,42 +16,55 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     defaults:
       run:
         working-directory: cloudflare
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: cloudflare/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Export production D1
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Validate backup configuration
         run: |
-          umask 077
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "Required Cloudflare backup credential is not configured." >&2
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "GitHub Actions secret CLOUDFLARE_API_TOKEN is not configured." >&2
             exit 1
           fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "GitHub Actions variable CLOUDFLARE_ACCOUNT_ID is not configured." >&2
+            exit 1
+          fi
+      - name: Export production D1
+        run: |
+          set -euo pipefail
+          umask 077
           mkdir -p "$RUNNER_TEMP/exclusive-backup"
           # Wrangler prints a one-hour signed download URL during export. Keep
           # that URL in the private runner temp directory instead of Actions
           # logs, even though it expires quickly.
-          if ! pnpm exec wrangler d1 export exclusive-membership --remote --config wrangler.membership-api.jsonc --output "$RUNNER_TEMP/exclusive-backup/snapshot.sql" > "$RUNNER_TEMP/exclusive-backup/export.log" 2>&1; then
+          if ! pnpm exec wrangler d1 export exclusive-membership --remote --skip-confirmation --config wrangler.membership-api.jsonc --output "$RUNNER_TEMP/exclusive-backup/snapshot.sql" > "$RUNNER_TEMP/exclusive-backup/export.log" 2>&1; then
             echo "D1 export failed; no backup was uploaded." >&2
             exit 1
           fi
-          gzip -9 "$RUNNER_TEMP/exclusive-backup/snapshot.sql"
+          if [ ! -s "$RUNNER_TEMP/exclusive-backup/snapshot.sql" ]; then
+            echo "D1 export produced an empty snapshot; no backup was uploaded." >&2
+            exit 1
+          fi
+          gzip -n -9 "$RUNNER_TEMP/exclusive-backup/snapshot.sql"
           stamp="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
           pnpm exec wrangler r2 object put "exclusive-system-backups/d1/${stamp}.sql.gz" --remote --jurisdiction eu --config wrangler.admin-api.jsonc --file "$RUNNER_TEMP/exclusive-backup/snapshot.sql.gz" --content-type application/gzip
       - name: Remove runner copy
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/exclusive-backup"
+
