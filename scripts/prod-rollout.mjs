@@ -144,7 +144,9 @@ async function inspect() {
 }
 
 function deployWorker(name, pauseNewsletters = false) {
-  wr(`Deploy exclusive-${name}`, ["deploy", "--config", `wrangler.${name}.jsonc`, "--message", `Reviewed membership revision ${expectedCommit}`,
+  // Preserve existing dashboard-only operational variables. Reviewed config
+  // and the explicit newsletter pause override still take precedence.
+  wr(`Deploy exclusive-${name}`, ["deploy", "--config", `wrangler.${name}.jsonc`, "--keep-vars", "--message", `Reviewed membership revision ${expectedCommit}`,
     ...(pauseNewsletters ? ["--var", "NEWSLETTER_DELIVERY_ENABLED:false"] : [])]);
   note(`Deployed exclusive-${name}${pauseNewsletters ? " with newsletter delivery paused" : ""}.`);
 }
