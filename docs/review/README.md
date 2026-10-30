@@ -26,11 +26,16 @@ verification creates a fresh session and shows a localized confirmation popup;
 existing MFA remains required where applicable. The optional VIP section sits
 below the music gallery and retains the existing server-side access controls.
 
-At preparation of this review, production deployment of this update and the
-separate owner-requested data cleanup have **not** been verified. Historical
-deployment records below establish only their named earlier releases. Add the
-exact reviewed revision, Actions result and production post-checks before
-reporting this new release or any deletion as completed.
+The separate owner-requested D1 cleanup succeeded in
+[run 41063101385](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41063101385)
+from exact revision `8a8d73dc130aa03bdbc11bca71762bfc34ac2ae6`: one ADMIN
+profile/identity and one active post with all three attachment-history records
+remain; old privacy/billing/customer records and two retired posts were removed.
+Credentials, MFA, sessions, devices and the retained post/catalog were preserved
+exactly inside the atomic transaction. See the
+[operation evidence](../../cloudflare/operations/README.md) for scope and guards.
+Production deployment of the new website/authentication update is still pending
+at this revision; earlier release records below do not establish its publication.
 
 ## Website
 
@@ -95,6 +100,8 @@ No real test email or newsletter was sent for this review.
   including real SQLite verification races, session-write rollback and bounded
   email-change delivery routing. All 27 rollout guard tests also passed. The
   earlier 173/24/70 test counts below belong to the previous release.
+- All 11 isolated cleanup tests passed, including preservation, rollback,
+  schema/inventory changes, dependencies and one-time execution.
 - Original logo and owned artist photographs were copied from the music website.
 
 No production deployment, production migration, owner-role repair or real mail
