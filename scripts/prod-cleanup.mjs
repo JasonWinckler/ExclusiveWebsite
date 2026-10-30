@@ -48,7 +48,7 @@ export function assertSchemaTables(tables) {
   const filtered = tables.filter(name => !['_cf_METADATA', 'd1_migrations', 'sqlite_sequence'].includes(name)).sort();
   assert(JSON.stringify(filtered) === JSON.stringify([...expectedTables].sort()), 'Unexpected application table schema; no deletion is permitted.');
 }
-export const countSql = expectedTables.map(name => `SELECT '${name}' AS table_name,count(*) AS row_count FROM ${name}`).join(' UNION ALL ');
+export const countSql = `SELECT ${expectedTables.map(name => `(SELECT count(*) FROM ${name}) AS ${name}`).join(', ')}`;
 export const inventorySql = `SELECT
   (SELECT count(*) FROM auth_accounts WHERE email='business@jason-shadow.com' COLLATE NOCASE) AS matching_auth_accounts,
   (SELECT count(*) FROM user_profiles WHERE email='business@jason-shadow.com' COLLATE NOCASE) AS matching_profiles,
@@ -79,12 +79,11 @@ async function main() {
   const schema = query("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY type,name");
   assertSchemaTables(schema.filter(row => row.type === 'table').map(row => row.name));
   note(`Schema fingerprint: ${digest(schema)}; application tables: ${expectedTables.length}.`);
-  const foreignKeys = expectedTables.flatMap(name => query(`PRAGMA foreign_key_list(${name})`).map(row => ({table:name,...row})));
-  note(`Foreign-key fingerprint: ${digest(foreignKeys)}; relations: ${foreignKeys.length}.`);
-  const counts = [];
-  for (let offset = 0; offset < expectedTables.length; offset += 6) {
-    counts.push(...query(expectedTables.slice(offset, offset + 6).map(name => `SELECT '${name}' AS table_name,count(*) AS row_count FROM ${name}`).join(' UNION ALL ')));
-  }
+  // FK definitions are already included in sqlite_master's schema digest.
+  // Use the single integrity check below rather than 36 separate CLI reads.
+  const countRows = query(countSql);
+  assert(countRows.length === 1, 'Invalid count query row count.');
+  const counts = Object.entries(countRows[0]).map(([table_name,row_count]) => ({table_name,row_count}));
   assert(counts.length === expectedTables.length && counts.every(row => Number.isSafeInteger(row.row_count) && row.row_count >= 0), 'Invalid table-count metadata.');
   note(`Application table counts: ${JSON.stringify(Object.fromEntries(counts.map(row => [row.table_name,row.row_count])))}.`);
   const status = query(inventorySql)[0];
