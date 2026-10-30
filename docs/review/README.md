@@ -42,3 +42,22 @@ send is claimed by these local checks. Live email delivery and authenticated
 membership/payment behavior still need controlled production verification.
 The [transition guide](../ORDER_OF_SHADOWS_TRANSITION.md) documents the guarded
 production workflow and release checks.
+
+## Production status — 2026-10-30
+
+The independent owner operation [succeeded in production](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046845875):
+the existing `business@jason-shadow.com` account has ADMIN access with MFA
+required. Previous sessions were revoked; password/MFA credentials and profile
+data were preserved. The owner must sign in again.
+
+The website/backend release remains blocked. [Read-only inspection](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046283377)
+confirmed D1 is still at migration 0026 and migrations 0027/0028 are pending.
+All five Worker metadata requests and the Pages project request returned HTTP
+403; Pages reported Cloudflare code 10000. No site deployment, schema migration,
+newsletter queue change or test mail was performed by this task.
+
+Extend the existing token used by GitHub Actions secret `CLOUDFLARE_API_TOKEN`
+with account-level **Workers Scripts: Edit** and **Cloudflare Pages: Edit** for
+the existing account, retaining **D1: Edit** and its other existing permissions.
+If replacing the token, update it in the repository’s Actions secrets. Rerun
+inspection before using the exact-revision production deployment workflow.

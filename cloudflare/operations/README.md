@@ -5,9 +5,12 @@ This is a separate, owner-authorized operation for the **existing registered
 chain: preview databases, new installs and other accounts are unaffected.
 There is no runtime email allowlist or automatic privilege escalation.
 
-The source operation has **not been applied to production by this task**. It
-requires an authenticated Cloudflare operator with D1 write access. No live
-account state is inferred from local tests.
+The operation was **applied and verified in production on 2026-10-30** by
+[Actions run 41046845875](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046845875)
+at reviewed revision `b14978a0e97fe40a588c637a3ab1d3594ef33780`. Post-checks
+confirmed the exact verified active account, ADMIN role, required MFA, revoked
+prior sessions and one audit event. Passwords and MFA secrets were preserved.
+This evidence is separate from local tests and from the blocked website rollout.
 
 The reviewed GitHub workflow also supports an independent `owner-admin`
 operation with an explicit full commit SHA, or a lightweight tag named
