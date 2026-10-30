@@ -19,7 +19,10 @@ const catalog = () => ({
   tierPerks: {
     EXCLUSIVE_BASIC: [{ id: "bts", title: "Behind the scenes", description: "Music updates" }],
     EXCLUSIVE_PREMIUM: [{ id: "discount", title: "15% off all services", description: "Music and voice services" }],
-    EXCLUSIVE_VIP: [{ id: "discount", title: "15 % off services", description: "Music and voice services" }],
+    EXCLUSIVE_VIP: [
+      { id: "discount", title: "15 % off services", description: "Music and voice services" },
+      { id: "private", title: "Psst... Discover Shadow's Temptation 😏", description: "Optional 18+ area after approved age verification" },
+    ],
   },
 });
 
@@ -78,14 +81,34 @@ for (const tier of ["EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP", "FU
   });
 }
 
-test("allows the reviewed Telegram-removal migration but rejects any unrelated migration", () => {
+test("allows reviewed membership and verification migrations but rejects any unrelated migration", () => {
   assert.doesNotThrow(() => assertReviewedMigrations([
     "0027_order_of_shadows_music_membership.sql", "0028_membership_benefits_vip_area.sql",
     "0029_remove_telegram_music_perks.sql",
+    "0030_email_verification_codes.sql", "0031_supporter_membership_benefits.sql",
   ]));
   assert.doesNotThrow(() => assertReviewedMigrations([]));
   assert.throws(() => assertReviewedMigrations(["0030_unreviewed.sql"]), /Unreviewed/);
   assert.throws(() => assertReviewedMigrations(["0026_auth_policy.sql"]), /Unreviewed/);
+});
+
+test("rejects duplicate benefits in a tier", () => {
+  const value = catalog();
+  value.tierPerks.EXCLUSIVE_BASIC.push({ ...value.tierPerks.EXCLUSIVE_BASIC[0], id: "duplicate" });
+  assert.throws(() => assertPublicCatalog(value), /duplicate/);
+});
+
+test("requires the requested VIP teaser with an explicit age condition", () => {
+  const value = catalog(); value.tierPerks.EXCLUSIVE_VIP.pop();
+  assert.throws(() => assertPublicCatalog(value), /optional private-area/);
+  value.tierPerks.EXCLUSIVE_VIP.push({ id: "private", title: "Psst... Discover Shadow's Temptation 😏", description: "Unrestricted access" });
+  assert.throws(() => assertPublicCatalog(value), /optional private-area/);
+});
+
+test("rejects a private-area benefit offered to a lower tier", () => {
+  const value = catalog();
+  value.tierPerks.EXCLUSIVE_PREMIUM.push({ ...value.tierPerks.EXCLUSIVE_VIP[1] });
+  assert.throws(() => assertPublicCatalog(value), /exclusive to VIP/);
 });
 
 const membershipSettings = () => ({ bindings: [

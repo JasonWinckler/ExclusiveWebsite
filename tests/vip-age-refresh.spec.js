@@ -28,8 +28,7 @@ test('a refreshed terminal status without a case ID replaces local review state 
   });
 
   await page.goto('/?lang=en');
-  await page.getByRole('button', { name: 'Open private area', exact: true }).click();
-  await page.getByRole('button', { name: 'Open age verification', exact: true }).click();
+  await page.getByRole('button', { name: 'Tempted? Discover my secret side!', exact: true }).click();
   const panel = page.locator('.vip-age-panel');
   await panel.getByRole('combobox').selectOption('PASSPORT');
   await panel.getByRole('checkbox').check();

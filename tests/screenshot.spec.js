@@ -18,7 +18,13 @@ test.describe('responsive page smoke screenshots', () => {
       await expect(page.locator('h1').first()).toBeVisible();
       await page.evaluate(() => document.fonts?.ready);
       await page.evaluate(() => Promise.all([...document.images].filter((image) => image.loading !== "lazy").map((image) => image.decode().catch(() => undefined))));
-      await expect(page.locator('body')).not.toContainText(/Shadow’s Temptation|exclusive male porn|exklusive pornos/i);
+      await expect(page.locator('body')).not.toContainText(/exclusive male porn|exklusive pornos/i);
+      await expect(page.locator('h1').first()).not.toContainText(/Temptation/i);
+      if (name === 'home') {
+        await expect(page.locator('.order-hero')).not.toContainText(/Temptation/i);
+        await expect(page.locator('.order-newsletter')).not.toContainText(/Temptation/i);
+        await expect(page.locator('.pricing-group--vip')).toContainText("Psst... Discover Shadow's Temptation 😏");
+      }
       expect(browserErrors).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
       await page.screenshot({ path: testInfo.outputPath(`${name}-${testInfo.project.name}.png`), fullPage: true, animations: 'disabled' });
@@ -44,6 +50,13 @@ test.describe('membership public experience', () => {
     await expect(page.locator('.order-brand')).toHaveAttribute('href', 'https://jason-shadow.com/');
     await expect(page.locator('.order-brand img')).toHaveAttribute('src', '/assets/music/logo.png');
     await expect(page.locator('#pricing')).toContainText(/no automatic renewal/i);
+    await expect(page.locator('.pricing-group--basic .membership-perks > li')).toHaveCount(2);
+    await expect(page.locator('.pricing-group--premium .membership-perks > li')).toHaveCount(3);
+    await expect(page.locator('.pricing-group--vip .membership-perks > li')).toHaveCount(6);
+    await expect(page.locator('.pricing-group--vip')).toContainText("Psst... Discover Shadow's Temptation 😏");
+    await expect(page.locator('.pricing-group--vip')).toContainText('approved age verification');
+    await expect(page.locator('#pricing')).not.toContainText(/selected topic votes|priority replies|new behind-the-scenes posts/i);
+    await expect(page.locator('.order-hero')).toContainText('private celebrations and corporate events');
     await expect(page.locator('body')).not.toContainText(/telegram/i);
     await expect(page.locator('a[href*="onlyfans" i], script[src*="paypal" i]')).toHaveCount(0);
     await page.getByRole('button', { name: 'DE', exact: true }).click();

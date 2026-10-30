@@ -179,6 +179,23 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       WHERE appwrite_user_id = ? AND account_status <> 'DELETED'`)
       .bind(body.userId).first<{ email: string; name: string }>();
     if (!user?.email) throw new ApiError(404, "USER_NOT_FOUND");
+    let recipientEmail = user.email;
+    if (body.emailChangeTokenId !== undefined) {
+      // Only the auth service can request delivery to a new address, and the
+      // destination comes from its current D1 change challenge, never the body.
+      if (!authMailAuthorized || typeof body.emailChangeTokenId !== "string" ||
+          body.emailChangeTokenId !== body.messageId) throw new ApiError(400, "INVALID_TRANSACTIONAL_EMAIL");
+      const pending = await env.DB.prepare(`SELECT pending_email FROM auth_action_tokens
+        WHERE id = ? AND user_id = ? AND purpose = 'CHANGE_EMAIL'
+          AND used_at IS NULL AND expires_at > ?`)
+        .bind(body.emailChangeTokenId, body.userId, new Date().toISOString())
+        .first<{ pending_email: string | null }>();
+      if (!pending?.pending_email || pending.pending_email.length > 254 ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pending.pending_email)) {
+        throw new ApiError(400, "INVALID_TRANSACTIONAL_EMAIL");
+      }
+      recipientEmail = pending.pending_email;
+    }
     const deliveryStartedAt = Date.now();
     await sendMicrosoftGraphEmail({
       tenantId: env.GRAPH_TENANT_ID,
@@ -186,7 +203,7 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       clientSecret: env.GRAPH_CLIENT_SECRET,
       senderMailbox: env.GRAPH_SENDER_MAILBOX,
       senderDisplayName: env.GRAPH_SENDER_NAME,
-      recipientEmail: user.email,
+      recipientEmail,
       recipientName: typeof user.name === "string" ? user.name : undefined,
       messageId: body.messageId,
       subject: body.subject,

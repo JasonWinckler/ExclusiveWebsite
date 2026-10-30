@@ -16,6 +16,7 @@ const workers = ["identity-projection", "auth-api", "membership-api", "admin-api
 const allowedMigrations = new Set([
   "0027_order_of_shadows_music_membership.sql", "0028_membership_benefits_vip_area.sql",
   "0029_remove_telegram_music_perks.sql",
+  "0030_email_verification_codes.sql", "0031_supporter_membership_benefits.sql",
 ]);
 const operation = process.env.PRODUCTION_OPERATION || "inspect";
 const expectedCommit = process.env.EXPECTED_COMMIT || "";
@@ -193,6 +194,9 @@ export function assertPublicCatalog(catalog) {
     const products = catalog.products.filter((item) => item.tier === tier);
     requireCondition(products.length > 0 && products.every((item) => typeof item.displayName === "string" && item.displayName.startsWith(label)), `Public catalog has not adopted ${label}; stop before resuming newsletters.`);
     requireCondition(Array.isArray(catalog.tierPerks?.[tier]) && catalog.tierPerks[tier].length > 0, `Public ${label} benefits are missing.`);
+    const titles = catalog.tierPerks[tier].map((perk) => String(perk.title || "").trim().toLocaleLowerCase());
+    requireCondition(titles.every(Boolean) && new Set(titles).size === titles.length,
+      `Public ${label} benefits contain blank or duplicate titles.`);
   }
   for (const tier of ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"]) {
     requireCondition(catalog.tierPerks[tier].some((perk) => /15\s*%/.test(`${perk.title} ${perk.description}`)), `Public ${tier} service discount is missing.`);
@@ -200,6 +204,12 @@ export function assertPublicCatalog(catalog) {
   requireCondition(Object.values(catalog.tierPerks).every((perks) => Array.isArray(perks) &&
     !perks.some((perk) => /telegram/i.test(`${perk.id} ${perk.title} ${perk.description}`))),
   "Public music catalog still advertises the removed Telegram benefit.");
+  requireCondition(catalog.tierPerks.EXCLUSIVE_VIP.some((perk) =>
+    perk.title === "Psst... Discover Shadow's Temptation 😏" && /18\+|ab 18\b/.test(perk.description)),
+  "Public VIP catalog is missing its age-gated optional private-area benefit.");
+  requireCondition(["EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM"].every((tier) =>
+    !catalog.tierPerks[tier].some((perk) => /Temptation|18\+/.test(`${perk.title} ${perk.description}`))),
+  "Private-area benefits must remain exclusive to VIP.");
 }
 
 export function assertReviewedMigrations(pending) {

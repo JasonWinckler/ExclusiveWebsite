@@ -10,8 +10,8 @@ into a German religious-order theme. There is no domain, DNS or subpath change.
 
 | Membership | Shared music content | Additional benefits |
 | --- | --- | --- |
-| Basic Shadow | All music behind-the-scenes posts and member comments | Direct support for Jason’s music and voice work |
-| Premium Shadow | The same music content as every paid tier | Topic voting and 15% off all Jason Shadow services |
+| Basic Shadow | All music behind-the-scenes posts and member comments | Direct support for preparation and craft for private celebrations and corporate events |
+| Premium Shadow | The same music content as every paid tier | 15% off all Jason Shadow services |
 | VIP Shadow | The same music content as every paid tier | 15% off all Jason Shadow services, private WhatsApp contact, meet-ups by arrangement and a separate optional age-verified adult area |
 
 Telegram is **not included in any music membership**. The owner has approved
@@ -22,11 +22,44 @@ and discounted price are agreed before booking. No discount code or automated
 service-booking system is introduced.
 
 Existing product IDs, prices and term lengths remain unchanged. Registration,
-email confirmation, profiles, devices, MFA, orders, invoices, privacy rights and
-entitlements are preserved. Membership is a fixed-term purchase paid by a
+email confirmation, profile/device management, MFA, orders, invoices, privacy
+rights and entitlement management remain supported. Membership is a fixed-term purchase paid by a
 one-time SEPA transfer, without automatic renewal. It is not represented as a
 tax-deductible charitable donation. Existing VIP meet-and-greet arrangements
 and travel conditions continue to apply.
+
+## Registration email verification
+
+Migration `0030_email_verification_codes.sql` adds verification-challenge
+metadata to the existing authentication token table. Registration stays in its
+dialog and accepts a cryptographically generated six-digit code from the email.
+Leading zeroes are valid. Codes are scoped to the signed-in unverified account
+and its current email/challenge, not looked up through a global six-digit code
+search. Only a keyed digest is persisted; no plaintext code is stored in D1 or
+returned by the API.
+
+New registration challenges last **15 minutes**. The server permits at most
+**five code attempts per challenge** and enforces a **60-second resend cooldown**.
+A resend creates a new challenge and invalidates the previous code and link.
+The high-entropy fallback link in the same email consumes the same single-use
+challenge; successful use of either route prevents a second verification or
+session creation. The fallback link remains an alternative when the code-entry
+attempt limit is reached. Older already-issued links keep their recorded expiry
+and remain compatible with the link-confirmation route.
+
+Successful verification atomically consumes the challenge, confirms the email,
+revokes pre-verification sessions and issues a fresh HttpOnly session. Accounts
+with MFA enabled receive only an MFA-pending session until the second factor is
+completed. Administrator or MFA-required accounts without configured MFA are
+not silently given an active session by email access. Password-reset and
+change-email links retain their separate purposes.
+
+The fallback link opens `https://exclusive.jason-shadow.com/`; after processing,
+the frontend removes the token from the URL and shows the localized email
+confirmation popup. Normal code verification also keeps the member in the
+website and signs them in after any required MFA. A delivery error leaves the
+created account available for a controlled resend. Email verification does not
+subscribe a member to the music newsletter; its consent remains separate.
 
 ## Separate content areas
 
@@ -39,6 +72,14 @@ email, active account without holds, a registered authorized device and an
 allowed jurisdiction. Simulated membership cannot unlock adult media. Public
 marketing contains no adult previews, and music/newsletter content must remain
 separate from the private area.
+
+For eligible VIP members the discreet private section is placed below the
+shared music gallery, marked **18+** and titled **Shadow's Temptation**. Before
+approval, **Tempted? Discover my secret side!** opens the retained age-review
+flow. Already approved and otherwise authorized VIP members see the private
+gallery inline and can hide it. The teaser itself grants no entitlement and
+does not fetch private listings, metadata or media before authorization. Basic,
+Premium, expired, held and simulated accounts cannot unlock the private area.
 
 Age evidence creation, upload and submission are available only to eligible
 active VIP members. The existing manual live-document/video procedure and
@@ -54,8 +95,14 @@ posts as `LEGACY_ADULT`. Migration
 `0028_membership_benefits_vip_area.sql` implements the corrected tier benefits
 and separate private-area policy. Migration
 `0029_remove_telegram_music_perks.sql` disables the remaining Telegram music
-catalog benefits without removing historical records. Apply each required
-migration before deploying code that relies on it. Read the exact migration
+catalog benefits without removing historical records. Migration
+`0030_email_verification_codes.sql` supports the registration code and fallback
+link flow described above. Migration
+`0031_supporter_membership_benefits.sql` retires duplicate gallery/update perks,
+topic votes and priority-reply promises and installs the current bilingual
+supporter offer. The optional private-area teaser is the only public catalog
+use of "Shadow's Temptation"; the website and newsletter remain Jason Shadow.
+Apply each required migration before deploying code that relies on it. Read the exact migration
 files for the final SQL contract.
 
 Legacy media is not bulk-republished or deleted by the conversion. A deliberate
@@ -64,7 +111,9 @@ before moving an eligible legacy post into the new private VIP area. It must
 never be reclassified into the general music collection. Authorization checks
 must continue to reject remaining legacy posts, media and comments.
 
-Customer records, orders, invoices and entitlements remain intact. Historical
+The catalog migrations themselves leave customer records, orders, invoices and
+entitlements intact. The owner-requested production cleanup is a separate guarded
+operation and must not be encoded in a migration. Historical
 order and consent snapshots are not rewritten as though users had originally
 purchased the new offer. Existing paid commitments and statutory remedies
 remain applicable.
@@ -79,11 +128,13 @@ historical timestamps. Music newsletter consent uses `newsletter-music-v2` and
 requires a new double opt-in. The migration sends no reconfirmation emails.
 
 The privacy notice uses `PRIVACY-MUSIC-2026-10-30-V2` and new checkout acceptance
-uses `ORDER-2026-10-30-V3` for the offer without a Telegram music benefit. Keep
+uses `ORDER-2026-10-30-V4` for the deduplicated service-supporter offer. Keep
 frontend and backend versions aligned, retaining historical acceptance
 snapshots. This change sends no re-consent email and does not rewrite existing
 contracts. The privacy version remains V2 because historical data and its
-lifecycle remain in place and no new collection is introduced.
+lifecycle remain in place. Verification-challenge metadata implements the
+existing account-security purpose; no new newsletter or marketing purpose is
+introduced.
 
 The destination gates are independent. The owner has approved WhatsApp for the
 music business: the reviewed production source configuration sets
@@ -132,7 +183,7 @@ After reviewing an exact revision, deployment has two supported entry points:
 The workflow checks out and verifies that exact revision. Before any production
 changes, it runs rollout guard tests, backend typechecking/tests, the frontend
 production build and browser regression tests. It then inspects the existing
-stack and refuses any pending migration other than reviewed 0027, 0028 or 0029.
+stack and refuses any pending migration outside the exact reviewed allowlist.
 
 The deployment first deploys maintenance with newsletter delivery paused and
 waits for an existing scheduled invocation to finish before schema changes. The
@@ -193,8 +244,8 @@ before reporting a live release or repaired owner access.
 1. Review migration SQL and record the D1 recovery point. Quiesce newsletter
    sending during cutover so an already in-flight old message cannot survive
    campaign cancellation.
-2. Apply the required reviewed schema/catalog migrations, including 0029 for
-   removal of Telegram music perks, before deploying dependent Workers.
+2. Apply the exact reviewed schema/catalog migrations, including 0030 for email
+   codes and 0031 for the supporter benefits, before deploying dependent Workers.
 3. Deploy private Workers with existing bindings/secrets. Preserve all identity,
    entitlement, device, private R2, admin MFA and evidence-deletion controls.
 4. Revoke expired external invitations; publish the frontend and localized
@@ -202,6 +253,8 @@ before reporting a live release or repaired owner access.
 5. Check registration, login/MFA, profile and consent, orders/payment status,
    shared paid music access, absence of Telegram music benefits, Premium/VIP
    discounts, VIP WhatsApp/meet-ups and the separately age-gated VIP content path.
+   Confirm code expiry, attempt limits, resend cooldown, one-use fallback links
+   and the localized success popup without bypassing existing MFA requirements.
 6. Verify legacy content remains inaccessible unless individually approved for
    the private area. Verify non-VIP, unverified, expired, held and simulated
    accounts cannot access private-area listings, metadata, media or comments.

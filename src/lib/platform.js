@@ -309,7 +309,6 @@ export async function registerAccount({
       privacyNoticeAccepted, gpcSignal, locale,
     },
   });
-  await registerCurrentDevice(undefined, result.session?.$id);
   return result;
 }
 
@@ -391,6 +390,10 @@ export const completePasswordReset = async (token, password) => apiRequest(
 export const completeEmailVerification = (token) => apiRequest(
   "/v1/email-verification/confirm",
   { auth: true, method: "POST", json: { token }, authenticated: false, idempotent: true },
+);
+export const completeEmailVerificationCode = (code) => apiRequest(
+  "/v1/email-verification/confirm",
+  { auth: true, method: "POST", json: { code }, idempotent: true },
 );
 export async function completeLegacyEmailVerification() {
   throw new CloudflareApiError("LEGACY_AUTH_LINK_EXPIRED", 410);

@@ -4,6 +4,7 @@ import identityWorker from "../src/workers/identity-projection";
 import { sendTransactionalEmail } from "../src/shared/identity-service";
 import { MEMBERSHIP_EMAIL_SENDER_NAME } from "../src/shared/microsoft-graph";
 import type { IdentityProjectionEnv } from "../src/shared/types";
+import { testDatabase } from "./helpers/database";
 
 const labelSecret = "test-membership-mail-secret";
 const authSecret = "test-auth-mail-secret";
@@ -34,10 +35,10 @@ function fixture(overrides: Partial<IdentityProjectionEnv> = {}) {
     ACCOUNT_LIFECYCLE_SERVICE_SECRET: "test-lifecycle-secret",
     ...overrides,
   } as unknown as IdentityProjectionEnv;
-  const request = (secret: string, path = "/send-transactional-email") => identityWorker.fetch(new Request(`https://identity.internal${path}`, {
+  const request = (secret: string, path = "/send-transactional-email", payload: Record<string, unknown> = mail) => identityWorker.fetch(new Request(`https://identity.internal${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Internal-Service-Secret": secret, "cf-ray": "test-ray-FRA" },
-    body: JSON.stringify(mail),
+    body: JSON.stringify(payload),
   }), env);
   return { fetchMock, env, request };
 }
@@ -62,6 +63,34 @@ describe("private music email delivery", () => {
     });
     expect(JSON.stringify(payload)).not.toContain("Temptation");
   });
+
+  it.each(["valid", "membership-caller", "expired", "used", "wrong-purpose", "different-user"])(
+    "bounds an email-change recipient to the auth caller and current owned challenge: %s", async (scenario) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { DB, sqlite } = testDatabase();
+      const now = new Date().toISOString();
+      sqlite.prepare(`INSERT INTO user_profiles (appwrite_user_id, email, display_name, account_status,
+        email_verified, age_status, jurisdiction_code, country_code, privacy_regime, created_at, updated_at)
+        VALUES (?, 'current@example.test', 'Member', 'ACTIVE', 1, 'NOT_STARTED', 'DE', 'DE', 'EU_GDPR', ?, ?)`)
+        .run(mail.userId, now, now);
+      sqlite.prepare(`INSERT INTO auth_accounts (user_id, email, created_at, updated_at)
+        VALUES (?, 'current@example.test', ?, ?)`).run(mail.userId, now, now);
+      sqlite.prepare(`INSERT INTO auth_action_tokens (id, user_id, purpose, token_sha256, pending_email,
+        expires_at, used_at, created_at) VALUES (?, ?, ?, ?, 'new@example.test', ?, ?, ?)`)
+        .run(mail.messageId, mail.userId, scenario === "wrong-purpose" ? "VERIFY_EMAIL" : "CHANGE_EMAIL",
+          "a".repeat(64), new Date(Date.now() + (scenario === "expired" ? -60_000 : 60_000)).toISOString(),
+          scenario === "used" ? now : null, now);
+      const { request, fetchMock } = fixture({ DB });
+      const response = await request(scenario === "membership-caller" ? labelSecret : authSecret,
+        "/send-transactional-email", { ...mail,
+          emailChangeTokenId: scenario === "different-user" ? "a-different-challenge" : mail.messageId });
+      expect(response.status).toBe(scenario === "valid" ? 200 : 400);
+      if (scenario === "valid") {
+        const payload = JSON.parse(String(fetchMock.mock.calls[1]![1].body));
+        expect(payload.message.toRecipients[0].emailAddress.address).toBe("new@example.test");
+      } else expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps the membership caller working when no separate auth email key is configured", async () => {
     const { request } = fixture({ AUTH_EMAIL_SERVICE_SECRET: undefined });

@@ -166,65 +166,129 @@ async function createSession(
   return { id, token, expiresAt };
 }
 
+interface EmailVerificationDelivery {
+  expiresAt: string;
+  resendAfter: string;
+  delivery: "sent" | "failed";
+}
+
+const VERIFICATION_TTL_MS = 15 * 60_000;
+const VERIFICATION_RESEND_MS = 60_000;
+const VERIFICATION_MAX_ATTEMPTS = 5;
+
+function escapeMailHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]!);
+}
+
+function verificationCode(): string {
+  // Rejection sampling keeps all one million six-digit values equally likely.
+  const value = new Uint32Array(1);
+  do { crypto.getRandomValues(value); } while (value[0]! >= 4_294_000_000);
+  return String(value[0]! % 1_000_000).padStart(6, "0");
+}
+
+async function verificationCodeHash(env: AuthEnv, userId: string, id: string, code: string, version: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const pepper = passwordPepperForVersion(env, version);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(pepper ?? "")) throw new ApiError(503, "PASSWORD_PEPPER_NOT_CONFIGURED");
+  const key = await crypto.subtle.importKey("raw", encoder.encode(pepper),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key,
+    encoder.encode(`email-verification:${userId}:${id}:${code}`));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function authMail(input: {
-  locale: Locale;
-  purpose: TokenPurpose;
-  name: string;
-  actionUrl: string;
+  locale: Locale; purpose: TokenPurpose; name: string; actionUrl: string; code?: string;
 }): { subject: string; html: string } {
   const de = input.locale === "de";
   const title = input.purpose === "RESET_PASSWORD"
     ? (de ? "Passwort sicher festlegen" : "Set your password securely")
     : input.purpose === "CHANGE_EMAIL"
       ? (de ? "Neue E-Mail-Adresse bestätigen" : "Confirm your new email address")
-      : (de ? "E-Mail-Adresse bestätigen" : "Confirm your email address");
+      : (de ? "Dein Bestätigungscode" : "Your verification code");
   const action = input.purpose === "RESET_PASSWORD"
     ? (de ? "Passwort festlegen" : "Set password")
-    : (de ? "E-Mail bestätigen" : "Confirm email");
-  const copy = input.purpose === "RESET_PASSWORD"
-    ? (de ? "Der Link ist einmalig und 60 Minuten gültig. Danach kannst du dich direkt wieder anmelden."
-      : "This single-use link is valid for 60 minutes. You can sign in immediately afterwards.")
-    : (de ? "Bestätige deine Adresse über den sicheren, einmalig nutzbaren Link."
-      : "Confirm your address through this secure, single-use link.");
+    : (de ? "Alternativ: E-Mail bestätigen" : "Or confirm by link");
+  const copy = input.code
+    ? (de ? "Gib diesen sechsstelligen Code im geöffneten Registrierungsfenster ein. Er ist 15 Minuten gültig und kann einmal verwendet werden. Danach bist du automatisch angemeldet."
+      : "Enter this six-digit code in the registration window. It is valid for 15 minutes and can be used once. You will then be signed in automatically.")
+    : input.purpose === "RESET_PASSWORD"
+      ? (de ? "Der Link ist einmalig und 60 Minuten gültig. Danach kannst du dich direkt wieder anmelden."
+        : "This single-use link is valid for 60 minutes. You can sign in immediately afterwards.")
+      : (de ? "Bestätige deine neue Adresse über diesen einmaligen Link. Er ist 60 Minuten gültig."
+        : "Confirm your new address with this single-use link. It is valid for 60 minutes.");
+  const url = escapeMailHtml(input.actionUrl);
+  const codeBlock = input.code ? `<p style="text-align:center;margin:28px 0;font-size:38px;font-weight:bold;letter-spacing:8px;color:#efd18a"><span>${input.code}</span></p><p style="font-size:13px;line-height:1.6;color:#d8c4bd">${de ? "Du kannst den Code nicht eingeben? Der folgende Link bestätigt dieselbe Adresse und öffnet direkt deine Mitgliedschaft. Verwende nur einen der beiden Wege." : "Cannot enter the code? The link below confirms the same address and opens your membership directly. Use either option once."}</p>` : "";
   return {
-    subject: `${title} · The Order of Shadows`,
-    html: `<!doctype html><html lang="${input.locale}"><body style="margin:0;background:#240007;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#31000b;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="The Order of Shadows" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">THE ORDER OF SHADOWS</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${title}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${de ? "Hallo" : "Hello"} ${input.name || "Member"},<br>${copy}</p><p style="text-align:center;margin:30px 0"><a href="${input.actionUrl}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold">${action} →</a></p><p style="font-size:12px;line-height:1.6;color:#9f8e89">${de ? "Nicht angefordert? Ignoriere diese Nachricht. Dein Konto bleibt unverändert." : "Did not request this? Ignore this message. Your account remains unchanged."}</p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">The Order of Shadows · Music. Voice. Connection.<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">${de ? "Rechtliches & Datenschutz" : "Legal & privacy"}</a> · <a href="mailto:info@exclusive.jason-shadow.com" style="color:#e6c77c">Support</a></td></tr></table></td></tr></table></body></html>`,
+    subject: `${title} · Jason Shadow`,
+    html: `<!doctype html><html lang="${input.locale}"><body style="margin:0;background:#240007;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#31000b;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="Jason Shadow · Order of Shadows" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">JASON SHADOW · EXCLUSIVE MEMBERSHIP</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${title}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${de ? "Hallo" : "Hello"} ${escapeMailHtml(input.name || "Member")},<br>${copy}</p>${codeBlock}<p style="text-align:center;margin:30px 0"><a href="${url}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold">${action} →</a></p><p style="font-size:12px;line-height:1.6;color:#9f8e89">${de ? "Button nicht sichtbar? Öffne diesen sicheren Link:" : "Button not visible? Open this secure link:"}<br><a href="${url}" style="color:#e6c77c;word-break:break-all">${url}</a></p><p style="font-size:12px;line-height:1.6;color:#9f8e89">${de ? "Nicht angefordert? Ignoriere diese Nachricht. Teile den Code oder Link niemals mit anderen." : "Did not request this? Ignore this message. Never share your code or link."}</p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">Jason Shadow · Order of Shadows<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">${de ? "Rechtliches & Datenschutz" : "Legal & privacy"}</a> · <a href="mailto:info@exclusive.jason-shadow.com" style="color:#e6c77c">Support</a></td></tr></table></td></tr></table></body></html>`,
   };
 }
 
 async function issueActionToken(
   env: AuthEnv,
   input: { userId: string; purpose: TokenPurpose; locale: Locale; pendingEmail?: string | null; name: string },
-): Promise<void> {
+): Promise<EmailVerificationDelivery> {
   const token = randomBase64Url(32);
   const now = isoNow();
-  const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+  const isVerification = input.purpose === "VERIFY_EMAIL";
+  const expiresAt = new Date(Date.now() + (isVerification ? VERIFICATION_TTL_MS : 3_600_000)).toISOString();
+  const resendAfter = new Date(Date.now() + VERIFICATION_RESEND_MS).toISOString();
+  const cooldownCutoff = new Date(Date.now() - VERIFICATION_RESEND_MS).toISOString();
   const id = crypto.randomUUID();
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM auth_action_tokens
-      WHERE user_id = ? AND purpose = ? AND used_at IS NULL`).bind(input.userId, input.purpose),
+  const code = isVerification ? verificationCode() : undefined;
+  const pepperVersion = currentPasswordPepperVersion(env);
+  const codeHash = code ? await verificationCodeHash(env, input.userId, id, code, pepperVersion) : null;
+  const inserted = await env.DB.batch([
     env.DB.prepare(`INSERT INTO auth_action_tokens (
-      id, user_id, purpose, token_sha256, pending_email, locale,
-      expires_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-      id, input.userId, input.purpose, await sha256Hex(token),
-      input.pendingEmail ?? null, input.locale, expiresAt, now,
-    ),
+      id, user_id, purpose, token_sha256, pending_email, locale, expires_at, created_at,
+      code_sha256, code_pepper_version, resend_after
+    ) SELECT ?, a.user_id, ?, ?, CASE WHEN ? = 'VERIFY_EMAIL' THEN a.email ELSE ? END, ?, ?, ?, ?, ?, ?
+      FROM auth_accounts a JOIN user_profiles p ON p.appwrite_user_id = a.user_id
+      WHERE a.user_id = ? AND p.account_status IN ('ACTIVE', 'EMAIL_PENDING')
+        AND (? <> 'VERIFY_EMAIL' OR p.email_verified = 0)
+        AND (? <> 'VERIFY_EMAIL' OR NOT EXISTS (
+          SELECT 1 FROM auth_action_tokens WHERE user_id = a.user_id AND purpose = 'VERIFY_EMAIL' AND created_at > ?
+        )) RETURNING id`).bind(id, input.purpose, await sha256Hex(token), input.purpose,
+      input.pendingEmail ?? null, input.locale, expiresAt, now, codeHash, code ? pepperVersion : null,
+      resendAfter, input.userId, input.purpose, input.purpose, cooldownCutoff),
+    env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ?
+      WHERE user_id = ? AND purpose = ? AND used_at IS NULL AND id <> ?
+        AND EXISTS (SELECT 1 FROM auth_action_tokens WHERE id = ?)`)
+      .bind(now, input.userId, input.purpose, id, id),
   ]);
+  if (!inserted[0]?.results?.length) {
+    const profile = await env.DB.prepare(`SELECT email_verified FROM user_profiles WHERE appwrite_user_id = ?`)
+      .bind(input.userId).first<{ email_verified: number }>();
+    if (profile?.email_verified === 1 && isVerification) throw new ApiError(409, "EMAIL_ALREADY_VERIFIED");
+    throw new ApiError(429, "VERIFICATION_RESEND_TOO_SOON");
+  }
   const action = input.purpose === "RESET_PASSWORD" ? "recover" : "verify-email";
   const actionUrl = `https://exclusive.jason-shadow.com/?action=${action}&token=${encodeURIComponent(token)}`;
-  const email = authMail({ ...input, actionUrl });
-  await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.AUTH_EMAIL_SERVICE_SECRET, {
-    userId: input.userId,
-    messageId: id,
-    subject: email.subject,
-    html: email.html,
-  });
+  const email = authMail({ ...input, actionUrl, code });
+  const verification: EmailVerificationDelivery = { expiresAt, resendAfter, delivery: "sent" };
+  try {
+    await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.AUTH_EMAIL_SERVICE_SECRET, {
+      userId: input.userId, messageId: id, subject: email.subject, html: email.html,
+      ...(input.purpose === "CHANGE_EMAIL" ? { emailChangeTokenId: id } : {}),
+    });
+  } catch (error) {
+    if (!isVerification) throw error;
+    verification.delivery = "failed";
+    logEvent("error", "registration_verification_email_failed", {
+      code: error instanceof ApiError ? error.code : "EMAIL_DELIVERY_FAILED",
+    });
+  }
+  return verification;
 }
 
 async function register(request: Request, env: AuthEnv): Promise<{
   user: Record<string, unknown>;
   session: { id: string; token: string; expiresAt: string };
+  verification: EmailVerificationDelivery;
 }> {
   const idempotencyKey = requireIdempotencyKey(request);
   const body = await readJsonBody<Record<string, unknown>>(request, 16_384);
@@ -265,18 +329,13 @@ async function register(request: Request, env: AuthEnv): Promise<{
         passwordCredential.iterations, currentPasswordPepperVersion(env), now, now, now),
   ]);
   const session = await createSession(env, userId, request, "ACTIVE");
-  try {
-    await issueActionToken(env, { userId, purpose: "VERIFY_EMAIL", locale: locale(body.locale), name });
-  } catch (error) {
-    logEvent("error", "registration_verification_email_failed", {
-      userId,
-      code: error instanceof ApiError ? error.code : "EMAIL_DELIVERY_FAILED",
-    });
-  }
+  const verification = await issueActionToken(env, {
+    userId, purpose: "VERIFY_EMAIL", locale: locale(body.locale), name,
+  });
   const identity = await authenticateUser(new Request(request.url, {
     headers: { Cookie: `${SESSION_COOKIE}${session.token}` },
   }), env);
-  return { user: publicUser(identity), session };
+  return { user: publicUser(identity), session, verification };
 }
 
 async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<string, unknown>; session: { token: string; expiresAt: string } }> {
@@ -340,60 +399,165 @@ async function login(request: Request, env: AuthEnv): Promise<{ payload: Record<
   };
 }
 
+interface EmailTokenRow {
+  id: string; user_id: string; purpose: TokenPurpose; pending_email: string | null;
+  code_sha256: string | null; code_pepper_version: string | null; code_attempts: number;
+}
+
+async function confirmEmail(request: Request, env: AuthEnv): Promise<{
+  payload: Record<string, unknown>;
+  session?: { token: string; expiresAt: string };
+}> {
+  requireIdempotencyKey(request);
+  const body = await readJsonBody<Record<string, unknown>>(request, 8192);
+  const isCode = typeof body.code === "string";
+  const now = isoNow();
+  let row: EmailTokenRow | null;
+  let codeHash: string | null = null;
+  let tokenHash: string | null = null;
+  if (isCode) {
+    const identity = await requireSession(request, env);
+    if (identity.emailVerified) throw new ApiError(409, "EMAIL_ALREADY_VERIFIED");
+    if (!/^\d{6}$/.test(body.code as string)) throw new ApiError(400, "EMAIL_VERIFICATION_CODE_INVALID_OR_EXPIRED");
+    row = await env.DB.prepare(`SELECT id, user_id, purpose, pending_email, code_sha256,
+        code_pepper_version, code_attempts FROM auth_action_tokens
+      WHERE user_id = ? AND purpose = 'VERIFY_EMAIL' AND used_at IS NULL AND expires_at > ?
+        AND pending_email = ? COLLATE NOCASE AND code_sha256 IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1`).bind(identity.userId, now, identity.email).first<EmailTokenRow>();
+    if (!row) throw new ApiError(400, "EMAIL_VERIFICATION_CODE_INVALID_OR_EXPIRED");
+    if (row.code_attempts >= VERIFICATION_MAX_ATTEMPTS) throw new ApiError(429, "EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED");
+    codeHash = await verificationCodeHash(env, row.user_id, row.id, body.code as string, row.code_pepper_version!);
+  } else {
+    if (typeof body.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(body.token)) throw new ApiError(400, "INVALID_AUTH_TOKEN");
+    tokenHash = await sha256Hex(body.token);
+    row = await env.DB.prepare(`SELECT id, user_id, purpose, pending_email, code_sha256,
+        code_pepper_version, code_attempts FROM auth_action_tokens
+      WHERE token_sha256 = ? AND purpose IN ('VERIFY_EMAIL', 'CHANGE_EMAIL')
+        AND used_at IS NULL AND expires_at > ?`).bind(tokenHash, now).first<EmailTokenRow>();
+    if (!row) throw new ApiError(400, "AUTH_TOKEN_INVALID_OR_EXPIRED");
+  }
+  const consumptionId = crypto.randomUUID();
+  const sessionId = crypto.randomUUID();
+  const sessionToken = randomBase64Url(32);
+  const sessionHash = await sha256Hex(sessionToken);
+  const days = parsePositiveInt(env.SESSION_DAYS, 30, 90);
+  const activeExpiry = new Date(Date.now() + days * 86_400_000).toISOString();
+  const pendingExpiry = new Date(Date.now() + 10 * 60_000).toISOString();
+  const device = request.headers.get("X-Device-Token");
+  const deviceHash = device && /^[A-Za-z0-9_-]{43}$/.test(device) ? await sha256Hex(device) : null;
+  // Every mutation below is conditional on this request's unique consumption ID.
+  // D1 batch executes as one transaction, so a stale read, replay, concurrent
+  // guess or resend can neither verify an account nor mint a second session.
+  const eligible = `EXISTS (
+    SELECT 1 FROM auth_accounts a JOIN user_profiles p ON p.appwrite_user_id = a.user_id
+    WHERE a.user_id = auth_action_tokens.user_id AND p.account_status IN ('ACTIVE', 'EMAIL_PENDING')
+      AND (auth_action_tokens.purpose = 'CHANGE_EMAIL' OR (p.email_verified = 0
+        AND (auth_action_tokens.pending_email IS NULL OR auth_action_tokens.pending_email = a.email COLLATE NOCASE)))
+  )`;
+  const consumed = `EXISTS (SELECT 1 FROM auth_action_tokens WHERE id = ? AND consumed_by = ? AND used_at IS NOT NULL)`;
+  const claim = isCode
+    ? env.DB.prepare(`UPDATE auth_action_tokens SET code_attempts = code_attempts + 1,
+        used_at = CASE WHEN code_sha256 = ? THEN ? ELSE used_at END,
+        consumed_by = CASE WHEN code_sha256 = ? THEN ? ELSE consumed_by END
+      WHERE id = ? AND user_id = ? AND purpose = 'VERIFY_EMAIL'
+        AND used_at IS NULL AND expires_at > ? AND code_attempts < ? AND ${eligible}
+      RETURNING consumed_by, code_attempts`)
+      .bind(codeHash, now, codeHash, consumptionId, row.id, row.user_id, now, VERIFICATION_MAX_ATTEMPTS)
+    : env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ?, consumed_by = ?
+      WHERE id = ? AND token_sha256 = ? AND purpose IN ('VERIFY_EMAIL', 'CHANGE_EMAIL')
+        AND used_at IS NULL AND expires_at > ? AND ${eligible}
+      RETURNING consumed_by, code_attempts`).bind(now, consumptionId, row.id, tokenHash, now);
+  const statements = [claim];
+  if (row.purpose === "CHANGE_EMAIL") {
+    const email = normalizeEmail(row.pending_email);
+    statements.push(env.DB.prepare(`UPDATE auth_accounts SET email = ?, updated_at = ?
+      WHERE user_id = ? AND ${consumed}`).bind(email, now, row.user_id, row.id, consumptionId));
+    statements.push(env.DB.prepare(`UPDATE user_profiles SET email = ?, email_verified = 1,
+      account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
+      updated_at = ?, version = version + 1 WHERE appwrite_user_id = ? AND ${consumed}`)
+      .bind(email, now, row.user_id, row.id, consumptionId));
+  } else {
+    statements.push(env.DB.prepare(`UPDATE user_profiles SET email_verified = 1,
+      account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
+      updated_at = ?, version = version + 1 WHERE appwrite_user_id = ? AND ${consumed}`)
+      .bind(now, row.user_id, row.id, consumptionId));
+  }
+  // Revoke the pre-verification session, then issue a fresh HttpOnly session.
+  // Existing MFA never becomes an ACTIVE session merely through email access.
+  statements.push(env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'EMAIL_VERIFIED'
+    WHERE user_id = ? AND revoked_at IS NULL AND ${consumed}`).bind(now, row.user_id, row.id, consumptionId));
+  statements.push(env.DB.prepare(`INSERT INTO auth_sessions (
+    id, user_id, token_sha256, state, device_id, created_at, last_seen_at, expires_at, user_agent_label
+  ) SELECT ?, a.user_id, ?, CASE WHEN a.mfa_enabled = 1 THEN 'MFA_PENDING' ELSE 'ACTIVE' END,
+      ?, ?, ?, CASE WHEN a.mfa_enabled = 1 THEN ? ELSE ? END, ?
+    FROM auth_accounts a WHERE a.user_id = ? AND ${consumed}
+      AND NOT (a.mfa_enabled = 0 AND (a.role = 'ADMIN' OR a.mfa_required = 1))`)
+    .bind(sessionId, sessionHash, deviceHash, now, now, pendingExpiry, activeExpiry,
+      (request.headers.get("User-Agent") ?? "Browser").slice(0, 160), row.user_id, row.id, consumptionId));
+  const results = await env.DB.batch(statements);
+  const claimed = results[0]?.results?.[0] as { consumed_by: string | null; code_attempts: number } | undefined;
+  if (claimed?.consumed_by !== consumptionId) {
+    if (isCode && claimed && claimed.code_attempts >= VERIFICATION_MAX_ATTEMPTS) {
+      throw new ApiError(429, "EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED");
+    }
+    throw new ApiError(400, isCode ? "EMAIL_VERIFICATION_CODE_INVALID_OR_EXPIRED" : "AUTH_TOKEN_INVALID_OR_EXPIRED");
+  }
+  const session = await env.DB.prepare(`SELECT state, expires_at FROM auth_sessions WHERE id = ?`)
+    .bind(sessionId).first<{ state: string; expires_at: string }>();
+  if (!session) return { payload: { ok: true, emailVerified: true, sessionReady: false, loginRequired: true } };
+  if (session.state === "MFA_PENDING") return {
+    payload: { ok: true, emailVerified: true, sessionReady: false, mfaRequired: true, challenge: { $id: sessionId } },
+    session: { token: sessionToken, expiresAt: session.expires_at },
+  };
+  const identity = await authenticateUser(new Request(request.url, {
+    headers: { Cookie: `${SESSION_COOKIE}${sessionToken}` },
+  }), env);
+  return {
+    payload: { ok: true, emailVerified: true, sessionReady: true, session: { $id: sessionId }, user: publicUser(identity) },
+    session: { token: sessionToken, expiresAt: session.expires_at },
+  };
+}
+
 async function actionToken(
   request: Request,
   env: AuthEnv,
-  purpose: TokenPurpose | "EMAIL_CONFIRM",
+  purpose: "RESET_PASSWORD",
 ): Promise<Record<string, unknown>> {
   requireIdempotencyKey(request);
   const body = await readJsonBody<Record<string, unknown>>(request, 8192);
   const token = typeof body.token === "string" ? body.token : "";
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(400, "INVALID_AUTH_TOKEN");
   const now = isoNow();
-  const row = await env.DB.prepare(`
-    SELECT id, user_id, purpose, pending_email FROM auth_action_tokens
-    WHERE token_sha256 = ?
-      AND ((? = 'EMAIL_CONFIRM' AND purpose IN ('VERIFY_EMAIL', 'CHANGE_EMAIL')) OR purpose = ?)
-      AND used_at IS NULL AND expires_at > ?
-  `).bind(await sha256Hex(token), purpose, purpose, now).first<{
-    id: string; user_id: string; purpose: TokenPurpose; pending_email: string | null;
-  }>();
+  const tokenHash = await sha256Hex(token);
+  const row = await env.DB.prepare(`SELECT id, user_id FROM auth_action_tokens
+    WHERE token_sha256 = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?`)
+    .bind(tokenHash, purpose, now).first<{ id: string; user_id: string }>();
   if (!row) throw new ApiError(400, "AUTH_TOKEN_INVALID_OR_EXPIRED");
-  if (row.purpose === "RESET_PASSWORD") {
-    const passwordCredential = validatePasswordVerifierCredential(body.passwordCredential);
-    const passwordHash = await hashPasswordVerifier(passwordCredential, currentPasswordPepper(env));
-    try {
-      await env.DB.batch([
-        env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
-          password_iterations = ?, migration_required = 0, password_changed_at = ?,
-          password_pepper_version = ?, failed_login_count = 0, locked_until = NULL,
-          updated_at = ? WHERE user_id = ?`)
-          .bind(passwordHash, passwordCredential.salt, passwordCredential.iterations, now,
-            currentPasswordPepperVersion(env), now, row.user_id),
-        env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_RESET'
-          WHERE user_id = ? AND revoked_at IS NULL`).bind(now, row.user_id),
-        env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`)
-          .bind(now, row.id),
-      ]);
-    } catch {
-      throw new ApiError(503, "PASSWORD_RESET_PERSISTENCE_FAILED");
-    }
-  } else {
-    const email = row.purpose === "CHANGE_EMAIL" ? normalizeEmail(row.pending_email) : null;
-    const statements = email
-      ? [
-        env.DB.prepare(`UPDATE auth_accounts SET email = ?, updated_at = ? WHERE user_id = ?`).bind(email, now, row.user_id),
-        env.DB.prepare(`UPDATE user_profiles SET email = ?, email_verified = 1, updated_at = ?, version = version + 1 WHERE appwrite_user_id = ?`).bind(email, now, row.user_id),
-        env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`).bind(now, row.id),
-      ]
-      : [
-        env.DB.prepare(`UPDATE user_profiles SET email_verified = 1,
-          account_status = CASE WHEN account_status = 'EMAIL_PENDING' THEN 'ACTIVE' ELSE account_status END,
-          updated_at = ?, version = version + 1 WHERE appwrite_user_id = ?`).bind(now, row.user_id),
-        env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL`).bind(now, row.id),
-      ];
-    await env.DB.batch(statements);
+  const passwordCredential = validatePasswordVerifierCredential(body.passwordCredential);
+  const passwordHash = await hashPasswordVerifier(passwordCredential, currentPasswordPepper(env));
+  const consumptionId = crypto.randomUUID();
+  const consumed = `EXISTS (SELECT 1 FROM auth_action_tokens WHERE id = ? AND consumed_by = ?)`;
+  let results: D1Result[];
+  try {
+    results = await env.DB.batch([
+      env.DB.prepare(`UPDATE auth_action_tokens SET used_at = ?, consumed_by = ?
+        WHERE id = ? AND token_sha256 = ? AND purpose = 'RESET_PASSWORD'
+          AND used_at IS NULL AND expires_at > ? RETURNING id`)
+        .bind(now, consumptionId, row.id, tokenHash, now),
+      env.DB.prepare(`UPDATE auth_accounts SET password_hash = ?, password_salt = ?,
+        password_iterations = ?, migration_required = 0, password_changed_at = ?,
+        password_pepper_version = ?, failed_login_count = 0, locked_until = NULL,
+        updated_at = ? WHERE user_id = ? AND ${consumed}`)
+        .bind(passwordHash, passwordCredential.salt, passwordCredential.iterations, now,
+          currentPasswordPepperVersion(env), now, row.user_id, row.id, consumptionId),
+      env.DB.prepare(`UPDATE auth_sessions SET revoked_at = ?, revoked_reason = 'PASSWORD_RESET'
+        WHERE user_id = ? AND revoked_at IS NULL AND ${consumed}`)
+        .bind(now, row.user_id, row.id, consumptionId),
+    ]);
+  } catch {
+    throw new ApiError(503, "PASSWORD_RESET_PERSISTENCE_FAILED");
   }
+  if (!results[0]?.results?.length) throw new ApiError(400, "AUTH_TOKEN_INVALID_OR_EXPIRED");
   return { ok: true };
 }
 
@@ -521,6 +685,7 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
       user: created.user,
       session: { $id: created.session.id },
       sessionReady: true,
+      verification: created.verification,
     }, 201), created.session.token,
     Math.max(0, Math.floor((Date.parse(created.session.expiresAt) - Date.now()) / 1000)));
   }
@@ -579,18 +744,23 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     requireIdempotencyKey(request);
     const identity = await requireSession(request, env);
     const body = await readJsonBody<Record<string, unknown>>(request, 4096);
-    await issueActionToken(env, { userId: identity.userId, purpose: "VERIFY_EMAIL", locale: locale(body.locale), name: identity.displayName });
-    return response({ accepted: true });
+    if (identity.emailVerified) throw new ApiError(409, "EMAIL_ALREADY_VERIFIED");
+    const verification = await issueActionToken(env, { userId: identity.userId, purpose: "VERIFY_EMAIL", locale: locale(body.locale), name: identity.displayName });
+    return response({ accepted: true, verification });
   }
   if (request.method === "POST" && url.pathname === "/v1/email-verification/confirm") {
-    return response(await actionToken(request, env, "EMAIL_CONFIRM"));
+    const result = await confirmEmail(request, env);
+    const confirmed = response(result.payload);
+    return result.session ? setSessionCookie(confirmed, result.session.token,
+      Math.max(0, Math.floor((Date.parse(result.session.expiresAt) - Date.now()) / 1000))) : confirmed;
   }
   if (request.method === "POST" && url.pathname === "/v1/password-reset/request") {
     requireIdempotencyKey(request);
     const body = await readJsonBody<Record<string, unknown>>(request, 4096);
     const email = normalizeEmail(body.email);
     const account = await env.DB.prepare(`SELECT a.user_id, p.display_name FROM auth_accounts a
-      JOIN user_profiles p ON p.appwrite_user_id = a.user_id WHERE a.email = ? COLLATE NOCASE`)
+      JOIN user_profiles p ON p.appwrite_user_id = a.user_id WHERE a.email = ? COLLATE NOCASE
+        AND p.account_status IN ('ACTIVE', 'EMAIL_PENDING')`)
       .bind(email).first<{ user_id: string; display_name: string }>();
     if (account) await issueActionToken(env, { userId: account.user_id, purpose: "RESET_PASSWORD", locale: locale(body.locale), name: account.display_name });
     return response({ accepted: true });

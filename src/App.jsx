@@ -3,9 +3,11 @@ import OrderLanding, { OrderClosing } from "./OrderLanding";
 import DeviceManager from "./DeviceManager";
 import MfaPanel from "./MfaPanel";
 import PrivacyPanel from "./PrivacyPanel";
+import EmailVerificationForm from "./EmailVerificationForm";
 import {
   cancelPrivacyRequest,
   completeEmailVerification,
+  completeEmailVerificationCode,
   completeLegacyEmailVerification,
   completeLegacyPasswordReset,
   completeMfaLoginChallenge,
@@ -89,9 +91,9 @@ const copy = {
     basic: "Basic Shadow",
     premium: "Premium Shadow",
     vip: "VIP Shadow",
-    basicText: "Unterstütze Musik und Sprecherarbeit mit vollem Behind-the-Scenes-Zugang.",
-    premiumText: "Derselbe Behind-the-Scenes-Zugang, 15 % Rabatt auf alle Dienstleistungen und ausgewählte Themen-Votings.",
-    vipText: "Derselbe Behind-the-Scenes-Zugang, 15 % Service-Rabatt, VIP-Meet-ups und ein optionaler privater 18+-Bereich mit Altersprüfung.",
+    basicText: "Dein Beitrag unterstützt meine Arbeit für private Feiern und Firmenevents.",
+    premiumText: "Mehr Unterstützung für mein Handwerk – mit einem Vorteil für deine nächste Buchung.",
+    vipText: "Deine besonders persönliche Unterstützung – mit direktem Kontakt und einem privaten Extra.",
     buy: "Zugang wählen",
     trial: "Einmaliges Schnupperangebot",
     catalogUnavailable: "Der Produktkatalog ist derzeit nicht erreichbar. Es kann kein Zahlungsauftrag erzeugt werden.",
@@ -127,7 +129,7 @@ const copy = {
     paymentPending: "Sobald dein Zahlungseingang bestätigt wurde, wird dein Zugang automatisch freigeschaltet. Den aktuellen Status findest du jederzeit unter „Bestellungen“.",
     gallery: "Galerie",
     openGallery: "Beiträge entdecken",
-    galleryText: "Free Preview sowie freigeschaltete Basic-, Premium- und VIP-Inhalte.",
+    galleryText: "Dieselben Musik- und Sprecher-Einblicke für alle aktiven Mitgliedschaften.",
     noContent: "In dieser Galerie ist noch kein Content veröffentlicht.",
     lockedTier: "Für deinen aktuellen Zugang gesperrt",
     deviceNote: "Dieser Browser wird beim ersten Öffnen als persönliches Gerät registriert.",
@@ -145,9 +147,9 @@ const copy = {
     basic: "Basic Shadow",
     premium: "Premium Shadow",
     vip: "VIP Shadow",
-    basicText: "Support the music and voice work with full behind-the-scenes access.",
-    premiumText: "The same behind-the-scenes access, 15% off all services and selected topic votes.",
-    vipText: "The same behind-the-scenes access, 15% off services, VIP meet-ups and an optional private 18+ area with age verification.",
+    basicText: "Your contribution supports my work for private celebrations and corporate events.",
+    premiumText: "More support for my craft, with a benefit for your next booking.",
+    vipText: "Your most personal level of support, with direct contact and a private extra.",
     buy: "Choose access",
     trial: "One-time trial offer",
     catalogUnavailable: "The product catalog is unavailable. A payment order cannot be created.",
@@ -183,7 +185,7 @@ const copy = {
     paymentPending: "Your access activates as soon as payment is confirmed. You can check the current status at any time under Orders.",
     gallery: "Gallery",
     openGallery: "Explore the feed",
-    galleryText: "Free Preview plus unlocked Basic, Premium and VIP content.",
+    galleryText: "The same music and voice-work insights for every active membership.",
     noContent: "No content has been published in this gallery yet.",
     lockedTier: "Locked for your current access",
     deviceNote: "This browser is registered as a personal device when the gallery is first opened.",
@@ -329,13 +331,7 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
   const key = tierNames[tier];
   const showcase = products.find((product) => product.durationUnit === "DAYS" && product.durationValue === 30) || products[0];
   const perks = showcase?.perks || [];
-  const perkPriority = (perk) => {
-    const text = `${perk.title || ""} ${perk.description || ""}`.toLowerCase();
-    if (key === "vip" && /whatsapp/.test(text)) return 0;
-    if (key === "vip" && /treffen|meeting/.test(text)) return 1;
-    return 10;
-  };
-  const showcasePerks = [...perks].sort((left, right) => perkPriority(left) - perkPriority(right));
+  const showcasePerks = perks;
   return <article className={`pricing-group pricing-group--${key}`}>
     <MembershipMark tier={tier} className="membership-symbol" />
     <div className="pricing-group__head">
@@ -345,9 +341,10 @@ function PricingGroup({ tier, products, language, ui, onChoose }) {
       <div className="showcase-price"><strong>{formatCurrency(showcase, language)}</strong><span>{durationLabel(showcase, language)}</span></div>
     </div>
     <ul className="membership-perks">
-      {(showcasePerks.length ? showcasePerks : [{ title: ui[`${key}Text`] }]).slice(0, key === "vip" ? 5 : 4).map((perk) => {
-        const meeting = key === "vip" && /treffen|meeting/i.test(`${perk.title} ${perk.description || ""}`);
-        return <li key={perk.id || perk.title}><span>✓</span><div><strong>{perk.title}</strong>{meeting && perk.description ? <small>{perk.description}</small> : null}{meeting ? <a className="perk-legal-link" href={language === "de" ? "/legal/eu/#vip-meeting" : "/legal/eu/#vip-meeting-en"} target="_blank" rel="noreferrer">{language === "de" ? "Hinweise" : "Details"}</a> : null}</div></li>;
+      {(showcasePerks.length ? showcasePerks : [{ title: ui[`${key}Text`] }]).map((perk) => {
+        const meeting = key === "vip" && /treffen|meeting|meet-up/i.test(`${perk.title} ${perk.description || ""}`);
+        const privateArea = key === "vip" && /temptation/i.test(perk.title);
+        return <li key={perk.id || perk.title}><span>✓</span><div><strong>{perk.title}</strong>{(meeting || privateArea) && perk.description ? <small>{perk.description}</small> : null}{meeting ? <a className="perk-legal-link" href={language === "de" ? "/legal/eu/#vip-meeting" : "/legal/eu/#vip-meeting-en"} target="_blank" rel="noreferrer">{language === "de" ? "Hinweise" : "Details"}</a> : null}</div></li>;
       })}
     </ul>
     <button className="membership-card-cta" type="button" onClick={() => onChoose(products)}>
@@ -566,6 +563,9 @@ export default function App() {
   const [dashboardTab, setDashboardTab] = useState("overview");
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaFactor, setMfaFactor] = useState("totp");
+  const [emailVerification, setEmailVerification] = useState(null);
+  const [verificationNeedsSignIn, setVerificationNeedsSignIn] = useState(false);
+  const emailVerifiedBeforeMfa = useRef(false);
   const [privacy, setPrivacy] = useState(null);
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [registrationCountry, setRegistrationCountry] = useState("DE");
@@ -717,28 +717,22 @@ export default function App() {
     (async () => {
       try {
         if (parameters.get("action") === "verify-email" && parameters.get("token")) {
-          await completeEmailVerification(parameters.get("token"));
-          await logout().catch(() => null);
-          setUser(null);
-          setMembership(null);
-          setNotice(t.emailVerified);
           history.replaceState({}, "", "/");
-          setMode("login");
-          setModal("auth");
+          const result = await completeEmailVerification(parameters.get("token"));
+          await finishEmailVerification(result);
+          return;
         } else if (parameters.get("action") === "verify-email" && parameters.get("userId") && parameters.get("secret")) {
-          await completeLegacyEmailVerification(parameters.get("userId"), parameters.get("secret"));
-          await logout().catch(() => null);
-          setUser(null);
-          setMembership(null);
-          setNotice(t.emailVerified);
           history.replaceState({}, "", "/");
-          setMode("login");
-          setModal("auth");
+          await finishEmailVerification(await completeLegacyEmailVerification(parameters.get("userId"), parameters.get("secret")));
+          return;
         } else if (parameters.get("action") === "recover") {
           setMode("recover");
           setModal("auth");
         }
         const current = await refresh();
+        if (current && !current.emailVerification && !current.labels?.includes("admin") && !parameters.get("action") && !simulationRole) {
+          setModal("verify-email");
+        }
         if (parameters.get("action") === "orders") {
           if (current && !current.labels?.includes("admin")) {
             history.replaceState({}, "", "/");
@@ -773,6 +767,10 @@ export default function App() {
           }
         } else {
           setNotice(friendlyErrorMessage(error, language, t.genericError));
+          if (parameters.get("action") === "verify-email") {
+            await refresh().catch(() => null);
+            setModal("verification-result");
+          }
         }
       } finally {
         setBusy(false);
@@ -927,6 +925,71 @@ export default function App() {
     }
   };
 
+  const finishEmailVerification = async (result) => {
+    setEmailVerification(null);
+    setVerificationNeedsSignIn(Boolean(result?.loginRequired));
+    if (result?.mfaRequired) {
+      emailVerifiedBeforeMfa.current = true;
+      await beginMfaSignIn("totp");
+      return;
+    }
+    if (result?.loginRequired) {
+      setUser(null);
+      setMembership(null);
+    } else {
+      try {
+        const current = await refresh(result?.user || null);
+        if (!current) setVerificationNeedsSignIn(true);
+      } catch {
+        // The address was confirmed. A subsequent session refresh failure must
+        // not ask the member to submit an already consumed code or link again.
+        setVerificationNeedsSignIn(true);
+      }
+    }
+    setNotice(t.emailVerified);
+    setModal("email-verified");
+  };
+
+  const confirmEmailCode = async (code) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await finishEmailVerification(await completeEmailVerificationCode(code));
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendVerificationCode = async () => {
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await resendVerification(language);
+      setEmailVerification(result.verification || null);
+      setNotice(result.verification?.delivery === "failed" ? t.verificationDeliveryFailed : t.verificationSent);
+      return true;
+    } catch (error) {
+      if (error?.code === "EMAIL_ALREADY_VERIFIED") {
+        await finishEmailVerification({});
+        return true;
+      }
+      if (error?.code === "VERIFICATION_RESEND_TOO_SOON") {
+        setEmailVerification((previous) => ({ ...previous, resendAfter: new Date(Date.now() + 60_000).toISOString() }));
+      }
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEmailVerification = () => {
+    setNotice("");
+    setModal("verify-email");
+  };
+
   const run = async (work, success, nextModal, onSuccess) => {
     setBusy(true);
     setNotice("");
@@ -955,15 +1018,26 @@ export default function App() {
   const handleAuth = (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
-    if (mode === "register") run(() => registerAccount({
-      ...data,
-      countryCode: registrationCountry,
-      regionCode: registrationCountry === "US" ? registrationRegion : null,
-      privacyNoticeVersion,
-      privacyNoticeAccepted: data.privacyNoticeAccepted === "on",
-      gpcSignal: hasGlobalPrivacyControl(),
-      locale: language,
-    }), t.registrationSent, "account", () => trackConversion("registration_completed"));
+    if (mode === "register") {
+      setBusy(true);
+      setNotice("");
+      registerAccount({
+        ...data,
+        countryCode: registrationCountry,
+        regionCode: registrationCountry === "US" ? registrationRegion : null,
+        privacyNoticeVersion,
+        privacyNoticeAccepted: data.privacyNoticeAccepted === "on",
+        gpcSignal: hasGlobalPrivacyControl(),
+        locale: language,
+      }).then(async (result) => {
+        setEmailVerification(result.verification || null);
+        await refresh(result.user);
+        trackConversion("registration_completed");
+        setNotice(result.verification?.delivery === "failed" ? t.verificationDeliveryFailed : t.registrationSent);
+        setModal("verify-email");
+      }).catch((error) => setNotice(friendlyErrorMessage(error, language, t.genericError)))
+        .finally(() => setBusy(false));
+    }
     else if (mode === "reset") run(() => requestPasswordReset(data.email, language), t.resetSent);
     else if (mode === "recover") {
       const parameters = new URLSearchParams(location.search);
@@ -984,7 +1058,7 @@ export default function App() {
         }
         await refresh(result?.user || null);
         setNotice(t.loginSuccess);
-        setModal("account");
+        setModal(result.user?.emailVerification ? "account" : "verify-email");
       }).catch((error) => {
         setNotice(friendlyErrorMessage(error, language, t.genericError));
       }).finally(() => setBusy(false));
@@ -1002,8 +1076,9 @@ export default function App() {
       await refresh(result.user);
       setMfaChallenge(null);
       setMfaFactor("totp");
-      setNotice(t.loginSuccess);
-      setModal("account");
+      setNotice(emailVerifiedBeforeMfa.current ? t.emailVerified : t.loginSuccess);
+      setModal(emailVerifiedBeforeMfa.current ? "email-verified" : "account");
+      emailVerifiedBeforeMfa.current = false;
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
@@ -1185,25 +1260,15 @@ export default function App() {
     const password = String(data.get("password") || "");
     setBusy(true);
     setNotice("");
-    let emailChanged = false;
     try {
       await updateProfileEmail(email, password, language, profile?.email || email);
-      emailChanged = true;
-      await resendVerification(language);
-      await refresh();
+      await refresh().catch(() => null);
       form.reset();
       setNotice(language === "de"
-        ? "E-Mail-Adresse geändert. Bitte bestätige die neue Adresse über den soeben versendeten Link."
-        : "Email address changed. Confirm the new address using the link we just sent.");
+        ? "Bitte bestätige die neue Adresse über den soeben versendeten Link. Bis dahin bleibt deine bisherige E-Mail-Adresse gültig."
+        : "Confirm your new address using the link we just sent. Your current email address stays valid until then.");
     } catch (error) {
-      if (emailChanged) {
-        await refresh().catch(() => null);
-        setNotice(language === "de"
-          ? "Die E-Mail-Adresse wurde geändert, aber die Bestätigungsmail konnte noch nicht zugestellt werden. Nutze bitte „Bestätigungs-E-Mail erneut senden“ in der Übersicht."
-          : "Your email address was changed, but the confirmation email could not be delivered yet. Use “Resend confirmation email” in Overview.");
-      } else {
-        setNotice(friendlyErrorMessage(error, language, t.genericError));
-      }
+      setNotice(friendlyErrorMessage(error, language, t.genericError));
     } finally {
       setBusy(false);
     }
@@ -1394,7 +1459,7 @@ export default function App() {
               <span className={entitlement?.active ? "status-chip is-active membership-status-chip" : "status-chip membership-status-chip"}>{entitlement?.active && <MembershipMark tier={entitlement.tier} />}{entitlement?.active ? membershipName(entitlement.tier) : (language === "de" ? "Free Preview" : "Free Preview")}</span>
             </div>
             <div className="hero-actions">
-              {membershipReady ? <a className="primary-action" href="#member-gallery">{language === "de" ? "Beiträge entdecken" : "Discover posts"}</a> : <button className="primary-action" type="button" onClick={() => run(() => resendVerification(language), t.verificationSent)}>{t.resendVerification}</button>}
+              {membershipReady ? <a className="primary-action" href="#member-gallery">{language === "de" ? "Beiträge entdecken" : "Discover posts"}</a> : <button className="primary-action" type="button" onClick={openEmailVerification}>{t.enterVerificationCode}</button>}
               <button className="secondary-action" type="button" onClick={() => { setDashboardTab("overview"); setModal("account"); }}>{language === "de" ? "Mein Dashboard" : "My dashboard"}</button>
             </div>
           </div>
@@ -1438,7 +1503,7 @@ export default function App() {
           </> : <div className="member-empty-state"><h3>{membershipReady ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{membershipReady ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : (language === "de" ? "Bitte bestätige zuerst deine E-Mail-Adresse." : "Please verify your email address first.")}</p></div>}
         </section>
         {!entitlement?.active && <section className="section member-unlock-section"><div className="section-heading"><p className="eyebrow">EXCLUSIVE MEMBERSHIP</p><h2>{language === "de" ? "Alle Einblicke. Deine Wahl." : "All the stories. Your choice."}</h2><p>{language === "de" ? "Basic Shadow, Premium Shadow und VIP Shadow enthalten denselben Behind-the-Scenes-Zugang. Entscheide dich für die zusätzlichen Vorteile, die zu dir passen." : "Basic Shadow, Premium Shadow and VIP Shadow share the same behind-the-scenes access. Choose the extra benefits that fit you."}</p></div><a href="#pricing" className="primary-action">{ui.pricingTitle}</a></section>}
-        {vipEligible && <section className="section vip-private-entry"><div><p className="eyebrow">VIP SHADOW · OPTIONAL</p><h2>{language === "de" ? "Dein privater VIP-Bereich" : "Your private VIP area"}</h2><p>{language === "de" ? "Ein separater 18+-Bereich, ausschließlich mit aktiver VIP-Mitgliedschaft und bestätigter Altersprüfung. Deine Musik-Inhalte bleiben davon unabhängig." : "A separate 18+ area, available only with active VIP membership and approved age verification. Your music content stays independent."}</p></div><button type="button" className="secondary-action" onClick={() => setModal("vip-adult")}>{language === "de" ? "Privaten Bereich öffnen" : "Open private area"}</button></section>}
+        {vipEligible && <section className="section vip-private-entry" id="vip-private" tabIndex={-1} aria-label={language === "de" ? "Privater VIP-Bereich ab 18" : "Private VIP area for adults"}><React.Suspense fallback={<p role="status">{ui.loading}</p>}><VipPrivateArea language={language} membership={membership} user={user} readOnly={isAdminSimulation} onRefresh={refresh} /></React.Suspense></section>}
 
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
@@ -1534,6 +1599,34 @@ export default function App() {
       </form>
     </Modal>}
 
+    {modal === "verify-email" && user && !user.emailVerification && <Modal
+      title={t.verifyEmailTitle}
+      eyebrow={t.secureAccount}
+      onClose={() => setModal(null)}
+      t={t}
+    >
+      <EmailVerificationForm email={user.email} verification={emailVerification} busy={busy} notice={notice}
+        language={language} onConfirm={confirmEmailCode} onResend={sendVerificationCode} />
+    </Modal>}
+
+    {(modal === "email-verified" || modal === "verification-result") && <Modal
+      title={modal === "email-verified" ? t.emailVerified : t.verifyEmailTitle}
+      eyebrow={t.secureAccount}
+      onClose={() => setModal(null)}
+      t={t}
+    >
+      <p className="modal-intro" role="status">{modal === "email-verified" ? (verificationNeedsSignIn ? t.emailVerifiedSignIn : t.emailVerifiedWelcome) : notice}</p>
+      <button className="primary-action" type="button" onClick={() => {
+        if (modal === "email-verified") {
+          if (verificationNeedsSignIn) openAuth("login");
+          else if (newsletterIntent) { setDashboardTab("newsletter"); setModal("account"); }
+          else setModal(null);
+        } else if (user && !user.emailVerification) openEmailVerification();
+        else if (!user) openAuth("login");
+        else setModal(null);
+      }}>{modal === "email-verified" && verificationNeedsSignIn ? t.login : modal === "email-verified" || user?.emailVerification ? (language === "de" ? "Weiter zur Mitgliedschaft" : "Continue to membership") : user ? t.enterVerificationCode : t.login}</button>
+    </Modal>}
+
     {modal === "mfa" && <Modal
       title={language === "de" ? "Anmeldung bestätigen" : "Confirm sign-in"}
       eyebrow={language === "de" ? "ZWEITER SICHERHEITSFAKTOR" : "SECOND SECURITY FACTOR"}
@@ -1541,6 +1634,7 @@ export default function App() {
         logout().catch(() => null);
         setMfaChallenge(null);
         setMfaFactor("totp");
+        emailVerifiedBeforeMfa.current = false;
         setMode("login");
         setModal("auth");
       }}
@@ -1624,7 +1718,7 @@ export default function App() {
                 : "Add your country of residence so we can apply the correct privacy rights."}</small></div>
           </button>}
           <div className="dashboard-actions">
-            {!user.emailVerification && <button className="secondary-action" onClick={() => run(() => resendVerification(language), t.verificationSent)}>{t.resendVerification}</button>}
+            {!user.emailVerification && <button className="secondary-action" onClick={openEmailVerification}>{t.enterVerificationCode}</button>}
             {membershipReady && <button className="secondary-action" type="button" onClick={openGallery}>{ui.openGallery}</button>}
           </div>
         </div>}
@@ -1696,7 +1790,7 @@ export default function App() {
         </div>}
         {dashboardTab === "access" && <div className="access-perks">
           {serviceDiscountPercent === 15 && <article className="perk-access-card service-discount"><strong>15 %</strong><div><h3>{language === "de" ? "Dein Rabatt auf alle Dienstleistungen" : "Your discount on all services"}</h3><p>{language === "de" ? "Als aktives Premium Shadow oder VIP Shadow Mitglied erhältst du 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Nenne bei deiner Anfrage die E-Mail-Adresse deines Mitgliedskontos, damit der Rabatt im Angebot berücksichtigt werden kann." : "Active Premium Shadow and VIP Shadow members receive 15% off every Jason Shadow service. Include your membership email in your enquiry so the discount can be applied to your quote."}</p><a className="secondary-action" href="https://jason-shadow.com/#kontakt" target="_blank" rel="noreferrer">{language === "de" ? "Dienstleistung anfragen" : "Enquire about a service"} <ExternalLinkIcon /></a></div></article>}
-          {vipEligible && <article className="perk-access-card"><span>18+</span><div><h3>{language === "de" ? "Optionaler privater VIP-Bereich" : "Optional private VIP area"}</h3><p>{language === "de" ? "Separater Zugang mit aktiver VIP-Mitgliedschaft und Altersprüfung." : "Separate access with active VIP membership and age verification."}</p><button type="button" className="secondary-action" onClick={() => setModal("vip-adult")}>{language === "de" ? "Privaten Bereich öffnen" : "Open private area"}</button></div></article>}
+          {vipEligible && <button type="button" className="text-button" onClick={() => { setModal(null); requestAnimationFrame(() => { const area = document.getElementById("vip-private"); area?.scrollIntoView({ behavior: "smooth", block: "start" }); area?.focus({ preventScroll: true }); }); }}>{language === "de" ? "Zum privaten VIP-Bereich · 18+" : "Go to private VIP area · 18+"}</button>}
 
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? membershipName(entitlement.tier) : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{membershipName(entitlement.paused.tier)} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
@@ -1736,7 +1830,7 @@ export default function App() {
       </div>}
     </Modal>}
 
-    {modal === "vip-adult" && vipEligible && <Modal title={language === "de" ? "Privater VIP-Bereich" : "Private VIP area"} eyebrow="VIP SHADOW · 18+" onClose={() => setModal(null)} t={t} wide><React.Suspense fallback={<p role="status">{ui.loading}</p>}><VipPrivateArea language={language} membership={membership} user={user} readOnly={isAdminSimulation} onRefresh={refresh} /></React.Suspense></Modal>}
+
 
     {modal === "membership" && tierSelection.length > 0 && <Modal
       title={membershipName(tierSelection[0].tier)}

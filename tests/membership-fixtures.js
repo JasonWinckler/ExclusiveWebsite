@@ -6,7 +6,16 @@ export const products = ['BASIC', 'PREMIUM', 'VIP'].map((tier, index) => ({
   currency: 'EUR',
   amountMinor: [499, 1999, 4999][index],
   durationUnit: 'DAYS', durationValue: 30,
-  perks: [{ id: `bts-${tier}`, title: 'Behind-the-scenes content', description: 'Music and voice-work insights.' }],
+  perks: [
+    { id: `bts-${tier}`, title: 'Behind the scenes: preparation and craft', description: 'The same preparation, music and voice-work insights in every paid tier.' },
+    { id: `conversation-${tier}`, title: 'Questions, ideas and conversation', description: 'Ask about preparation and share ideas beneath posts.' },
+    ...(tier !== 'BASIC' ? [{ id: `discount-${tier}`, title: '15% off all services', description: 'Mention your active membership when requesting a quote.' }] : []),
+    ...(tier === 'VIP' ? [
+      { id: 'vip-whatsapp', title: 'Direct WhatsApp contact', description: 'A personal route for questions and arrangements.' },
+      { id: 'vip-meetup', title: 'Personal meet-up by arrangement', description: 'Date and place agreed together, subject to availability. Travel costs are not included.' },
+      { id: 'vip-secret', title: "Psst... Discover Shadow's Temptation 😏", description: 'Optional separate 18+ area. Active VIP membership and approved age verification required.' },
+    ] : []),
+  ],
 }));
 
 export const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4D8AAAAASUVORK5CYII=', 'base64');
@@ -41,7 +50,9 @@ export async function mockMembershipApi(page, options = {}) {
     if (path === '/api/auth/v1/register') {
       state.registerBody = body;
       state.user = { ...member, name: body.name, email: body.email, emailVerification: false };
-      return json({ user: state.user, session: { $id: 'synthetic-session' } }, 201);
+      return json({ user: state.user, session: { $id: 'synthetic-session' }, verification: {
+        expiresAt: new Date(Date.now() + 900000).toISOString(), resendAfter: new Date(Date.now() + 60000).toISOString(), delivery: 'sent',
+      } }, 201);
     }
     if (path === '/api/auth/v1/logout') { state.user = null; return json({ success: true }); }
     if (path === '/api/member/v1/products') return json({ products: state.products ?? products, tierPerks: {} });

@@ -54,4 +54,13 @@ network calls or deployment dependencies.
   the approved production WhatsApp destination and `MUSIC_TELEGRAM_REVIEWED=false`.
   The historical shared `MUSIC_COMMUNITY_REVIEWED` flag is unused. Preserve
   legacy Telegram records and cleanup/revocation controls.
+- Memberships support an exclusive music and voice service provider for private
+  celebrations and corporate events (B2C/B2B). Do not promise public shows, touring,
+  an independent-artist release schedule, social-media access or topic voting.
+  All tiers share preparation/craft insights and member questions/conversation;
+  higher support levels add the stated service/contact benefits without duplicate perks.
+- The historical name "Shadow's Temptation" is used only for the explicitly
+  requested VIP private-area teaser/sub-brand, never as the site, sender or
+  newsletter identity. The catalog teaser is "Psst... Discover Shadow's Temptation 😏";
+  describe the optional 18+ and approved-age restrictions alongside it.
 - Maintain German and English copy together and avoid duplicate text.
