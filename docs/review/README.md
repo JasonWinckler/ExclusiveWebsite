@@ -4,7 +4,7 @@ The redesigned membership stays at https://exclusive.jason-shadow.com/.
 These screenshots use a local build and synthetic member data. They are review
 artifacts, not evidence of a production deployment.
 
-## Supporter, registration and VIP update — prepared source
+## Supporter, registration and VIP update — published
 
 The current change presents membership as support for Jason's music and voice
 services for private celebrations and corporate events. The catalog contains
@@ -34,8 +34,19 @@ remain; old privacy/billing/customer records and two retired posts were removed.
 Credentials, MFA, sessions, devices and the retained post/catalog were preserved
 exactly inside the atomic transaction. See the
 [operation evidence](../../cloudflare/operations/README.md) for scope and guards.
-Production deployment of the new website/authentication update is still pending
-at this revision; earlier release records below do not establish its publication.
+The website/authentication update was published successfully in
+[run 41063340618](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41063340618)
+from exact revision `6cbdcbec59f9227037f9d03622cc8244e2755f8c` on 2026-10-30.
+Migrations 0030/0031, all five Workers and the existing Pages project were
+deployed. The rollout verified the exact canonical commit/assets, service
+health and both frontend catalog URLs before resuming newsletter delivery.
+
+Independent live checks confirmed 2/3/6 perks in both languages, no duplicates,
+the exact VIP teaser, API health and byte-identical frontend assets
+`index-B7Nn_Fxs.js` / `index-BHOTTJpK.css`. Anonymous code confirmation and
+private-content requests returned 401; no account was created or email sent.
+These checks do not establish inbox delivery; all email-transport tests used
+synthetic recipients and mocks.
 
 ## Website
 
