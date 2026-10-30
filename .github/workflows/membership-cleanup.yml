@@ -2,13 +2,23 @@ name: Membership production data cleanup
 
 on:
   push:
-    tags: ['exclusive-cleanup-inspect-*']
+    tags: ['exclusive-cleanup-inspect-*', 'exclusive-cleanup-reset-*']
   workflow_dispatch:
     inputs:
+      operation:
+        description: 'Read-only inventory or one-time owner-requested reset'
+        type: choice
+        options: [inspect, reset]
+        default: inspect
+        required: true
       expected_commit:
-        description: 'Exact full commit SHA for read-only inventory'
+        description: 'Exact full commit SHA'
         type: string
         required: true
+      expected_inventory:
+        description: 'Exact reviewed inventory digest; mandatory for reset'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -18,24 +28,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  inventory:
+  cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Validate exact requested revision
+      - name: Validate exact requested revision and inventory
         id: request
         env:
+          INPUT_OPERATION: ${{ inputs.operation }}
           INPUT_COMMIT: ${{ inputs.expected_commit }}
+          INPUT_INVENTORY: ${{ inputs.expected_inventory }}
         shell: bash
         run: |
           set -euo pipefail
+          operation="${INPUT_OPERATION:-inspect}"
           expected="${INPUT_COMMIT:-}"
+          inventory="${INPUT_INVENTORY:-}"
           if [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            expected="${GITHUB_REF#refs/tags/exclusive-cleanup-inspect-}"
+            if [[ "$GITHUB_REF" == refs/tags/exclusive-cleanup-inspect-* ]]; then
+              operation=inspect
+              expected="${GITHUB_REF#refs/tags/exclusive-cleanup-inspect-}"
+            elif [[ "$GITHUB_REF" == refs/tags/exclusive-cleanup-reset-* ]]; then
+              operation=reset
+              payload="${GITHUB_REF#refs/tags/exclusive-cleanup-reset-}"
+              expected="${payload:0:40}"
+              [[ "${payload:40:1}" == - ]]
+              inventory="${payload:41}"
+            else
+              exit 1
+            fi
             [[ "$expected" == "$GITHUB_SHA" ]]
           fi
+          [[ "$operation" == inspect || "$operation" == reset ]]
           [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$operation" == reset ]]; then
+            [[ "$inventory" =~ ^[0-9a-f]{64}$ ]]
+          fi
+          echo "operation=$operation" >> "$GITHUB_OUTPUT"
           echo "commit=$expected" >> "$GITHUB_OUTPUT"
+          echo "inventory=$inventory" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         with:
           ref: ${{ steps.request.outputs.commit }}
@@ -51,12 +82,15 @@ jobs:
           cache-dependency-path: cloudflare/pnpm-lock.yaml
       - name: Install pinned backend dependencies
         run: pnpm --dir cloudflare install --frozen-lockfile
-      - name: Read-only inventory of existing production D1
+      - name: Verify synthetic cleanup and rollback guards without production credentials
+        run: node --test scripts/prod-cleanup.test.mjs
+      - name: Inspect or execute the bounded owner-requested D1 operation
         env:
           CI: 'true'
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLEANUP_OPERATION: inspect
+          CLEANUP_OPERATION: ${{ steps.request.outputs.operation }}
           EXPECTED_COMMIT: ${{ steps.request.outputs.commit }}
+          EXPECTED_INVENTORY: ${{ steps.request.outputs.inventory }}
           WRANGLER_SEND_METRICS: 'false'
         run: node scripts/prod-cleanup.mjs
