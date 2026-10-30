@@ -36,6 +36,8 @@ network calls or deployment dependencies.
   Mitgliedschaft. Order of Shadows is the secondary community name; do not
   translate it into a German religious-order theme.
 - Keep `/linktree/` available as the music and membership link hub.
+- The affiliate program lives at `https://jason-shadow.com/affiliates`. Link
+  there and permanently redirect the former local `/affiliates` routes.
 - The public host remains `exclusive.jason-shadow.com`. Do not move the
   application to a subpath or change DNS as part of visual work.
 - Music content does not require age evidence. The separate optional VIP adult

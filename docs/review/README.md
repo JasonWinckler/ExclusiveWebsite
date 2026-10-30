@@ -74,7 +74,7 @@ Telegram is an adult-content destination, outside every music membership.
 The follow-up source correction is described below; the earlier release record
 does not establish that this correction is live.
 
-## WhatsApp/Telegram correction — awaiting release evidence
+## WhatsApp/Telegram correction — verified production release
 
 Current source removes Telegram benefits from all music tiers and introduces
 migration `0029_remove_telegram_music_perks.sql`. The destinations have separate
@@ -87,10 +87,36 @@ remain; no adult Telegram routing is added. New checkout terms use
 Backend typechecking and all 173 tests in 23 files pass for this correction,
 as do all 24 focused rollout guard and diagnostic tests and 70 desktop/mobile
 browser checks. Production build and bundle budgets pass.
-Production migration, updated Worker settings and frontend publication for this
-follow-up have not yet been established by a recorded rollout. The screenshots
-above reflect this correction using synthetic accounts and do not verify a
-production release.
+Migration 0029 and the independent contact gates were deployed in
+[run 41053535266](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41053535266).
+The final [revision-aware catalog release](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41054899735)
+verified commit `2ce61a15cd1bbc4b266e0c299beb85d74f2dd77b`, all service bindings,
+both normal German/English frontend catalog URLs and the canonical Pages
+revision/assets. Existing catalog caches are isolated by offer revision, and
+the browser uses the same revision for checkout terms and catalog requests.
+
+Production metadata checks confirmed WhatsApp music approval enabled, Telegram
+music approval disabled and the private WhatsApp number present as a secret
+binding. The number itself was not read or disclosed. Separate public checks
+confirmed zero Telegram benefits in DE and EN, including previously cached
+unversioned catalog URLs. Newsletter delivery resumed after verification.
+No authenticated member impersonation, external contact message or Telegram
+membership modification was performed by the release process. The screenshots
+above use synthetic accounts and remain local design evidence.
+
+## Affiliate program
+
+The central affiliate page is `https://jason-shadow.com/affiliates`. The member
+site, localized landing pages and link hub link there. The former `/affiliates`,
+`/affiliates/` and `/affiliates/index.html` routes have exact permanent 301 rules
+in `public/_redirects`; the unused local affiliate stylesheet was removed.
+No local affiliate page or sitemap entry is retained.
+
+The final build includes these redirect rules and excludes the old stylesheet.
+A local Pages runtime check verified all three destinations and the unchanged
+SPA fallback. Ten affected desktop/mobile browser checks and twelve direct
+footer-link/label checks passed without visiting the external affiliate page or
+submitting a form.
 
 Archived adult posts still require individual administrator publication, and
 earlier newsletter consent requires a new music opt-in. Actual mailbox delivery

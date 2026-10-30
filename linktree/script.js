@@ -26,6 +26,7 @@ const translations = {
     paypalDonation: "Einmaliger Beitrag über PayPal",
     supportNote: "Ein PayPal-Beitrag unterstützt mein Unternehmen und schaltet keine Mitgliedschaft frei. Er wird nicht als steuerlich abzugsfähige gemeinnützige Spende angeboten.",
     privacy: "Datenschutz",
+    affiliates: "Affiliate-Programm",
   },
   en: {
     metaTitle: "Jason Shadow | Exclusive Membership & official links",
@@ -39,6 +40,7 @@ const translations = {
     paypalDonation: "One-time contribution via PayPal",
     supportNote: "A PayPal contribution supports my business and does not activate a membership. It is not offered as a tax-deductible charitable donation.",
     privacy: "Privacy",
+    affiliates: "Affiliate Program",
   },
 };
 const storedLanguage = window.localStorage.getItem(languageStorageKey);
