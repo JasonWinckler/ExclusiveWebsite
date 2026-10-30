@@ -22,6 +22,7 @@
   }],
   "vars": {
     "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
+    "GRAPH_SENDER_NAME": "Jason Shadow · Order of Shadows",
     "MAX_UPSTREAM_JSON_BYTES": "65536"
   },
   "env": {
@@ -29,6 +30,7 @@
       "name": "exclusive-identity-projection-preview",
       "vars": {
         "GRAPH_SENDER_MAILBOX": "info@exclusive.jason-shadow.com",
+        "GRAPH_SENDER_NAME": "Jason Shadow · Order of Shadows",
         "MAX_UPSTREAM_JSON_BYTES": "65536"
       }
     }

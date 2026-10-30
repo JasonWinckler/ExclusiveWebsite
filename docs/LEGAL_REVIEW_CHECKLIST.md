@@ -13,8 +13,8 @@ checks all succeed.
 ## Implemented and technically verified
 
 - [x] Production architecture and trust boundaries documented.
-- [x] Historical age-verification procedure retained for existing evidence.
-- [x] New music memberships do not require ID/video collection.
+- [x] Age-verification procedure scoped to the optional active-VIP adult area.
+- [x] Shared music content and ordinary registration do not require ID/video collection.
 - [x] Private R2 evidence access and immediate/48-hour deletion implemented.
 - [x] Device-bound ten-minute administrator session implemented.
 - [x] Audit retention limited to 730 days and 30 days after account deletion.
@@ -30,7 +30,7 @@ The operator performs and records these controls during live operation:
 
 - review authentication, protected-access and account-sharing controls after
   material changes;
-- re-evaluate the DSFA, legal bases, historical evidence minimization and current membership
+- re-evaluate the DSFA, legal bases, evidence minimization and current membership
   processing after changes to processing or law;
 - test deletion, retry, backup exclusion and incident procedures regularly;
 - update German/EU and US legal texts when law, supported locations, products
@@ -43,7 +43,8 @@ The operator performs and records these controls during live operation:
 ## Music membership transition
 
 Read [ORDER_OF_SHADOWS_TRANSITION.md](ORDER_OF_SHADOWS_TRANSITION.md). Confirm the
-new offer, unchanged prices/terms, VIP arrangements, newsletter consent wording
+new offer, unchanged prices/term lengths, shared BTS access, 15% service benefit,
+Premium-only Telegram, optional verified VIP area, VIP arrangements, newsletter consent wording
 and consumer notices against the deployed product. Existing paid commitments
 and withdrawal/refund rights remain applicable. Do not silently transfer old
 newsletter consent to a materially different purpose.

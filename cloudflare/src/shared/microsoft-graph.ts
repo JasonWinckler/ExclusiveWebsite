@@ -1,4 +1,8 @@
-import { ApiError, readJsonResponse } from "./http";
+import { ApiError, logEvent, readJsonResponse } from "./http";
+
+export const MEMBERSHIP_EMAIL_SENDER_NAME = "Jason Shadow · Order of Shadows";
+// Match identity-projection's 2 MiB raw asset limit after base64 encoding.
+const MAX_INLINE_IMAGE_BASE64_CHARS = Math.ceil(2_097_152 / 3) * 4;
 
 interface MicrosoftGraphTokenResponse {
   access_token?: unknown;
@@ -11,6 +15,7 @@ export interface MicrosoftGraphEmailInput {
   clientId: string;
   clientSecret: string;
   senderMailbox: string;
+  senderDisplayName?: string;
   recipientEmail: string;
   recipientName?: string;
   messageId: string;
@@ -40,6 +45,23 @@ function requireEmail(value: string, code: string): string {
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)
   ) throw new ApiError(503, code);
   return normalized;
+}
+
+function senderName(value: string | undefined): string {
+  const name = value?.trim() || MEMBERSHIP_EMAIL_SENDER_NAME;
+  if (name.length > 128 || /[\u0000-\u001f\u007f]/.test(name)) {
+    throw new ApiError(503, "GRAPH_EMAIL_NOT_CONFIGURED");
+  }
+  return name;
+}
+
+function logGraphFailure(stage: "oauth" | "send", response: Response): void {
+  const reference = response.headers.get("request-id") || response.headers.get("client-request-id");
+  logEvent("error", "graph_email_request_failed", {
+    stage,
+    upstreamStatus: response.status,
+    providerReference: reference && /^[A-Za-z0-9._:-]{1,128}$/.test(reference) ? reference : null,
+  });
 }
 
 async function requestApplicationToken(input: {
@@ -76,7 +98,10 @@ async function requestApplicationToken(input: {
   } catch {
     throw new ApiError(503, "GRAPH_EMAIL_AUTH_UNAVAILABLE");
   }
-  if (!response.ok) throw new ApiError(503, "GRAPH_EMAIL_AUTH_FAILED");
+  if (!response.ok) {
+    logGraphFailure("oauth", response);
+    throw new ApiError(503, "GRAPH_EMAIL_AUTH_FAILED");
+  }
 
   const payload = await readJsonResponse<MicrosoftGraphTokenResponse>(
     response,
@@ -94,6 +119,7 @@ async function requestApplicationToken(input: {
 
 export async function sendMicrosoftGraphEmail(input: MicrosoftGraphEmailInput): Promise<void> {
   const senderMailbox = requireEmail(input.senderMailbox, "GRAPH_EMAIL_NOT_CONFIGURED");
+  const senderDisplayName = senderName(input.senderDisplayName);
   const recipientEmail = requireEmail(input.recipientEmail, "GRAPH_EMAIL_RECIPIENT_INVALID");
   if (
     !/^[A-Za-z0-9._-]{1,36}$/.test(input.messageId) ||
@@ -108,7 +134,7 @@ export async function sendMicrosoftGraphEmail(input: MicrosoftGraphEmailInput): 
       !/^[A-Za-z0-9._-]{1,128}$/.test(input.inlineImage.name) ||
       !/^[A-Za-z0-9._-]{1,128}$/.test(input.inlineImage.contentId) ||
       input.inlineImage.contentBytes.length < 4 ||
-      input.inlineImage.contentBytes.length > 2_796_204 ||
+      input.inlineImage.contentBytes.length > MAX_INLINE_IMAGE_BASE64_CHARS ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(input.inlineImage.contentBytes)
     )
   ) throw new ApiError(503, "GRAPH_EMAIL_INLINE_IMAGE_INVALID");
@@ -130,6 +156,11 @@ export async function sendMicrosoftGraphEmail(input: MicrosoftGraphEmailInput): 
         },
         body: JSON.stringify({
           message: {
+            // Supply the new music identity explicitly instead of inheriting
+            // a legacy mailbox display name. Exchange/recipient address books
+            // may additionally require their own cached name to be updated.
+            from: { emailAddress: { address: senderMailbox, name: senderDisplayName } },
+            replyTo: [{ emailAddress: { address: senderMailbox, name: senderDisplayName } }],
             subject: input.subject,
             body: {
               contentType: "HTML",
@@ -162,6 +193,7 @@ export async function sendMicrosoftGraphEmail(input: MicrosoftGraphEmailInput): 
     throw new ApiError(503, "GRAPH_EMAIL_DELIVERY_UNAVAILABLE");
   }
   if (response.status !== 202) {
+    logGraphFailure("send", response);
     throw new ApiError(503, "GRAPH_EMAIL_DELIVERY_FAILED");
   }
 }

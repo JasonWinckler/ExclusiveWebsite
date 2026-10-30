@@ -158,13 +158,13 @@ export default function MfaPanel({ language, user, onUserUpdate, required = fals
 
   const downloadRecoveryCodes = () => {
     const blob = new Blob(
-      [`Shadow's Temptation MFA recovery codes\n\n${recoveryCodes.join("\n")}\n`],
+      [`Jason Shadow Exclusive Membership — MFA recovery codes\n\n${recoveryCodes.join("\n")}\n`],
       { type: "text/plain;charset=utf-8" },
     );
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "shadows-temptation-recovery-codes.txt";
+    link.download = "jason-shadow-recovery-codes.txt";
     document.body.append(link);
     link.click();
     link.remove();

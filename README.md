@@ -1,4 +1,4 @@
-# The Order of Shadows — ExclusiveWebsite
+# Jason Shadow · Exclusive Membership — ExclusiveWebsite
 
 Production repository for the single-creator membership platform at
 [exclusive.jason-shadow.com](https://exclusive.jason-shadow.com/). The system
@@ -24,8 +24,8 @@ documents before changing production behavior.
 | Appwrite | No build, hosting, SDK, authentication, data or runtime dependency |
 
 The existing Cloudflare platform is already in production. This source converts
-the public offer to **The Order of Shadows**, Jason Shadow’s music and voice
-supporter membership. The host remains `exclusive.jason-shadow.com`; the official
+the public offer to **Jason Shadow · Exclusive Membership**, supporting music
+and voice work. **Order of Shadows** is the secondary community name. The host remains `exclusive.jason-shadow.com`; the official
 music logo and links make it part of the Jason Shadow brand. A source change is
 not proof that its migration or Worker/frontend release is live. See
 [the membership transition](docs/ORDER_OF_SHADOWS_TRANSITION.md) for release order
@@ -39,7 +39,8 @@ The repository owns the complete customer and administrator experience:
 - registration, email verification, login, password reset and profile changes;
 - optional member TOTP MFA and mandatory administrator MFA;
 - device/session management with a maximum of three active devices;
-- music membership access without new ID or video collection;
+- shared music membership content without an ID or video requirement;
+- a separate optional adult-only VIP area with active VIP and age verification;
 - continued private retention/deletion handling for historical review records;
 - free, Basic, Premium and VIP content feeds with posts and member comments;
 - one-time SEPA credit-transfer orders, EPC QR data, invoices and N26 CSV
@@ -54,8 +55,11 @@ The repository owns the complete customer and administrator experience:
   website at `jason-shadow.com`.
 
 This is a single-creator platform. Customers cannot upload public content.
-Members support music and voice work and receive the listed behind-the-scenes
-benefits. These paid memberships are not described as tax-deductible charitable
+Members support music and voice work. Basic Shadow, Premium Shadow and VIP
+Shadow share the same music behind-the-scenes collection. Premium Shadow and
+VIP Shadow include 15% off all Jason Shadow services. Telegram belongs only to
+Premium Shadow; VIP Shadow adds WhatsApp, meet-ups and an optional separately
+age-verified private adult area. These paid memberships are not described as tax-deductible charitable
 donations. Newsletter consent remains optional and uses double opt-in.
 
 ## Non-negotiable safety boundary
@@ -211,16 +215,17 @@ Higher active tiers pause eligible lower-tier time; the lower entitlement can
 resume after the higher tier ends. A deliberate manual admin grant replaces
 the previous membership according to the admin workflow.
 
-## Historical age-verification flow (retired for music memberships)
+## Optional VIP age-verification flow
 
-The following is retained operational history for existing evidence and audit
-records. It is not a registration requirement for The Order of Shadows. New
-music membership customers must not be sent through this flow. Historical
-evidence cleanup must continue; do not resurrect deleted evidence in a rollback.
+Age verification applies only when an active VIP Shadow member chooses the
+separate private adult area. It is not required for the shared music content or
+ordinary membership registration. The server checks active VIP entitlement,
+email, account holds and device authorization before accepting evidence.
+Evidence cleanup applies to current and historical cases; do not resurrect
+deleted evidence in a rollback. There is no third-party verification provider.
 
-There was no third-party age-verification provider.
-
-1. An authenticated, email-verified customer starts a short-lived case.
+1. An authenticated, email-verified active VIP member explicitly starts a case
+   for the separate optional adult area.
 2. The backend generates a random six-digit challenge.
 3. The browser permits live capture only: ID front, ID back and a live video
    showing the face, ID, handwritten challenge and required head movement.
@@ -497,7 +502,7 @@ or empty export must never be uploaded as a valid backup.
 - `docs/ARCHITECTURE_PLAN.md` — production topology and data flow
 - `docs/DEPLOYMENT.md` — deployment order and rollback
 - `docs/SECURITY.md` — authentication, admin, platform and Telegram controls
-- `docs/AGE_VERIFICATION.md` — historical age-review design and retention
+- `docs/AGE_VERIFICATION.md` — optional VIP age review and evidence retention
 - `docs/AVS_REVIEW_PROCESS.md` — administrator review procedure
 - `docs/ADMIN_GUIDE.md` — admin operations
 - `docs/USER_STATUS_MODEL.md` — account and access states
@@ -516,7 +521,7 @@ or empty export must never be uploaded as a valid backup.
 Use this repository's current `main` branch and begin with:
 
 > Read `README.md`, `AGENTS.md` and the linked document relevant to the task
-> completely before acting. Treat The Order of Shadows as a live Cloudflare-
+> completely before acting. Treat Jason Shadow Exclusive Membership as a live Cloudflare-
 > native production system. Inspect the current git status and deployment
 > configuration, preserve unrelated work, never expose secrets or production
 > data, and do not reintroduce Appwrite. Explain the intended production impact

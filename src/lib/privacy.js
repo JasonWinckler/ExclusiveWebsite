@@ -1,4 +1,4 @@
-export const privacyNoticeVersion = "PRIVACY-MUSIC-2026-10-30";
+export const privacyNoticeVersion = "PRIVACY-MUSIC-2026-10-30-V2";
 
 const fallbackCountries = [
   ["DE", "Deutschland / Germany"],

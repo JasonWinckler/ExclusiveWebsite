@@ -138,6 +138,7 @@ export interface IdentityProjectionEnv {
   GRAPH_CLIENT_ID: string;
   GRAPH_CLIENT_SECRET: string;
   GRAPH_SENDER_MAILBOX: string;
+  GRAPH_SENDER_NAME?: string;
   LABEL_SYNC_SERVICE_SECRET: string;
   AUTH_EMAIL_SERVICE_SECRET?: string;
   ACCOUNT_LIFECYCLE_SERVICE_SECRET: string;
@@ -145,6 +146,7 @@ export interface IdentityProjectionEnv {
 }
 
 export interface MaintenanceEnv {
+  NEWSLETTER_DELIVERY_ENABLED?: string;
   DB: D1Database;
   IDENTITY_PROJECTION: Service;
   LABEL_SYNC_SERVICE_SECRET: string;
@@ -206,7 +208,7 @@ export interface ContentItemRow {
   id: string;
   slug: string;
   content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
-  content_scope: "MUSIC" | "LEGACY_ADULT";
+  content_scope: "MUSIC" | "VIP_ADULT" | "LEGACY_ADULT";
   required_tier: "FREE" | EntitlementTier;
   jurisdiction_policy: string | null;
 }

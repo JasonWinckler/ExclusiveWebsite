@@ -56,7 +56,7 @@ export function ageVerificationDeletionEmail(
       subject: "Altersverifikation bestätigt · Löschbestätigung",
       preheader: "Deine Altersverifikation ist abgeschlossen und die privaten Prüfdateien wurden gelöscht.",
       kicker: "VERIFIKATION ABGESCHLOSSEN",
-      title: "Dein Zugang ist altersbestätigt.",
+      title: "Deine Nachweise wurden gelöscht.",
       greeting: `Hallo ${displayName},`,
       intro: "die manuelle Prüfung wurde erfolgreich abgeschlossen. Deine privaten Dokumentaufnahmen und das Live-Verifikationsvideo wurden anschließend aus dem geschützten Prüfbereich gelöscht.",
       deletionTitle: "Deine Löschbestätigung",
@@ -72,7 +72,7 @@ export function ageVerificationDeletionEmail(
       subject: "Age verification confirmed · Deletion receipt",
       preheader: "Your age verification is complete and the private review files have been deleted.",
       kicker: "VERIFICATION COMPLETE",
-      title: "Your access is age-confirmed.",
+      title: "Your verification evidence was deleted.",
       greeting: `Hello ${displayName},`,
       intro: "the manual review has been completed successfully. Your private document captures and live verification video were then deleted from the protected review area.",
       deletionTitle: "Your deletion receipt",
@@ -95,7 +95,7 @@ export function ageVerificationDeletionEmail(
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Jason Shadow · The Healing Shadow" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>

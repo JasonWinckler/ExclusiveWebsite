@@ -1,4 +1,31 @@
-import { ApiError } from "./http";
+import { ApiError, logEvent, readJsonResponse } from "./http";
+
+const mailDiagnosticCodes = new Set([
+  "INTERNAL_SERVICE_AUTH_REQUIRED", "INVALID_TRANSACTIONAL_EMAIL", "USER_NOT_FOUND",
+  "EMAIL_BRAND_ASSET_UNAVAILABLE", "EMAIL_BRAND_ASSET_INVALID",
+  "GRAPH_EMAIL_NOT_CONFIGURED", "GRAPH_EMAIL_RECIPIENT_INVALID", "GRAPH_EMAIL_INLINE_IMAGE_INVALID",
+  "GRAPH_EMAIL_AUTH_UNAVAILABLE", "GRAPH_EMAIL_AUTH_FAILED", "GRAPH_EMAIL_AUTH_INVALID_RESPONSE",
+  "GRAPH_EMAIL_DELIVERY_UNAVAILABLE", "GRAPH_EMAIL_DELIVERY_FAILED",
+]);
+
+async function logMailServiceFailure(response: Response, body: unknown): Promise<void> {
+  let diagnosticCode = "IDENTITY_PROJECTION_FAILED";
+  try {
+    const payload = await readJsonResponse<{ error?: { code?: unknown } }>(response, 4096);
+    const code = payload.error?.code;
+    if (typeof code === "string" && mailDiagnosticCodes.has(code)) diagnosticCode = code;
+  } catch {
+    // Never log an upstream body, description or arbitrary error string.
+  }
+  const reference = response.headers.get("X-Request-Id");
+  const messageId = body && typeof body === "object" && "messageId" in body ? body.messageId : null;
+  logEvent("error", "transactional_email_service_failed", {
+    code: diagnosticCode,
+    upstreamStatus: response.status,
+    serviceReference: reference && /^[A-Za-z0-9._:-]{1,64}$/.test(reference) ? reference : null,
+    messageId: typeof messageId === "string" && /^[A-Za-z0-9._-]{1,36}$/.test(messageId) ? messageId : null,
+  });
+}
 
 async function callIdentityService(
   service: Service,
@@ -20,6 +47,7 @@ async function callIdentityService(
     throw new ApiError(503, "IDENTITY_PROJECTION_UNAVAILABLE");
   }
   if (!response.ok) {
+    if (path === "/send-transactional-email") await logMailServiceFailure(response, body);
     throw new ApiError(503, "IDENTITY_PROJECTION_FAILED");
   }
 }

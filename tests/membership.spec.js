@@ -86,13 +86,18 @@ test('member feed respects server access flags and never requests a denied legac
   const state = await mockMembershipApi(page, {
     user: member,
     entitlement: { active: true, tier: 'EXCLUSIVE_BASIC', expiresAt: '2099-12-31T12:00:00.000Z' },
-    content: [musicPost, { ...musicPost, slug: 'legacy-private-post', title: 'Legacy private post', accessible: false, denialCode: 'LEGACY_CONTENT_QUARANTINED' }],
+    content: [musicPost,
+      { ...musicPost, slug: 'legacy-private-post', title: 'Legacy private post', contentScope: 'LEGACY_ADULT', accessible: false, denialCode: 'LEGACY_CONTENT_QUARANTINED' },
+      { ...musicPost, slug: 'wrongly-mixed-private-post', title: 'Wrongly mixed private post', contentScope: 'VIP_ADULT', accessible: true },
+    ],
   });
   await page.goto('/?lang=en');
   await expect(page.getByText('Studio diary', { exact: true })).toBeVisible();
   await expect(page.locator('.creator-post__media img')).toBeVisible();
   await expect(page.getByText('Legacy private post')).toHaveCount(0);
+  await expect(page.getByText('Wrongly mixed private post')).toHaveCount(0);
   expect(state.requests.filter(({ path }) => path.includes('/content/legacy-private-post'))).toEqual([]);
+  expect(state.requests.filter(({ path }) => path.includes('/content/wrongly-mixed-private-post'))).toEqual([]);
   const media = state.requests.find(({ path }) => path === '/api/member/v1/content/studio-diary');
   expect(media.headers['x-device-token']).toBeTruthy();
 });
@@ -109,10 +114,10 @@ test('administrator VIP simulation preserves the protected, read-only member vie
   const state = await mockMembershipApi(page, {
     user: { ...member, name: 'Administrator', labels: ['admin'], mfa: true },
     entitlement: { active: true, tier: 'EXCLUSIVE_VIP', expiresAt: '2099-12-31T12:00:00.000Z' },
-    simulation: 'EXCLUSIVE_VIP', content: [{ ...musicPost, tier: 'EXCLUSIVE_VIP' }],
+    simulation: 'EXCLUSIVE_VIP', content: [musicPost],
   });
   await page.goto('/?admin-simulation=EXCLUSIVE_VIP&lang=en');
-  await expect(page.locator('.admin-simulation-toolbar')).toContainText('Order VIP');
+  await expect(page.locator('.admin-simulation-toolbar')).toContainText('VIP Shadow');
   await expect(page.getByRole('heading', { name: 'Welcome, Preview VIP' })).toBeVisible();
   await expect(page.locator('.creator-post__media img')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Back to admin' })).toBeVisible();
@@ -120,6 +125,9 @@ test('administrator VIP simulation preserves the protected, read-only member vie
   expect(media.headers['x-admin-simulation']).toBe('EXCLUSIVE_VIP');
   expect(media.headers['x-admin-session']).toBeTruthy();
   expect(state.requests.filter(({ path, method }) => path.startsWith('/api/member/') && method !== 'GET')).toEqual([]);
+  await page.getByRole('button', { name: 'Open private area', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Private content and age evidence are not loaded in simulation.');
+  expect(state.requests.filter(({ scope }) => scope === 'VIP_ADULT')).toEqual([]);
 });
 
 

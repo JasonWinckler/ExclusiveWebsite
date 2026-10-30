@@ -13,43 +13,71 @@ export interface AuthorizationDecision {
 const deny = (code: string): AuthorizationDecision => ({ allowed: false, code });
 const allow = (): AuthorizationDecision => ({ allowed: true, code: "ALLOWED" });
 
-export function authorizeProtectedContent(input: {
+export interface ProtectedContentInput {
   profile: UserProfileRow | null;
   entitlement: EntitlementRow | null;
   requiredTier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
   contentStatus: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
-  contentScope?: "MUSIC" | "LEGACY_ADULT";
+  contentScope?: "MUSIC" | "VIP_ADULT" | "LEGACY_ADULT";
   activeDeviceCount: number;
   deviceLimit: number;
   currentDeviceActive: boolean;
   jurisdictionAllowed: boolean;
   now?: string;
-}): AuthorizationDecision {
-  const now = input.now ?? new Date().toISOString();
+}
+
+type MemberAccessInput = Pick<ProtectedContentInput,
+  "profile" | "entitlement" | "activeDeviceCount" | "deviceLimit" |
+  "currentDeviceActive" | "jurisdictionAllowed" | "now">;
+
+function authorizeMemberAccess(input: MemberAccessInput): AuthorizationDecision {
   if (!input.profile) return deny("PROFILE_NOT_FOUND");
   if (input.profile.account_status !== "ACTIVE") return deny("ACCOUNT_NOT_ACTIVE");
   if (input.profile.email_verified !== 1) return deny("EMAIL_NOT_VERIFIED");
-  // Scope is explicit: an omitted or legacy classification never unlocks old media.
-  if (input.contentScope !== "MUSIC") return deny("LEGACY_CONTENT_QUARANTINED");
   if (input.profile.administrative_hold === 1 || input.profile.deletion_job_hold === 1) {
     return deny("ACCOUNT_HELD");
   }
-  if (input.contentStatus !== "ACTIVE") return deny("CONTENT_NOT_ACTIVE");
   if (!input.jurisdictionAllowed) return deny("JURISDICTION_NOT_ALLOWED");
   if (!input.currentDeviceActive) return deny("DEVICE_NOT_REGISTERED");
   if (input.activeDeviceCount > input.deviceLimit) return deny("DEVICE_LIMIT_EXCEEDED");
-  if (input.requiredTier === "FREE") return allow();
-  if (!input.entitlement || input.entitlement.status !== "ACTIVE") return deny("ENTITLEMENT_REQUIRED");
-  if (input.entitlement.expires_at <= now) return deny("ENTITLEMENT_EXPIRED");
-  const tierRank = {
-    EXCLUSIVE_BASIC: 1,
-    EXCLUSIVE_PREMIUM: 2,
-    EXCLUSIVE_VIP: 3,
-  } as const;
-  if (tierRank[input.entitlement.tier] < tierRank[input.requiredTier]) {
-    return deny("INSUFFICIENT_TIER");
-  }
   return allow();
+}
+
+function authorizeActiveEntitlement(input: MemberAccessInput): AuthorizationDecision {
+  const now = input.now ?? new Date().toISOString();
+  if (!input.entitlement || input.entitlement.status !== "ACTIVE") return deny("ENTITLEMENT_REQUIRED");
+  if (input.entitlement.starts_at > now) return deny("ENTITLEMENT_NOT_STARTED");
+  if (input.entitlement.expires_at <= now) return deny("ENTITLEMENT_EXPIRED");
+  return allow();
+}
+
+/** Collect age evidence only for a verified, active VIP and registered device. */
+export function authorizeVipAgeVerification(input: MemberAccessInput): AuthorizationDecision {
+  const member = authorizeMemberAccess(input);
+  if (!member.allowed) return member;
+  const paid = authorizeActiveEntitlement(input);
+  if (!paid.allowed) return paid;
+  if (input.entitlement!.tier !== "EXCLUSIVE_VIP") return deny("ACTIVE_VIP_REQUIRED");
+  return allow();
+}
+
+export function authorizeProtectedContent(input: ProtectedContentInput): AuthorizationDecision {
+  const member = authorizeMemberAccess(input);
+  if (!member.allowed) return member;
+  // Neither an omitted classification nor legacy media can be unlocked implicitly.
+  if (input.contentScope !== "MUSIC" && input.contentScope !== "VIP_ADULT") {
+    return deny("LEGACY_CONTENT_QUARANTINED");
+  }
+  if (input.contentStatus !== "ACTIVE") return deny("CONTENT_NOT_ACTIVE");
+  if (input.contentScope === "VIP_ADULT") {
+    const vip = authorizeVipAgeVerification(input);
+    if (!vip.allowed) return vip;
+    if (input.profile!.age_status !== "APPROVED") return deny("AGE_NOT_APPROVED");
+    return allow();
+  }
+  // Every paid Shadow tier shares the same music/BTS catalog. FREE stays a preview.
+  if (input.requiredTier === "FREE") return allow();
+  return authorizeActiveEntitlement(input);
 }
 
 const terminalPaymentStates = new Set<PaymentStatus>([

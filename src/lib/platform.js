@@ -418,8 +418,8 @@ export const getProducts = (locale = "de") => apiRequest(
   `/v1/products?locale=${locale === "en" ? "en" : "de"}`,
   { authenticated: false, simulation: false },
 );
-export const getMembershipStatus = () => apiRequest("/v1/membership/status");
-export const getEntitlementStatus = () => apiRequest("/v1/entitlements/status");
+export const getMembershipStatus = () => apiRequest("/v1/membership/status", { device: true });
+export const getEntitlementStatus = () => apiRequest("/v1/entitlements/status", { device: true });
 export const createAgeVerificationCase = ({
   verificationRoute = "MANUAL_DOCUMENT_VIDEO",
   documentType = "NATIONAL_ID",
@@ -431,15 +431,16 @@ export const createAgeVerificationCase = ({
     verificationRoute,
     documentType,
   },
+  device: true,
   idempotent: true,
 });
 export const uploadAgeEvidence = (caseId, kind, file) => apiRequest(
   `/v1/age-verification/cases/${encodeURIComponent(caseId)}/evidence/${encodeURIComponent(kind)}`,
-  { method: "PUT", raw: file, contentType: file.type, idempotent: true },
+  { method: "PUT", raw: file, contentType: file.type, idempotent: true, device: true },
 );
 export const submitAgeVerificationCase = (caseId) => apiRequest(
   `/v1/age-verification/cases/${encodeURIComponent(caseId)}/submit`,
-  { method: "POST", json: {}, idempotent: true },
+  { method: "POST", json: {}, idempotent: true, device: true },
 );
 export const createSepaOrder = (productSku, billing, locale = "de", legal = {}) => apiRequest("/v1/payments/sepa-orders", {
   method: "POST", json: { productSku, billing, locale, ...legal }, idempotent: true,
@@ -490,7 +491,7 @@ export const setRegisteredDeviceLock = (deviceId, locked) => apiRequest(
     device: true,
   },
 );
-export const getContentItems = () => apiRequest("/v1/content", { device: true });
+export const getContentItems = (scope = "MUSIC") => apiRequest(`/v1/content?scope=${scope === "VIP_ADULT" ? "VIP_ADULT" : "MUSIC"}`, { device: true });
 export const fetchContentItem = (slug) => apiRequest(`/v1/content/${encodeURIComponent(slug)}`, {
   device: true, responseType: "response",
 });
@@ -697,19 +698,28 @@ export const adminModerateContentComment = (commentId, action, reason) => apiReq
   `/v1/content/comments/${encodeURIComponent(commentId)}/moderate`,
   { admin: true, method: "POST", json: { action, reason }, idempotent: true },
 );
-export const adminCreateContent = ({ slug, title, tier, bodyText, allowComments }) => apiRequest("/v1/content/items", {
-  admin: true, method: "POST", json: { slug, title, tier, bodyText, allowComments }, idempotent: true,
+export const adminCreateContent = ({ slug, title, tier, bodyText, allowComments, contentScope = "MUSIC", adultContentReviewed = false }) => apiRequest("/v1/content/items", {
+  admin: true, method: "POST", json: { slug, title, tier, bodyText, allowComments, contentScope, adultContentReviewed }, idempotent: true,
 });
-export const adminUpdateContent = (contentId, { title, tier, bodyText, allowComments }) => apiRequest(
+export const adminUpdateContent = (contentId, { title, tier, bodyText, allowComments, contentScope = "MUSIC", adultContentReviewed = false }) => apiRequest(
   `/v1/content/items/${encodeURIComponent(contentId)}`,
-  { admin: true, method: "PATCH", json: { title, tier, bodyText, allowComments }, idempotent: true },
+  { admin: true, method: "PATCH", json: { title, tier, bodyText, allowComments, contentScope, adultContentReviewed }, idempotent: true },
 );
 export const adminDeleteContent = (contentId, reason) => apiRequest(
   `/v1/content/items/${encodeURIComponent(contentId)}`,
   { admin: true, method: "DELETE", json: { reason }, idempotent: true },
 );
-export const adminUploadContent = (contentId, file) => apiRequest(
-  `/v1/content/items/${encodeURIComponent(contentId)}/media`,
+export const adminUploadContent = (contentId, file, options = {}) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}/media${options.adultContentReviewed === true ? "?adultContentReviewed=true" : ""}`,
   { admin: true, method: "PUT", raw: file, contentType: file.type, idempotent: true },
 );
 
+
+export const adminPublishAdultContent = (contentId, { adultContentReviewed, reason }) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}/publish-adult`,
+  { admin: true, method: "POST", json: { adultContentReviewed, reason }, idempotent: true },
+);
+export const adminFetchContentReviewMedia = (contentId) => apiRequest(
+  `/v1/content/items/${encodeURIComponent(contentId)}/media`,
+  { admin: true, responseType: "response" },
+);

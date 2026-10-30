@@ -1,9 +1,10 @@
 # Datenschutz-Folgenabschätzung: manuelle Altersverifikation
 
-> Historical context: the adult-content and new age-review portions of this document
-> are superseded by [The Order of Shadows transition](ORDER_OF_SHADOWS_TRANSITION.md).
-> Retain applicable privacy, evidence deletion and security controls. Do not use
-> this document to re-enable retired customer verification or publish legacy media.
+> Current scope: read [the membership transition](ORDER_OF_SHADOWS_TRANSITION.md)
+> before applying these operational notes. Shared music content does not require
+> age verification. The evidence procedure is available only to active VIP Shadow
+> members who choose the separate optional adult area. Legacy media remains
+> quarantined until an explicit per-item review; privacy and deletion controls apply.
 
 
 Version: 1.4

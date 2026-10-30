@@ -45,6 +45,12 @@ function formattedDate(value: string, locale: MembershipLocale): string {
 }
 
 function tierName(tier: string): string {
+  const names: Record<string, string> = {
+    EXCLUSIVE_BASIC: "Basic Shadow", BASIC: "Basic Shadow",
+    EXCLUSIVE_PREMIUM: "Premium Shadow", PREMIUM: "Premium Shadow",
+    EXCLUSIVE_VIP: "VIP Shadow", VIP: "VIP Shadow",
+  };
+  if (names[tier.toUpperCase()]) return names[tier.toUpperCase()]!;
   return tier
     .replace(/^EXCLUSIVE_/, "")
     .toLowerCase()
@@ -68,7 +74,7 @@ export function membershipActivationEmail(
       subject: `Deine ${tierName(input.tier)} Membership wurde bestätigt`,
       preheader: `${input.productName} und dein Zugangszeitraum wurden bestätigt.`,
       kicker: "DEIN ZUGANG IST BESTÄTIGT",
-      title: "Willkommen im Orden.",
+      title: "Willkommen bei The Order of Shadows.",
       intro: "Dein Zahlungseingang wurde bestätigt und dein persönlicher Zugangszeitraum ist jetzt verbindlich hinterlegt. Danke, dass du meine Musik und meine Arbeit als Sprecher unterstützt.",
       product: "Membership",
       period: "Dein Zugangszeitraum",
@@ -107,7 +113,7 @@ export function membershipActivationEmail(
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Jason Shadow · The Healing Shadow" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -158,7 +164,7 @@ export function membershipRenewalReminderEmail(
       subject: `Noch 7 Tage: Verlängere deine ${tierName(input.tier)} Membership`,
       preheader: `Dein Zugang läuft am ${formattedDate(input.expiresAt, input.locale)} aus.`,
       kicker: "DEIN ZUGANG · NOCH 7 TAGE",
-      title: "Dein nächstes Kapitel im Orden.",
+      title: "Bleib Teil meiner Musikreise.",
       greeting: `Hallo ${input.displayName},`,
       intro: "deine aktuelle Membership endet in sieben Tagen. Da keine automatische Verlängerung stattfindet, entscheidest du selbst, wann dein nächstes Kapitel beginnt.",
       membership: "Aktueller Zugang",
@@ -171,7 +177,7 @@ export function membershipRenewalReminderEmail(
       subject: `7 days left: renew your ${tierName(input.tier)} membership`,
       preheader: `Your access ends on ${formattedDate(input.expiresAt, input.locale)}.`,
       kicker: "YOUR ACCESS · 7 DAYS LEFT",
-      title: "Your next chapter in the Order.",
+      title: "Stay part of my music journey.",
       greeting: `Hello ${input.displayName},`,
       intro: "your current membership ends in seven days. There is no automatic renewal, so you decide when your next chapter begins.",
       membership: "Current access",
@@ -190,7 +196,7 @@ export function membershipRenewalReminderEmail(
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Jason Shadow · The Healing Shadow" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -230,7 +236,7 @@ export function telegramAccessEmail(
       subject: "Dein privater Telegram-Zugang ist aktiv",
       preheader: "Dein Telegram-Konto wurde sicher mit deiner Membership verbunden.",
       kicker: "PRIVATE COMMUNITY · ZUGANG AKTIV",
-      title: "Du bist jetzt im inneren Kreis.",
+      title: "Deine Community wartet auf dich.",
       greeting: `Hallo ${memberName},`,
       intro: `dein Telegram-Konto wurde erfolgreich mit deiner ${tier} Membership verbunden. Der verwendete Einladungslink wurde direkt nach deinem Beitritt entwertet.`,
       security: "Im Dashboard speichern wir nur die für Freigabe und späteren Entzug notwendige Telegram-Konto-ID – keinen Telegram-Benutzernamen, kein Profilbild und keine Chat-Inhalte.",
@@ -241,7 +247,7 @@ export function telegramAccessEmail(
       subject: "Your private Telegram access is active",
       preheader: "Your Telegram account is now securely linked to your membership.",
       kicker: "PRIVATE COMMUNITY · ACCESS ACTIVE",
-      title: "You are now inside the inner circle.",
+      title: "Your community is ready for you.",
       greeting: `Hello ${memberName},`,
       intro: `your Telegram account has been successfully linked to your ${tier} membership. The invitation link was revoked immediately after you joined.`,
       security: "The dashboard stores only the Telegram account ID required to grant and later revoke access—never your Telegram username, profile photo or chat content.",
@@ -258,7 +264,7 @@ export function telegramAccessEmail(
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Jason Shadow · The Healing Shadow" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>

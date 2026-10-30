@@ -2,11 +2,12 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export function testDatabase(beforeMusicMigration = false) {
+export function testDatabase(beforeMigration: boolean | string = false) {
   const sqlite = new DatabaseSync(":memory:");
   const directory = fileURLToPath(new URL("../../migrations/", import.meta.url));
   for (const name of readdirSync(directory).filter((name) => name.endsWith(".sql")).sort()) {
-    if (beforeMusicMigration && name.startsWith("0027_")) continue;
+    const cutoff = beforeMigration === true ? "0027" : beforeMigration;
+    if (typeof cutoff === "string" && name.slice(0, 4) >= cutoff) break;
     sqlite.exec(readFileSync(`${directory}/${name}`, "utf8"));
   }
   function prepare(sql: string) {

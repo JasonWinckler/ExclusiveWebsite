@@ -1931,6 +1931,88 @@ async function moderateContentComment(
   return { commentId, status: nextStatus };
 }
 
+function contentSelection(body: Record<string, unknown>, existingScope = "MUSIC") {
+  const scope = body.contentScope ?? existingScope;
+  if (scope !== "MUSIC" && scope !== "VIP_ADULT") throw new ApiError(400, "INVALID_CONTENT_SCOPE");
+  if (scope === "VIP_ADULT" && body.adultContentReviewed !== true) {
+    throw new ApiError(400, "ADULT_CONTENT_REVIEW_REQUIRED");
+  }
+  return { scope, tier: scope === "VIP_ADULT" ? "EXCLUSIVE_VIP" : body.tier === "FREE" ? "FREE" : "EXCLUSIVE_BASIC" };
+}
+
+async function previewContentMedia(
+  env: AdminEnv, contentId: string, administratorUserId: string,
+  correlationId: string, origin: string | null, origins: ReadonlySet<string>,
+): Promise<Response> {
+  if (!/^[0-9a-f-]{36}$/i.test(contentId)) throw new ApiError(400, "INVALID_CONTENT_ID");
+  const upload = await env.DB.prepare(`SELECT u.r2_object_key, u.content_type, u.object_etag, u.size_bytes
+    FROM content_uploads u JOIN content_items c ON c.id = u.content_item_id
+    WHERE c.id = ? AND c.content_status <> 'RETIRED' AND u.status = 'ACTIVE'`)
+    .bind(contentId).first<{ r2_object_key: string; content_type: string; object_etag: string; size_bytes: number }>();
+  if (!upload) throw new ApiError(404, "CONTENT_MEDIA_UNAVAILABLE");
+  const object = await env.CONTENT_MEDIA.get(upload.r2_object_key);
+  if (!object || object.etag !== upload.object_etag || object.size !== upload.size_bytes) {
+    throw new ApiError(503, "CONTENT_INTEGRITY_CHECK_FAILED");
+  }
+  await auditStatement(env.DB, {
+    administratorUserId, action: "CONTENT_MEDIA_REVIEWED", targetType: "CONTENT_ITEM", targetId: contentId,
+    previousState: null, newState: { purpose: "PRIVATE_ADMIN_REVIEW" },
+    reason: "Administrator opened protected media for content review", correlationId, now: isoNow(),
+  }).run();
+  const headers = corsHeaders(origin, origins);
+  headers.set("Content-Type", upload.content_type);
+  headers.set("Content-Length", String(upload.size_bytes));
+  headers.set("Content-Disposition", "inline");
+  headers.set("Cache-Control", "private, no-store, max-age=0");
+  headers.set("Content-Security-Policy", "default-src 'none'; sandbox");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Request-Id", correlationId);
+  return new Response(object.body, { headers });
+}
+
+async function publishReviewedAdultContent(
+  request: Request, env: AdminEnv, contentId: string, administratorUserId: string, correlationId: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[0-9a-f-]{36}$/i.test(contentId)) throw new ApiError(400, "INVALID_CONTENT_ID");
+  requireIdempotencyKey(request);
+  const body = await readJsonBody<unknown>(request, 4096);
+  exactKeys(body, ["adultContentReviewed", "reason"]);
+  if (body.adultContentReviewed !== true || typeof body.reason !== "string" ||
+      body.reason.trim().length < 10 || body.reason.length > 1000) {
+    throw new ApiError(400, "ADULT_CONTENT_REVIEW_REQUIRED");
+  }
+  const item = await env.DB.prepare(`SELECT c.id, c.content_scope, c.content_status,
+      u.r2_object_key, u.object_etag, u.size_bytes
+    FROM content_items c LEFT JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
+    WHERE c.id = ?`).bind(contentId).first<{
+      id: string; content_scope: string; content_status: string;
+      r2_object_key: string | null; object_etag: string | null; size_bytes: number | null;
+    }>();
+  if (!item || item.content_status === "RETIRED") throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
+  if (!["LEGACY_ADULT", "VIP_ADULT"].includes(item.content_scope)) {
+    throw new ApiError(409, "CONTENT_SCOPE_CHANGE_REQUIRES_REVIEW");
+  }
+  if (!item.r2_object_key) throw new ApiError(409, "CONTENT_MEDIA_UNAVAILABLE");
+  const media = await env.CONTENT_MEDIA.head(item.r2_object_key);
+  if (!media || media.etag !== item.object_etag || media.size !== item.size_bytes) {
+    throw new ApiError(503, "CONTENT_INTEGRITY_CHECK_FAILED");
+  }
+  const now = isoNow();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE content_items SET content_scope = 'VIP_ADULT', required_tier = 'EXCLUSIVE_VIP',
+      content_status = 'ACTIVE', published_at = ?, version = version + 1, updated_at = ?
+      WHERE id = ? AND content_scope IN ('LEGACY_ADULT', 'VIP_ADULT') AND content_status <> 'RETIRED'`)
+      .bind(now, now, contentId),
+    auditStatement(env.DB, {
+      administratorUserId, action: "VIP_ADULT_CONTENT_EXPLICITLY_PUBLISHED", targetType: "CONTENT_ITEM", targetId: contentId,
+      previousState: { scope: item.content_scope, status: item.content_status },
+      newState: { scope: "VIP_ADULT", status: "ACTIVE", adultContentReviewed: true },
+      reason: body.reason.trim(), correlationId, now,
+    }),
+  ]);
+  return { id: contentId, contentScope: "VIP_ADULT", contentStatus: "ACTIVE", requiredTier: "EXCLUSIVE_VIP" };
+}
+
 async function createContentItem(
   request: Request,
   env: AdminEnv,
@@ -1941,7 +2023,7 @@ async function createContentItem(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactKeys(body, ["slug", "title", "tier", "bodyText", "allowComments"]);
+  exactKeys(body, ["slug", "title", "tier", "bodyText", "allowComments", "contentScope", "adultContentReviewed"]);
   if (typeof body.slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug) || body.slug.length > 128) {
     throw new ApiError(400, "INVALID_CONTENT_SLUG");
   }
@@ -1962,6 +2044,7 @@ async function createContentItem(
   if (typeof body.allowComments !== "boolean") {
     throw new ApiError(400, "INVALID_COMMENT_SETTING");
   }
+  const { scope, tier } = contentSelection(body);
   const postBody = body.bodyText.trim();
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
@@ -1976,14 +2059,15 @@ async function createContentItem(
       INSERT INTO content_items (
         id, slug, title, body_text, allow_comments, content_status, content_scope, required_tier,
         creation_idempotency_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', 'MUSIC', ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', ?, ?, ?, ?, ?)
     `).bind(
       contentId,
       body.slug,
       body.title.trim(),
       postBody,
       body.allowComments ? 1 : 0,
-      body.tier,
+      scope,
+      tier,
       idempotencyKey,
       now,
       now,
@@ -1994,7 +2078,7 @@ async function createContentItem(
       targetType: "CONTENT_ITEM",
       targetId: contentId,
       previousState: null,
-      newState: { slug: body.slug, title: body.title.trim(), bodyText: postBody, allowComments: body.allowComments, tier: body.tier, status: "DISABLED" },
+      newState: { slug: body.slug, title: body.title.trim(), bodyText: postBody, allowComments: body.allowComments, tier, scope, adultContentReviewed: scope === "VIP_ADULT", status: "DISABLED" },
       reason: "Admin content upload preparation",
       correlationId,
       now,
@@ -2007,7 +2091,8 @@ async function createContentItem(
     bodyText: postBody,
     allowComments: body.allowComments,
     contentStatus: "DISABLED",
-    requiredTier: body.tier,
+    requiredTier: tier,
+    contentScope: scope,
   };
 }
 
@@ -2023,7 +2108,7 @@ async function updateContentItem(
     request,
     parsePositiveInt(env.MAX_JSON_BODY_BYTES, 32_768, 65_536),
   );
-  exactKeys(body, ["title", "tier", "bodyText", "allowComments"]);
+  exactKeys(body, ["title", "tier", "bodyText", "allowComments", "contentScope", "adultContentReviewed"]);
   if (
     typeof body.title !== "string" || body.title.trim().length < 1 || body.title.length > 160 ||
     /[\u0000-\u001f\u007f]/.test(body.title)
@@ -2055,7 +2140,9 @@ async function updateContentItem(
   if (!existing || existing.content_status === "RETIRED") {
     throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
   }
-  if (existing.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
+  if (!["MUSIC", "VIP_ADULT"].includes(existing.content_scope)) throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
+  const { scope, tier } = contentSelection(body, existing.content_scope);
+  if (scope !== existing.content_scope) throw new ApiError(409, "CONTENT_SCOPE_CHANGE_REQUIRES_REVIEW");
   requireIdempotencyKey(request);
   const title = body.title.trim();
   const postBody = body.bodyText.trim();
@@ -2066,7 +2153,7 @@ async function updateContentItem(
       SET title = ?, body_text = ?, allow_comments = ?, required_tier = ?,
         version = version + 1, updated_at = ?
       WHERE id = ? AND content_status <> 'RETIRED'
-    `).bind(title, postBody, body.allowComments ? 1 : 0, body.tier, now, contentId),
+    `).bind(title, postBody, body.allowComments ? 1 : 0, tier, now, contentId),
     auditStatement(env.DB, {
       administratorUserId,
       action: "CONTENT_ITEM_UPDATED",
@@ -2078,7 +2165,7 @@ async function updateContentItem(
         allowComments: existing.allow_comments === 1,
         tier: existing.required_tier,
       },
-      newState: { title, bodyText: postBody, allowComments: body.allowComments, tier: body.tier },
+      newState: { title, bodyText: postBody, allowComments: body.allowComments, tier, scope },
       reason: "Creator edited published post",
       correlationId,
       now,
@@ -2090,7 +2177,8 @@ async function updateContentItem(
     title,
     bodyText: postBody,
     allowComments: body.allowComments,
-    requiredTier: body.tier,
+    requiredTier: tier,
+    contentScope: scope,
     contentStatus: existing.content_status,
   };
 }
@@ -2220,7 +2308,10 @@ async function uploadContentMedia(
     active_size_bytes: number | null;
   }>();
   if (!item) throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
-  if (item.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
+  if (!["MUSIC", "VIP_ADULT"].includes(item.content_scope)) throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
+  if (item.content_scope === "VIP_ADULT" && new URL(request.url).searchParams.get("adultContentReviewed") !== "true") {
+    throw new ApiError(400, "ADULT_CONTENT_REVIEW_REQUIRED");
+  }
   if (
     item.content_status !== "REVIEW" &&
     item.content_status !== "DISABLED" &&
@@ -2313,6 +2404,8 @@ async function uploadContentMedia(
         },
         newState: {
           contentStatus: "ACTIVE",
+          contentScope: item.content_scope,
+          adultContentReviewed: item.content_scope === "VIP_ADULT",
           hasMedia: true,
           contentType,
           sizeBytes: bytes.byteLength,
@@ -2578,7 +2671,7 @@ async function unrestrictUser(
   } catch {
     accessLabelSync = "FAILED";
   }
-  if (activeEntitlement && ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(activeEntitlement.tier)) {
+  if (activeEntitlement?.tier === "EXCLUSIVE_PREMIUM") {
     try {
       const telegramHeaders = new Headers(request.headers);
       telegramHeaders.set("Content-Type", "application/json");
@@ -3132,6 +3225,7 @@ async function queueNewDropCampaign(
     FROM content_items WHERE id = ?`).bind(contentItemId)
     .first<{ id: string; title: string; body_text: string | null; content_status: string; content_scope: string }>();
   if (!item || item.content_status !== "ACTIVE") throw new ApiError(409, "ACTIVE_CONTENT_REQUIRED");
+  if (item.content_scope === "VIP_ADULT") throw new ApiError(409, "ADULT_CONTENT_NEWSLETTER_FORBIDDEN");
   if (item.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
   const now = isoNow();
   const campaignId = crypto.randomUUID();
@@ -3223,6 +3317,7 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
   const paymentCancellationPath = /^\/v1\/payments\/orders\/([^/]+)\/cancel$/.exec(url.pathname);
   const paymentInvoicePath = /^\/v1\/payments\/orders\/([^/]+)\/invoice$/.exec(url.pathname);
   const paymentOrderPath = /^\/v1\/payments\/orders\/([^/]+)$/.exec(url.pathname);
+  const adultPublishPath = /^\/v1\/content\/items\/([^/]+)\/publish-adult$/.exec(url.pathname);
   const contentMediaPath = /^\/v1\/content\/items\/([^/]+)\/media$/.exec(url.pathname);
   const contentItemPath = /^\/v1\/content\/items\/([^/]+)$/.exec(url.pathname);
   const contentCommentModerationPath = /^\/v1\/content\/comments\/([0-9a-f-]{36})\/moderate$/i
@@ -3385,6 +3480,10 @@ async function route(request: Request, env: AdminEnv): Promise<Response> {
     );
   } else if (request.method === "POST" && url.pathname === "/v1/content/items") {
     result = await createContentItem(request, env, administrator.userId, correlationId);
+  } else if (request.method === "GET" && contentMediaPath) {
+    return previewContentMedia(env, decodeURIComponent(contentMediaPath[1]!), administrator.userId, correlationId, origin, origins);
+  } else if (request.method === "POST" && adultPublishPath) {
+    result = await publishReviewedAdultContent(request, env, decodeURIComponent(adultPublishPath[1]!), administrator.userId, correlationId);
   } else if (request.method === "PATCH" && contentItemPath) {
     result = await updateContentItem(
       request,

@@ -26,7 +26,7 @@ import {
   requestId,
   requireIdempotencyKey,
 } from "../shared/http";
-import { authorizeProtectedContent } from "../shared/policy";
+import { authorizeProtectedContent, authorizeVipAgeVerification } from "../shared/policy";
 import { assertMediaSignature } from "../shared/media";
 import {
   deleteIdentitySession,
@@ -58,8 +58,8 @@ import type {
 } from "../shared/types";
 
 const AGE_INSTRUCTIONS_VERSION = "manual-age-v6";
-const PRIVACY_NOTICE_VERSION = "PRIVACY-MUSIC-2026-10-30";
-const MEMBERSHIP_TERMS_VERSION = "ORDER-2026-10-30-V1";
+const PRIVACY_NOTICE_VERSION = "PRIVACY-MUSIC-2026-10-30-V2";
+const MEMBERSHIP_TERMS_VERSION = "ORDER-2026-10-30-V2";
 type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
 type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
 const ISO_COUNTRIES = new Set(`
@@ -177,6 +177,36 @@ function requireSimulationContentAccess(role: AdminSimulationRole | null): void 
   if (role === "REGISTERED") throw new ApiError(403, "EMAIL_NOT_VERIFIED");
 }
 
+function memberBenefits(accountReady: boolean, tier: string | null, ageStatus: string) {
+  const vip = accountReady && tier === "EXCLUSIVE_VIP";
+  const discount = accountReady && ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier ?? "") ? 15 : 0;
+  return {
+    benefits: { serviceDiscountPercent: discount, telegramAvailable: accountReady && tier === "EXCLUSIVE_PREMIUM" },
+    adultArea: {
+      eligible: vip,
+      ageVerified: ageStatus === "APPROVED",
+      available: vip && ageStatus === "APPROVED",
+      ageStatus,
+      deviceRegistrationRequired: true,
+      status: !accountReady ? "ACCOUNT_NOT_READY" : !vip ? "VIP_REQUIRED" : ageStatus !== "APPROVED" ? "AGE_VERIFICATION_REQUIRED" : "READY",
+    },
+  };
+}
+
+async function requireVipAgeEligibility(request: Request, env: MembershipEnv, userId: string): Promise<void> {
+  const tokenHash = await sha256Hex(validateDeviceToken(request.headers.get("X-Device-Token")));
+  const access = await getAccessContext(env.DB, userId, tokenHash);
+  const decision = authorizeVipAgeVerification({
+    profile: access.profile,
+    entitlement: access.entitlement,
+    activeDeviceCount: access.activeDeviceCount,
+    deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
+    currentDeviceActive: access.device?.status === "ACTIVE",
+    jurisdictionAllowed: true,
+  });
+  if (!decision.allowed) throw new ApiError(403, decision.code);
+}
+
 function simulationStatusResponse(
   env: MembershipEnv,
   role: AdminSimulationRole,
@@ -184,6 +214,7 @@ function simulationStatusResponse(
   const entitlement = simulationEntitlement(role);
   const registered = role !== "GUEST";
   const ageApproved = role !== "GUEST" && role !== "REGISTERED";
+  const readiness = memberBenefits(registered && role !== "REGISTERED", entitlement?.tier ?? null, ageApproved ? "APPROVED" : "NOT_STARTED");
   return {
     account: {
       status: registered ? "ACTIVE" : "SIGNED_OUT",
@@ -222,9 +253,11 @@ function simulationStatusResponse(
       }],
     },
     entitlement: entitlement
-      ? { active: true, tier: entitlement.tier, expiresAt: entitlement.expires_at, paused: null }
-      : { active: false, tier: null, expiresAt: null, paused: null },
+      ? { active: true, tier: entitlement.tier, expiresAt: entitlement.expires_at, paused: null, serviceDiscountPercent: readiness.benefits.serviceDiscountPercent }
+      : { active: false, tier: null, expiresAt: null, paused: null, serviceDiscountPercent: 0 },
     devices: { active: 1, limit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10) },
+    ...readiness,
+    adultArea: { ...readiness.adultArea, available: false, status: "ADMIN_SIMULATION_ADULT_UNAVAILABLE" },
     simulation: { role, readOnly: true },
   };
 }
@@ -359,9 +392,12 @@ async function statusResponse(
   env: MembershipEnv,
   userId: string,
   simulationRole: AdminSimulationRole | null = null,
+  request?: Request,
 ): Promise<Record<string, unknown>> {
   if (simulationRole) return simulationStatusResponse(env, simulationRole);
   const now = isoNow();
+  const deviceHeader = request?.headers.get("X-Device-Token");
+  const currentDeviceHash = deviceHeader ? await sha256Hex(validateDeviceToken(deviceHeader)) : "";
   const row = await env.DB.prepare(`
     WITH active_entitlement AS (
       SELECT tier, expires_at
@@ -394,7 +430,7 @@ async function statusResponse(
       LIMIT 1
     )
     SELECT
-      p.account_status, p.email_verified, p.age_status, p.display_name,
+      p.account_status, p.email_verified, p.age_status, p.administrative_hold, p.deletion_job_hold, p.display_name,
       p.username_change_count, p.username_last_changed_at, p.username_next_change_at,
       p.username_sync_status,
       p.country_code,
@@ -405,6 +441,8 @@ async function statusResponse(
       pe.resume_at AS paused_entitlement_resume_at,
       (SELECT COUNT(*) FROM registered_devices d
         WHERE d.appwrite_user_id = p.appwrite_user_id AND d.status = 'ACTIVE') AS active_device_count,
+      (SELECT d.status FROM registered_devices d WHERE d.appwrite_user_id = p.appwrite_user_id
+        AND d.device_token_hash = ? LIMIT 1) AS current_device_status,
       a.id AS age_case_id, a.manual_review_status, a.upload_expires_at,
       a.review_expires_at,
       a.instructions_version, a.liveness_challenge_json,
@@ -417,10 +455,12 @@ async function statusResponse(
     LEFT JOIN paused_entitlement pe ON 1 = 1
     LEFT JOIN latest_age_case a ON 1 = 1
     WHERE p.appwrite_user_id = ?
-  `).bind(userId, now, now, userId, now, userId, userId).first<{
+  `).bind(userId, now, now, userId, now, userId, currentDeviceHash, userId).first<{
     account_status: string;
     email_verified: number;
     age_status: string;
+    administrative_hold: number;
+    deletion_job_hold: number;
     display_name: string;
     username_change_count: number;
     username_last_changed_at: string | null;
@@ -436,6 +476,7 @@ async function statusResponse(
     paused_entitlement_expires_at: string | null;
     paused_entitlement_resume_at: string | null;
     active_device_count: number;
+    current_device_status: string | null;
     age_case_id: string | null;
     manual_review_status: string | null;
     upload_expires_at: string | null;
@@ -448,6 +489,12 @@ async function statusResponse(
     evidence_kinds: string | null;
   }>();
   if (!row) throw new ApiError(503, "PROFILE_PROJECTION_UNAVAILABLE");
+  const readiness = memberBenefits(row.account_status === "ACTIVE" && row.email_verified === 1 && !row.administrative_hold && !row.deletion_job_hold, row.entitlement_tier, row.age_status);
+  const deviceRegistered = row.current_device_status === "ACTIVE" && Number(row.active_device_count) <= parsePositiveInt(env.DEVICE_LIMIT, 3, 10);
+  if (!deviceRegistered) {
+    readiness.adultArea.available = false;
+    if (readiness.adultArea.status === "READY") readiness.adultArea.status = "DEVICE_REGISTRATION_REQUIRED";
+  }
   const parsedChallenge = row.liveness_challenge_json
     ? parseChallenge(row.liveness_challenge_json)
     : { code: null, steps: [] };
@@ -483,8 +530,8 @@ async function statusResponse(
       uploadExpiresAt: row.upload_expires_at,
       reviewExpiresAt: row.review_expires_at,
       instructionsVersion: row.instructions_version,
-      livenessChallenge: parsedChallenge.steps,
-      livenessCode: parsedChallenge.code,
+      livenessChallenge: readiness.adultArea.eligible ? parsedChallenge.steps : [],
+      livenessCode: readiness.adultArea.eligible ? parsedChallenge.code : null,
       evidenceKinds,
       verificationRoute: row.verification_route,
       documentType: row.document_type,
@@ -495,12 +542,15 @@ async function statusResponse(
       methods: [
         {
           id: "MANUAL_DOCUMENT_VIDEO",
-          available: true,
+          available: readiness.adultArea.eligible,
           documentTypes: availableDocumentTypes(row.country_code),
         },
       ],
     },
+    ...readiness,
+    adultArea: { ...readiness.adultArea, deviceRegistered },
     entitlement: {
+      serviceDiscountPercent: readiness.benefits.serviceDiscountPercent,
       ...(row.entitlement_tier && row.entitlement_expires_at
         ? { active: true, tier: row.entitlement_tier, expiresAt: row.entitlement_expires_at }
         : { active: false, tier: null, expiresAt: null }),
@@ -2495,81 +2545,54 @@ async function listContent(
   simulationRole: AdminSimulationRole | null = null,
 ): Promise<Record<string, unknown>> {
   requireSimulationContentAccess(simulationRole);
-  const deviceToken = validateDeviceToken(request.headers.get("X-Device-Token"));
-  const tokenHash = await sha256Hex(deviceToken);
-  const [rawAccess, content] = await Promise.all([
-    getAccessContext(env.DB, userId, tokenHash),
-    env.DB.prepare(`
-      SELECT c.slug, c.title, c.body_text, c.allow_comments, c.published_at,
-        c.required_tier, c.jurisdiction_policy, u.content_type, u.size_bytes,
-        (SELECT COUNT(*) FROM content_comments comments
-          WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
-      FROM content_items c
-      JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
-      WHERE c.content_status = 'ACTIVE' AND c.content_scope = 'MUSIC'
-      ORDER BY c.published_at DESC, c.created_at DESC
-      LIMIT 200
-    `).all<{
-      slug: string;
-      title: string;
-      body_text: string;
-      allow_comments: number;
-      published_at: string | null;
-      required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
-      jurisdiction_policy: string | null;
-      content_type: string;
-      size_bytes: number;
-      comment_count: number;
-    }>(),
-  ]);
-  const access = simulationRole
-    ? simulatedAccessContext(rawAccess, simulationRole)
-    : rawAccess;
+  const scope = new URL(request.url).searchParams.get("scope") || "MUSIC";
+  if (scope !== "MUSIC" && scope !== "VIP_ADULT") throw new ApiError(400, "INVALID_CONTENT_SCOPE");
+  if (scope === "VIP_ADULT" && simulationRole) throw new ApiError(403, "ADMIN_SIMULATION_ADULT_UNAVAILABLE");
+  const tokenHash = await sha256Hex(validateDeviceToken(request.headers.get("X-Device-Token")));
+  const rawAccess = await getAccessContext(env.DB, userId, tokenHash);
+  const access = simulationRole ? simulatedAccessContext(rawAccess, simulationRole) : rawAccess;
   const { profile, entitlement, device, activeDeviceCount } = access;
   const baseDecision = authorizeProtectedContent({
-    profile,
-    entitlement,
-    requiredTier: "FREE",
-    contentStatus: "ACTIVE",
-    contentScope: "MUSIC",
-    activeDeviceCount,
-    deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
-    currentDeviceActive: device?.status === "ACTIVE",
-    jurisdictionAllowed: true,
+    profile, entitlement,
+    requiredTier: scope === "VIP_ADULT" ? "EXCLUSIVE_VIP" : "FREE",
+    contentStatus: "ACTIVE", contentScope: scope,
+    activeDeviceCount, deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
+    currentDeviceActive: device?.status === "ACTIVE", jurisdictionAllowed: true,
   });
   if (!baseDecision.allowed) throw new ApiError(403, baseDecision.code);
-  if (!simulationRole) {
-    await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
-  }
+  // No adult titles, body text, media type or counts are read before VIP/age authorization.
+  const content = await env.DB.prepare(`
+    SELECT c.slug, c.title, c.body_text, c.allow_comments, c.published_at,
+      c.required_tier, c.jurisdiction_policy, u.content_type, u.size_bytes,
+      (SELECT COUNT(*) FROM content_comments comments
+        WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
+    FROM content_items c
+    JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
+    WHERE c.content_status = 'ACTIVE' AND c.content_scope = ?
+    ORDER BY c.published_at DESC, c.created_at DESC LIMIT 200
+  `).bind(scope).all<{
+    slug: string; title: string; body_text: string; allow_comments: number;
+    published_at: string | null; required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
+    jurisdiction_policy: string | null; content_type: string; size_bytes: number; comment_count: number;
+  }>();
+  if (!simulationRole) await touchRegisteredDevice(env.DB, device!.id, device!.last_seen_at);
   return {
-    items: content.results.map((item) => {
+    scope,
+    items: content.results.flatMap((item) => {
       const decision = authorizeProtectedContent({
-        profile,
-        entitlement,
-        requiredTier: item.required_tier,
-        contentStatus: "ACTIVE",
-        contentScope: "MUSIC",
-        activeDeviceCount,
-        deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
-        currentDeviceActive: true,
-        jurisdictionAllowed: jurisdictionAllowed(
-          item.jurisdiction_policy,
-          profile?.jurisdiction_code ?? null,
-        ),
+        profile, entitlement, requiredTier: item.required_tier,
+        contentStatus: "ACTIVE", contentScope: scope,
+        activeDeviceCount, deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10), currentDeviceActive: true,
+        jurisdictionAllowed: jurisdictionAllowed(item.jurisdiction_policy, profile?.jurisdiction_code ?? null),
       });
-      return {
-        slug: item.slug,
-        title: item.title,
-        bodyText: item.body_text,
-        publishedAt: item.published_at,
-        tier: item.required_tier,
-        contentType: item.content_type,
-        sizeBytes: item.size_bytes,
-        allowComments: item.allow_comments === 1,
-        commentCount: item.comment_count,
-        accessible: decision.allowed,
-        denialCode: decision.allowed ? null : decision.code,
-      };
+      if (scope === "VIP_ADULT" && !decision.allowed) return [];
+      return [{
+        slug: item.slug, title: item.title, bodyText: item.body_text,
+        publishedAt: item.published_at, tier: item.required_tier, scope, contentScope: scope,
+        contentType: item.content_type, sizeBytes: item.size_bytes,
+        allowComments: item.allow_comments === 1, commentCount: item.comment_count,
+        accessible: decision.allowed, denialCode: decision.allowed ? null : decision.code,
+      }];
     }),
   };
 }
@@ -2650,7 +2673,7 @@ async function commentContext(
     version: number;
     content_id: string;
     content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
-    content_scope: "MUSIC" | "LEGACY_ADULT";
+    content_scope: "MUSIC" | "VIP_ADULT" | "LEGACY_ADULT";
     required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
     jurisdiction_policy: string | null;
     allow_comments: number;
@@ -2665,6 +2688,7 @@ async function commentContext(
     active_count: number | null;
   }>();
   if (!row) throw new ApiError(404, "CONTENT_NOT_FOUND");
+  if (row.content_scope === "VIP_ADULT" && simulationRole) throw new ApiError(403, "ADMIN_SIMULATION_ADULT_UNAVAILABLE");
   let profile: UserProfileRow = {
     appwrite_user_id: row.appwrite_user_id,
     email: row.email,
@@ -2846,6 +2870,7 @@ async function authorizeContent(
     : rawAccess;
   const { profile, entitlement, device, activeDeviceCount } = access;
   if (!content) throw new ApiError(404, "CONTENT_NOT_FOUND");
+  if (content.content_scope === "VIP_ADULT" && simulationRole) throw new ApiError(403, "ADMIN_SIMULATION_ADULT_UNAVAILABLE");
   const decision = authorizeProtectedContent({
     profile,
     entitlement,
@@ -3500,7 +3525,7 @@ async function exportPrivacyData(
     };
   });
   const payload = {
-    format: "shadows-temptation-personal-data-export-v1",
+    format: "jason-shadow-personal-data-export-v2",
     generatedAt: isoNow(),
     accountId: userId,
     profile: results[0]!.results[0] ?? null,
@@ -3684,7 +3709,7 @@ async function route(
   if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
     const locale = requestUrl.searchParams.get("locale") === "en" ? "en" : "de";
     const cacheKey = productCatalogCacheKey(request, locale, origin);
-    const edgeCache = await caches.open("order-of-shadows-products-v2");
+    const edgeCache = await caches.open("order-of-shadows-products-v3");
     const cached = await edgeCache.match(cacheKey);
     if (cached) return withRequestId(cached, correlationId);
     await enforceRateLimit(
@@ -3750,10 +3775,11 @@ async function route(
   const identity = await authenticateUser(request, env, {
     requireVerifiedEmail: requiresVerified,
   });
-  if (requestUrl.pathname.startsWith("/v1/age-verification/")) {
-    throw new ApiError(410, "AGE_VERIFICATION_RETIRED");
-  }
   const simulationRole = await requireAdminSimulation(request, env, identity);
+  if (requestUrl.pathname.startsWith("/v1/age-verification/")) {
+    if (simulationRole) throw new ApiError(403, "ADMIN_SIMULATION_ADULT_UNAVAILABLE");
+    await requireVipAgeEligibility(request, env, identity.userId);
+  }
   let result: Record<string, unknown>;
   const evidencePath = /^\/v1\/age-verification\/cases\/([0-9a-f-]{36})\/evidence\/([^/]+)$/i
     .exec(requestUrl.pathname);
@@ -3789,14 +3815,14 @@ async function route(
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/v1/membership/status") {
-    result = await statusResponse(env, identity.userId, simulationRole);
+    result = await statusResponse(env, identity.userId, simulationRole, request);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/auth/email-verification/request") {
     if (env.AUTH_EMAIL_MODE !== "CUSTOM") {
       throw new ApiError(503, "CUSTOM_AUTH_EMAIL_DISABLED");
     }
     result = await requestEmailVerification(request, env, identity);
   } else if (request.method === "GET" && requestUrl.pathname === "/v1/entitlements/status") {
-    const status = await statusResponse(env, identity.userId, simulationRole);
+    const status = await statusResponse(env, identity.userId, simulationRole, request);
     result = status.entitlement as Record<string, unknown>;
   } else if (request.method === "PATCH" && requestUrl.pathname === "/v1/account/profile/name") {
     result = await updateDisplayName(request, env, identity.userId);
@@ -3820,7 +3846,7 @@ async function route(
     return getUserInvoiceCopy(env, identity.userId, invoiceCopyPath[1]!, correlationId);
   } else if (request.method === "GET" && ["/v1/perks/telegram", "/v1/perks/premium-telegram"].includes(requestUrl.pathname)) {
     result = simulationRole
-      ? { available: ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(simulationRole), simulated: true, tier: simulationRole }
+      ? { available: simulationRole === "EXCLUSIVE_PREMIUM", simulated: true, tier: simulationRole }
       : await telegramPerkStatus(env, identity.userId);
   } else if (request.method === "POST" && requestUrl.pathname === "/v1/perks/telegram/claim") {
     result = await createTelegramClaim(env, identity.userId);

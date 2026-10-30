@@ -15,11 +15,11 @@ const languageStorageKey = "jason-shadow-membership-language";
 const supportedLanguages = ["de", "en"];
 const translations = {
   de: {
-    metaTitle: "Jason Shadow | The Order of Shadows & offizielle Links",
+    metaTitle: "Jason Shadow | Exklusive Mitgliedschaft & offizielle Links",
     metaDescription: "Musik, Stimme und Community. Jason Shadows Musikwebsite, Unterstützer-Mitgliedschaft und offizielle Links.",
     eyebrow: "Musik · Stimme · Community",
     tagline: "Unterstütze die Musik. Sei Teil der Geschichte.",
-    exclusive: "Tritt dem Order of Shadows bei",
+    exclusive: "Mitglied werden",
     openSite: "Mitgliedschaft entdecken",
     musicSite: "Musik- und Sprecherwebsite",
     support: "Meine Arbeit unterstützen",
@@ -28,11 +28,11 @@ const translations = {
     privacy: "Datenschutz",
   },
   en: {
-    metaTitle: "Jason Shadow | The Order of Shadows & official links",
+    metaTitle: "Jason Shadow | Exclusive Membership & official links",
     metaDescription: "Music, voice and community. Jason Shadow’s music website, supporter membership and official links.",
     eyebrow: "Music · Voice · Community",
     tagline: "Support the music. Be part of the story.",
-    exclusive: "Join the Order of Shadows",
+    exclusive: "Join the Shadows",
     openSite: "Explore the membership",
     musicSite: "Music & voice website",
     support: "Support my work",

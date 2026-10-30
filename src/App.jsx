@@ -60,7 +60,12 @@ const initialLanguage = () => {
   if (requested === "de" || requested === "en") return requested;
   return localStorage.getItem(languageKey) || (navigator.language?.startsWith("de") ? "de" : "en");
 };
+const VipPrivateArea = React.lazy(() => import("./VipPrivateArea"));
 const AdminPortal = React.lazy(() => import("./AdminPortal"));
+
+function ExternalLinkIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true" focusable="false" style={{ display: "inline-block", verticalAlign: "middle" }}><path d="M6 18 18 6M6 6h12v12" /></svg>;
+}
 
 function simulatedMemberUser(administrator, role) {
   if (role === "GUEST") return null;
@@ -79,15 +84,15 @@ function simulatedMemberUser(administrator, role) {
 
 const copy = {
   de: {
-    pricingEyebrow: "THE ORDER OF SHADOWS",
-    pricingTitle: "Dein Platz im Orden.",
+    pricingEyebrow: "ORDER OF SHADOWS",
+    pricingTitle: "Deine exklusive Mitgliedschaft.",
     pricingText: "Einmalige Laufzeit, keine automatische Verlängerung. Freischaltung erfolgt erst nach dem bestätigten SEPA-Zahlungseingang.",
-    basic: "Order Basic",
-    premium: "Order Premium",
-    vip: "Order VIP",
-    basicText: "Unterstütze Musik und Sprecherarbeit. Erhalte Einblicke hinter die Kulissen.",
-    premiumText: "Noch näher dran: Basic- und Premium-Inhalte sowie die private Community.",
-    vipText: "Alle Inhalte, persönlicher Kontakt und inklusive VIP-Meet-ups nach Absprache.",
+    basic: "Basic Shadow",
+    premium: "Premium Shadow",
+    vip: "VIP Shadow",
+    basicText: "Unterstütze Musik und Sprecherarbeit mit vollem Behind-the-Scenes-Zugang.",
+    premiumText: "Derselbe Behind-the-Scenes-Zugang, 15 % Rabatt auf alle Dienstleistungen und privates Telegram.",
+    vipText: "Derselbe Behind-the-Scenes-Zugang, 15 % Service-Rabatt, VIP-Meet-ups und ein optionaler privater 18+-Bereich mit Altersprüfung.",
     buy: "Zugang wählen",
     trial: "Einmaliges Schnupperangebot",
     catalogUnavailable: "Der Produktkatalog ist derzeit nicht erreichbar. Es kann kein Zahlungsauftrag erzeugt werden.",
@@ -135,15 +140,15 @@ const copy = {
     loading: "Wird verarbeitet…",
   },
   en: {
-    pricingEyebrow: "THE ORDER OF SHADOWS",
-    pricingTitle: "Find your place in the Order.",
+    pricingEyebrow: "ORDER OF SHADOWS",
+    pricingTitle: "Choose your exclusive membership.",
     pricingText: "Fixed term, no automatic renewal. Access is activated only after the SEPA payment has been confirmed.",
-    basic: "Order Basic",
-    premium: "Order Premium",
-    vip: "Order VIP",
-    basicText: "Support the music and voice work. Discover the stories behind the scenes.",
-    premiumText: "Go deeper with Basic and Premium content and the private community.",
-    vipText: "Every content tier, personal connection and included VIP meet-ups by arrangement.",
+    basic: "Basic Shadow",
+    premium: "Premium Shadow",
+    vip: "VIP Shadow",
+    basicText: "Support the music and voice work with full behind-the-scenes access.",
+    premiumText: "The same behind-the-scenes access, 15% off all services and private Telegram.",
+    vipText: "The same behind-the-scenes access, 15% off services, VIP meet-ups and an optional private 18+ area with age verification.",
     buy: "Choose access",
     trial: "One-time trial offer",
     catalogUnavailable: "The product catalog is unavailable. A payment order cannot be created.",
@@ -191,6 +196,8 @@ const copy = {
     loading: "Processing…",
   },
 };
+
+const membershipName = (tier) => ({ EXCLUSIVE_BASIC: "Basic Shadow", EXCLUSIVE_PREMIUM: "Premium Shadow", EXCLUSIVE_VIP: "VIP Shadow" })[tier] || tier;
 
 const tierNames = {
   EXCLUSIVE_BASIC: "basic",
@@ -248,28 +255,6 @@ function MembershipMark({ tier, className = "" }) {
         ? <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l3.2 9.8L29 16l-9.8 3.2L16 29l-3.2-9.8L3 16l9.8-3.2L16 3Z" /></svg>
         : <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 29 16 16 29 3 16 16 3Z" /><path d="M16 8 24 16 16 24 8 16 16 8Z" /></svg>}
   </span>;
-}
-
-function LockedCard({ t, wide }) {
-  return <article className="locked-card"><div className={`locked-preview${wide ? " locked-preview--exclusive" : ""}`} aria-hidden="true"><LockIcon /></div><div><p className="card-kicker">{t.previewLabel}</p><h3>{t.lockedTitle}</h3><p>{t.lockedText}</p></div></article>;
-}
-
-function LockedGalleryShowcase({ language, signedIn, onAction }) {
-  const tiers = ["EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"];
-  return <div className="locked-gallery-showcase">
-    <div className="locked-gallery-showcase__grid" aria-hidden="true">
-      {tiers.map((tier) => <div className={`locked-gallery-tile locked-gallery-tile--${tier.replace("EXCLUSIVE_", "").toLowerCase()}`} key={tier}>
-        <MembershipMark tier={tier} />
-        <LockIcon />
-        <strong>{tier.replace("EXCLUSIVE_", "")}</strong>
-      </div>)}
-    </div>
-    <button className="primary-action locked-gallery-showcase__cta" type="button" onClick={onAction}>
-      {signedIn
-        ? (language === "de" ? "Membership wählen & freischalten" : "Choose Membership & Unlock")
-        : (language === "de" ? "Jetzt registrieren & freischalten" : "Register & Unlock Now")}
-    </button>
-  </div>;
 }
 
 function Modal({ title, eyebrow, onClose, children, t, wide = false }) {
@@ -458,18 +443,6 @@ function tierLabel(tier) {
   return tier === "FREE" ? "FREE PREVIEW" : String(tier || "").replace("EXCLUSIVE_", "");
 }
 
-const galleryTierOrder = ["FREE", "EXCLUSIVE_BASIC", "EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"];
-
-function galleryTierLabel(tier, language) {
-  const labels = {
-    FREE: language === "de" ? "Free Preview" : "Free preview",
-    EXCLUSIVE_BASIC: "Basic",
-    EXCLUSIVE_PREMIUM: "Premium",
-    EXCLUSIVE_VIP: "VIP",
-  };
-  return labels[tier] || tierLabel(tier);
-}
-
 function CreatorPost({
   item,
   media,
@@ -488,7 +461,7 @@ function CreatorPost({
         <strong>The Order of Shadows</strong>
         <span>{formatPostDate(item.publishedAt, language)}</span>
       </div>
-      <span className="creator-post__tier">{tierLabel(item.tier)}</span>
+      <span className="creator-post__tier">{item.tier === "FREE" ? (language === "de" ? "VORSCHAU" : "PREVIEW") : "BEHIND THE SCENES"}</span>
     </header>
     <div className="creator-post__copy">
       <h3>{item.title}</h3>
@@ -561,7 +534,7 @@ function InlineComments({
       </form>
       : commentAccess.allowComments && <div className="paid-comment-teaser">
         <strong>{language === "de" ? "Order member benefit" : "Order member benefit"}</strong>
-        <p>{language === "de" ? "Mitglieder des Ordens können direkt unter Beiträgen kommentieren." : "Order members can comment directly below posts."}</p>
+        <p>{language === "de" ? "Mitglieder können direkt unter Beiträgen kommentieren." : "Members can comment directly below posts."}</p>
         <a className="secondary-action" href="#pricing">{language === "de" ? "Membership entdecken" : "Explore membership"}</a>
       </div>}
   </section>;
@@ -589,7 +562,6 @@ export default function App() {
   const [comments, setComments] = useState([]);
   const [commentAccess, setCommentAccess] = useState({ allowComments: false, canComment: false });
   const [commentsLoading, setCommentsLoading] = useState(false);
-  const [activeGalleryTier, setActiveGalleryTier] = useState("FREE");
   const [activePostIndex, setActivePostIndex] = useState(0);
   const [orders, setOrders] = useState([]);
   const [dashboardTab, setDashboardTab] = useState("overview");
@@ -619,14 +591,10 @@ export default function App() {
   const profile = membership?.account || null;
   const entitlement = membership?.entitlement || null;
   const membershipReady = Boolean(user?.emailVerification && profile?.status === "ACTIVE");
-  const galleryGroups = useMemo(() => galleryTierOrder
-    .map((tier) => ({ tier, items: gallery.filter((item) => item.tier === tier) }))
-    .filter((group) => group.items.length > 0), [gallery]);
-  const activeGalleryGroup = galleryGroups.find((group) => group.tier === activeGalleryTier) || galleryGroups[0] || null;
-  const normalizedPostIndex = activeGalleryGroup?.items.length
-    ? activePostIndex % activeGalleryGroup.items.length
-    : 0;
-  const activePost = activeGalleryGroup?.items[normalizedPostIndex] || null;
+  const vipEligible = Boolean(membershipReady && entitlement?.active && entitlement.tier === "EXCLUSIVE_VIP" && membership?.adultArea?.eligible);
+  const serviceDiscountPercent = membershipReady && entitlement?.active && ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(entitlement.tier) ? membership?.benefits?.serviceDiscountPercent || 0 : 0;
+  const normalizedPostIndex = gallery.length ? activePostIndex % gallery.length : 0;
+  const activePost = gallery[normalizedPostIndex] || null;
 
   const trackConversion = (eventName) => {
     if (isAdminSimulation) return;
@@ -682,7 +650,7 @@ export default function App() {
       setMembership(simulatedUser ? nextMembership : null);
       setOrders([]);
       const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
-      setPremiumTelegram(["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier)
+      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
         ? { available: true, simulated: true }
         : null);
       setVipWhatsapp(tier === "EXCLUSIVE_VIP"
@@ -734,7 +702,7 @@ export default function App() {
       setMembership(nextMembership);
       setOrders(orderResult.orders || []);
       const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
-      setPremiumTelegram(["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier)
+      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
         ? await getPremiumTelegramPerk().catch(() => null)
         : null);
       setVipWhatsapp(tier === "EXCLUSIVE_VIP"
@@ -906,7 +874,7 @@ export default function App() {
       try {
         if (!isAdminSimulation) await registerCurrentDevice();
         const result = await getContentItems();
-        if (current) setGallery((result.items || []).filter((item) => item.accessible));
+        if (current) setGallery((result.items || []).filter((item) => item.accessible && item.contentScope === "MUSIC"));
       } catch {
         if (current) setGallery([]);
       }
@@ -956,17 +924,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!galleryGroups.length) {
-      setActivePostIndex(0);
-      setComments([]);
-      setCommentAccess({ allowComments: false, canComment: false });
-      return;
-    }
-    if (!galleryGroups.some((group) => group.tier === activeGalleryTier)) {
-      setActiveGalleryTier(galleryGroups[0].tier);
-      setActivePostIndex(0);
-    }
-  }, [galleryGroups, activeGalleryTier]);
+    setActivePostIndex(0);
+    setComments([]);
+    setCommentAccess({ allowComments: false, canComment: false });
+  }, [user?.$id, gallery.length]);
 
   useEffect(() => {
     if (!activePost || !user || !membershipReady) {
@@ -1168,7 +1129,7 @@ export default function App() {
     setNotice("");
     try {
       const order = await createSepaOrder(selectedProduct.sku, billing, language, {
-        termsVersion: "ORDER-2026-10-30-V1",
+        termsVersion: "ORDER-2026-10-30-V2",
         digitalContentConsent: digitalConsentAccepted,
         withdrawalAcknowledgement: digitalConsentAccepted,
       });
@@ -1189,7 +1150,7 @@ export default function App() {
     try {
       if (!isAdminSimulation) await registerCurrentDevice();
       const result = await getContentItems();
-      setGallery((result.items || []).filter((item) => item.accessible));
+      setGallery((result.items || []).filter((item) => item.accessible && item.contentScope === "MUSIC"));
       requestAnimationFrame(() => document.getElementById("member-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (error) {
       setNotice(friendlyErrorMessage(error, language, t.genericError));
@@ -1199,14 +1160,8 @@ export default function App() {
     }
   };
 
-  const selectGallery = (tier) => {
-    setActiveGalleryTier(tier);
-    setActivePostIndex(0);
-    setNotice("");
-  };
-
   const movePost = (direction) => {
-    const length = activeGalleryGroup?.items.length || 0;
+    const length = gallery.length;
     if (length < 2) return;
     setActivePostIndex((current) => (current + direction + length) % length);
     setNotice("");
@@ -1416,7 +1371,7 @@ export default function App() {
       objectUrl = URL.createObjectURL(blob);
       const disposition = response.headers.get("content-disposition") || "";
       const fileName = disposition.match(/filename="([^"]+)"/i)?.[1]
-        || `shadows-temptation-data-${new Date().toISOString().slice(0, 10)}.json`;
+        || `jason-shadow-data-${new Date().toISOString().slice(0, 10)}.json`;
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.download = fileName;
@@ -1476,13 +1431,13 @@ export default function App() {
     <div className="ember-field" aria-hidden="true" />
     {isAdminSimulation && <aside className="admin-simulation-toolbar" role="status">
       <div><span>ADMIN · {language === "de" ? "SCHREIBGESCHÜTZTE PRODUKTIVANSICHT" : "READ-ONLY PRODUCTION VIEW"}</span><strong>{simulationRole.replace("EXCLUSIVE_", "Order ")}</strong></div>
-      <label><span>{language === "de" ? "Perspektive" : "Perspective"}</span><select value={simulationRole} onChange={(event) => startAdminSimulation(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Email pending</option><option value="FREE">Verified email · Free Preview</option><option value="EXCLUSIVE_BASIC">Exclusive Basic</option><option value="EXCLUSIVE_PREMIUM">Exclusive Premium</option><option value="EXCLUSIVE_VIP">Exclusive VIP</option></select></label>
+      <label><span>{language === "de" ? "Perspektive" : "Perspective"}</span><select value={simulationRole} onChange={(event) => startAdminSimulation(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Email pending</option><option value="FREE">Verified email · Free Preview</option><option value="EXCLUSIVE_BASIC">Basic Shadow</option><option value="EXCLUSIVE_PREMIUM">Premium Shadow</option><option value="EXCLUSIVE_VIP">VIP Shadow</option></select></label>
       <button className="secondary-action" type="button" onClick={exitAdminSimulation}>{language === "de" ? "Zurück zum Adminbereich" : "Back to admin"}</button>
     </aside>}
     <a className="order-skip-link" href="#main">{language === "de" ? "Zum Inhalt" : "Skip to content"}</a>
     <header className={`order-header${isAdminSimulation ? " admin-simulation-header" : ""}`}>
-      <a className="order-brand" href="https://jason-shadow.com/" aria-label="Jason Shadow — music website"><span className="order-brand-symbol"><img src="/assets/music/logo.png" width="1774" height="887" alt="" /></span><span className="order-brand-copy">Jason Shadow<small>THE ORDER OF SHADOWS</small></span></a>
-      <nav className="order-nav" aria-label={t.navigation}><a href={user ? "#member-gallery" : "#experience"}>{language === "de" ? (user ? "Beiträge" : "Der Orden") : (user ? "Member feed" : "The Order")}</a><a href="#pricing">{language === "de" ? "Mitgliedschaften" : "Memberships"}</a>{!user && <a href="#questions">FAQ</a>}</nav>
+      <a className="order-brand" href="https://jason-shadow.com/" aria-label="Jason Shadow — music website"><span className="order-brand-symbol"><img src="/assets/music/logo.png" width="1774" height="887" alt="" /></span><span className="order-brand-copy">Jason Shadow<small>ORDER OF SHADOWS</small></span></a>
+      <nav className="order-nav" aria-label={t.navigation}><a href={user ? "#member-gallery" : "#experience"}>{language === "de" ? (user ? "Beiträge" : "Deine Vorteile") : (user ? "Member feed" : "Your benefits")}</a><a href="#pricing">{language === "de" ? "Mitgliedschaften" : "Memberships"}</a>{!user && <a href="#questions">FAQ</a>}</nav>
       <div className="order-header-actions"><div className="language-switcher" aria-label={language === "de" ? "Sprache" : "Language"}>{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} aria-pressed={lang === language} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div><button className="secondary-action header-link" type="button" onClick={() => user ? setModal("account") : openAuth("login")}>{user ? t.account : t.login}</button></div>
     </header>
     <main id="main" className="order-main">
@@ -1493,9 +1448,9 @@ export default function App() {
             <img className="avatar hero-avatar" src="/assets/music/portrait-400.webp" alt="The Order of Shadows" width="1536" height="1536" decoding="async" />
             <p className="eyebrow">{language === "de" ? "DEIN PRIVATER BEREICH" : "YOUR PRIVATE SPACE"}</p>
             <h1>{language === "de" ? `Willkommen, ${user.name || "du"}` : `Welcome, ${user.name || "you"}`}</h1>
-            <p className="tagline">{membershipReady ? (entitlement?.active ? (language === "de" ? "Danke, dass du meine Musik und Sprecherarbeit unterstützt. Deine Beiträge und Vorteile warten auf dich." : "Thank you for supporting my music and voice work. Explore your posts and membership benefits.") : (language === "de" ? "Dein Platz im Orden beginnt hier. Entdecke die Beiträge und wähle deine Mitgliedschaft." : "Your place in the Order starts here. Explore the feed and choose your membership.")) : (language === "de" ? "Bestätige deine E-Mail-Adresse, um deine Mitgliedschaft zu starten." : "Verify your email address to get your membership started.")}</p>
+            <p className="tagline">{membershipReady ? (entitlement?.active ? (language === "de" ? "Danke, dass du meine Musik und Sprecherarbeit unterstützt. Deine Beiträge und Vorteile warten auf dich." : "Thank you for supporting my music and voice work. Explore your posts and membership benefits.") : (language === "de" ? "Deine Mitgliedschaft beginnt hier. Entdecke die Beiträge und wähle deine Mitgliedschaft." : "Your membership starts here. Explore the feed and choose your membership.")) : (language === "de" ? "Bestätige deine E-Mail-Adresse, um deine Mitgliedschaft zu starten." : "Verify your email address to get your membership started.")}</p>
             <div className="member-status-row">
-              <span className={entitlement?.active ? "status-chip is-active membership-status-chip" : "status-chip membership-status-chip"}>{entitlement?.active && <MembershipMark tier={entitlement.tier} />}{entitlement?.active ? `Order ${entitlement.tier.replace("EXCLUSIVE_", "")}` : (language === "de" ? "Free Preview" : "Free Preview")}</span>
+              <span className={entitlement?.active ? "status-chip is-active membership-status-chip" : "status-chip membership-status-chip"}>{entitlement?.active && <MembershipMark tier={entitlement.tier} />}{entitlement?.active ? membershipName(entitlement.tier) : (language === "de" ? "Free Preview" : "Free Preview")}</span>
             </div>
             <div className="hero-actions">
               {membershipReady ? <a className="primary-action" href="#member-gallery">{language === "de" ? "Beiträge entdecken" : "Discover posts"}</a> : <button className="primary-action" type="button" onClick={() => run(() => resendVerification(language), t.verificationSent)}>{t.resendVerification}</button>}
@@ -1513,30 +1468,17 @@ export default function App() {
           </div>
           {notice && <p className="form-notice" role="status">{notice}</p>}
           {gallery.length ? <>
-            <div className="gallery-tier-tabs" role="tablist" aria-label={language === "de" ? "Galerie auswählen" : "Choose gallery"}>
-              {galleryGroups.map((group) => <button
-                className={group.tier === activeGalleryGroup?.tier ? "is-active" : ""}
-                type="button"
-                role="tab"
-                aria-selected={group.tier === activeGalleryGroup?.tier}
-                onClick={() => selectGallery(group.tier)}
-                key={group.tier}
-              >
-                <span>{group.tier !== "FREE" && <MembershipMark tier={group.tier} />}{galleryTierLabel(group.tier, language)}</span>
-                <small>{group.items.length}</small>
-              </button>)}
-            </div>
-            {activePost && <div className={`post-carousel${activeGalleryGroup.tier === "FREE" ? "" : " paid-membership-gallery"}`} aria-roledescription="carousel" aria-label={`${galleryTierLabel(activeGalleryGroup.tier, language)} ${language === "de" ? "Beiträge" : "posts"}`}>
+            {activePost && <div className="post-carousel paid-membership-gallery" aria-roledescription="carousel" aria-label="Behind the scenes">
               <div className="post-carousel__navigation">
-                <button className="post-carousel__arrow is-previous" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(-1)} aria-label={language === "de" ? "Vorheriger Beitrag" : "Previous post"}><span>←</span></button>
+                <button className="post-carousel__arrow is-previous" type="button" disabled={gallery.length < 2} onClick={() => movePost(-1)} aria-label={language === "de" ? "Vorheriger Beitrag" : "Previous post"}><span>←</span></button>
                 <div className="post-carousel__progress" aria-live="polite">
-                  <span>{galleryTierLabel(activeGalleryGroup.tier, language)}</span>
-                  <strong>{normalizedPostIndex + 1} / {activeGalleryGroup.items.length}</strong>
+                  <span>{language === "de" ? "Hinter den Kulissen" : "Behind the scenes"}</span>
+                  <strong>{normalizedPostIndex + 1} / {gallery.length}</strong>
                 </div>
-                <button className="post-carousel__arrow is-next" type="button" disabled={activeGalleryGroup.items.length < 2} onClick={() => movePost(1)} aria-label={language === "de" ? "Nächster Beitrag" : "Next post"}><span>→</span></button>
+                <button className="post-carousel__arrow is-next" type="button" disabled={gallery.length < 2} onClick={() => movePost(1)} aria-label={language === "de" ? "Nächster Beitrag" : "Next post"}><span>→</span></button>
               </div>
               <div className="post-carousel__slide" key={activePost.slug}>
-                <CreatorPost item={activePost} media={mediaBySlug[activePost.slug]} language={language} viewerMark={activeGalleryGroup.tier === "FREE" ? null : String(user?.$id || user?.id || "member").slice(0, 8)} />
+                <CreatorPost item={activePost} media={mediaBySlug[activePost.slug]} language={language} viewerMark={String(user?.$id || user?.id || "member").slice(0, 8)} />
                 <InlineComments
                   item={activePost}
                   comments={comments}
@@ -1554,16 +1496,18 @@ export default function App() {
             </div>}
           </> : <div className="member-empty-state"><h3>{membershipReady ? ui.noContent : (language === "de" ? "Noch nicht freigeschaltet" : "Not unlocked yet")}</h3><p>{membershipReady ? (language === "de" ? "Sobald neue Beiträge veröffentlicht werden, erscheinen sie direkt hier." : "New posts will appear here as soon as they are published.") : (language === "de" ? "Bitte bestätige zuerst deine E-Mail-Adresse." : "Please verify your email address first.")}</p></div>}
         </section>
-        {!entitlement?.active && <section className="section member-unlock-section"><div className="section-heading"><p className="eyebrow">{language === "de" ? "MEHR WARTET AUF DICH" : "MORE AWAITS"}</p><h2>{language === "de" ? "Öffne die nächste Tür" : "Open the next door"}</h2><p>{language === "de" ? "Wähle deinen persönlichen Zugang zu Basic, Premium oder VIP." : "Choose your personal access to Basic, Premium or VIP."}</p></div><LockedGalleryShowcase language={language} signedIn onAction={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })} /></section>}
+        {!entitlement?.active && <section className="section member-unlock-section"><div className="section-heading"><p className="eyebrow">EXCLUSIVE MEMBERSHIP</p><h2>{language === "de" ? "Alle Einblicke. Deine Wahl." : "All the stories. Your choice."}</h2><p>{language === "de" ? "Basic Shadow, Premium Shadow und VIP Shadow enthalten denselben Behind-the-Scenes-Zugang. Entscheide dich für die zusätzlichen Vorteile, die zu dir passen." : "Basic Shadow, Premium Shadow and VIP Shadow share the same behind-the-scenes access. Choose the extra benefits that fit you."}</p></div><a href="#pricing" className="primary-action">{ui.pricingTitle}</a></section>}
+        {vipEligible && <section className="section vip-private-entry"><div><p className="eyebrow">VIP SHADOW · OPTIONAL</p><h2>{language === "de" ? "Dein privater VIP-Bereich" : "Your private VIP area"}</h2><p>{language === "de" ? "Ein separater 18+-Bereich, ausschließlich mit aktiver VIP-Mitgliedschaft und bestätigter Altersprüfung. Deine Musik-Inhalte bleiben davon unabhängig." : "A separate 18+ area, available only with active VIP membership and approved age verification. Your music content stays independent."}</p></div><button type="button" className="secondary-action" onClick={() => setModal("vip-adult")}>{language === "de" ? "Privaten Bereich öffnen" : "Open private area"}</button></section>}
+
         {orders.some((order) => order.status === "PENDING") && <section className="section pending-order-strip"><div><p className="eyebrow">{language === "de" ? "ZAHLUNG AUSSTEHEND" : "PAYMENT PENDING"}</p><h2>{language === "de" ? "Dein Auftrag wartet auf Zahlung" : "Your order is awaiting payment"}</h2><p>{language === "de" ? "Die Zahlungsdaten und den Verwendungszweck findest du jederzeit in deinen Bestellungen." : "Payment details and remittance information remain available in your orders."}</p></div><button className="secondary-action" type="button" onClick={() => { setDashboardTab("orders"); setModal("account"); }}>{language === "de" ? "Bestellungen ansehen" : "View orders"}</button></section>}
         <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{entitlement?.active ? (language === "de" ? "Noch mehr entdecken" : "Discover more") : ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{Object.keys(tierNames).map((tier) => [tier, products.filter((product) => product.tier === tier)]).map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}</div></section>
       </> : <>
       <OrderLanding language={language} onRegister={() => openAuth("register")} />
-      <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error" role="status">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}{products.length === 0 && ["basic", "premium", "vip"].map((key) => <article className={`pricing-group pricing-group--${key}`} key={key}><p className="eyebrow">{key === "vip" ? "THE INNER CIRCLE" : key === "premium" ? "A CLOSER CONNECTION" : "THE FIRST CHAPTER"}</p><h3>{ui[key]}</h3><p>{ui[`${key}Text`]}</p><p className="order-price-status">{language === "de" ? "Aktuelle Preise werden beim Laden des Katalogs angezeigt." : "Current prices appear when the catalog is available."}</p><button className="membership-card-cta" type="button" onClick={() => openAuth("register")}><span>{language === "de" ? "Kostenloses Konto erstellen" : "Create a free account"}</span><strong>→</strong></button></article>)}</div><p className="order-pricing-note">{language === "de" ? "Deine Mitgliedschaft unterstützt Jasons Musik- und Sprecherarbeit. Sie ist eine bezahlte Mitgliedschaft mit Vorteilen; eine steuerliche Spendenbescheinigung wird nicht ausgestellt." : "Your membership supports Jason’s music and voice work. It is a paid membership with benefits; no charitable donation receipt is issued."}</p></section>
+      <section id="pricing" className="section pricing-section"><div className="section-heading"><p className="eyebrow">{ui.pricingEyebrow}</p><h2>{ui.pricingTitle}</h2><p>{ui.pricingText}</p></div>{catalogError && <p className="form-notice form-notice--error" role="status">{ui.catalogUnavailable}</p>}<div className="pricing-grid">{groupedProducts.map(([tier, tierProducts]) => tierProducts.length > 0 && <PricingGroup tier={tier} products={tierProducts} language={language} ui={ui} onChoose={openTierSelection} key={tier} />)}{products.length === 0 && ["basic", "premium", "vip"].map((key) => <article className={`pricing-group pricing-group--${key}`} key={key}><p className="eyebrow">{key === "vip" ? "VIP SHADOW" : key === "premium" ? "A CLOSER CONNECTION" : "THE FIRST CHAPTER"}</p><h3>{ui[key]}</h3><p>{ui[`${key}Text`]}</p><p className="order-price-status">{language === "de" ? "Aktuelle Preise werden beim Laden des Katalogs angezeigt." : "Current prices appear when the catalog is available."}</p><button className="membership-card-cta" type="button" onClick={() => openAuth("register")}><span>{language === "de" ? "Kostenloses Konto erstellen" : "Create a free account"}</span><strong>→</strong></button></article>)}</div><p className="order-pricing-note">{language === "de" ? "Deine Mitgliedschaft unterstützt Jasons Musik- und Sprecherarbeit. Sie ist eine bezahlte Mitgliedschaft mit Vorteilen; eine steuerliche Spendenbescheinigung wird nicht ausgestellt." : "Your membership supports Jason’s music and voice work. It is a paid membership with benefits; no charitable donation receipt is issued."}</p></section>
       <OrderClosing language={language} onRegister={() => openAuth("register")} onNewsletter={() => { setNewsletterIntent(true); openAuth("register"); }} />
       </>}
     </main>
-    <footer id="legal" className="order-footer"><div><a href="https://jason-shadow.com/" className="order-footer-logo"><img src="/assets/music/logo.png" width="1774" height="887" alt="Jason Shadow — The Healing Shadow" loading="lazy" /></a><p>{language === "de" ? "Musik. Worte. Und die Menschen dahinter." : "Music. Words. And the people behind them."}</p></div><nav aria-label={language === "de" ? "Weitere Informationen" : "More information"}><a href="https://jason-shadow.com/">{language === "de" ? "Zur Musikwebsite" : "Music website"} ↗</a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a><a href="/datenschutz/">{t.privacy}</a></nav><p className="order-copyright">© {new Date().getFullYear()} Jason Shadow · The Order of Shadows</p></footer>
+    <footer id="legal" className="order-footer"><div><a href="https://jason-shadow.com/" className="order-footer-logo"><img src="/assets/music/logo.png" width="1774" height="887" alt="Jason Shadow — The Healing Shadow" loading="lazy" /></a><p>{language === "de" ? "Musik. Worte. Und die Menschen dahinter." : "Music. Words. And the people behind them."}</p></div><nav aria-label={language === "de" ? "Weitere Informationen" : "More information"}><a href="https://jason-shadow.com/">{language === "de" ? "Zur Musikwebsite" : "Music website"} <ExternalLinkIcon /></a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a><a href="/datenschutz/">{t.privacy}</a></nav><p className="order-copyright">© {new Date().getFullYear()} Jason Shadow · The Order of Shadows</p></footer>
 
     {modal === "auth" && <Modal
       title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset}
@@ -1700,7 +1644,7 @@ export default function App() {
       </button>
     </Modal>}
 
-    {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "ORDER · ") : "THE ORDER OF SHADOWS"} onClose={() => setModal(null)} t={t} wide>
+    {modal === "account" && <Modal title={language === "de" ? "Mein Konto" : "My account"} eyebrow={entitlement?.active ? membershipName(entitlement.tier) : "ORDER OF SHADOWS"} onClose={() => setModal(null)} t={t} wide>
       {notice && <p className="form-notice" role="status">{notice}</p>}
       {isAdminSimulation && <div className="simulation-readonly-note"><strong>{language === "de" ? "Admin-Simulation · schreibgeschützt" : "Admin simulation · read-only"}</strong><span>{language === "de" ? "Kontospezifische Sicherheits- und Datenschutzaktionen sind in dieser Rollenansicht ausgeblendet." : "Account-specific security and privacy actions are hidden in this role view."}</span></div>}
       {!user ? <button className="primary-action" onClick={() => openAuth("login")}>{t.login}</button> : <div className="account-dashboard">
@@ -1721,7 +1665,7 @@ export default function App() {
           <div className="dashboard-stat-grid">
             <article><span>{language === "de" ? "Kontostatus" : "Account status"}</span><strong>{profile?.status || "EMAIL_PENDING"}</strong></article>
             <article><span>{language === "de" ? "E-Mail-Adresse" : "Email address"}</span><strong>{user.emailVerification ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Bestätigung ausstehend" : "Verification pending")}</strong></article>
-            <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "") : ui.noMembership}</strong></article>
+            <article><span>{ui.entitlement}</span><strong>{entitlement?.active ? membershipName(entitlement.tier) : ui.noMembership}</strong></article>
           </div>
           {entitlement?.paused && <div className="membership-pause-notice">
             <MembershipMark tier={entitlement.paused.tier} />
@@ -1810,14 +1754,17 @@ export default function App() {
           </article>) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Bestellungen" : "No orders yet"}</h3><p>{language === "de" ? "Deine zukünftigen Zahlungsaufträge erscheinen hier." : "Your future payment orders will appear here."}</p></div>}
         </div>}
         {dashboardTab === "access" && <div className="access-perks">
-          <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? entitlement.tier.replace("EXCLUSIVE_", "Order ") : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
-          {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{entitlement.paused.tier.replace("EXCLUSIVE_", "Order ")} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
-          {premiumTelegram && <article className="perk-access-card is-private telegram-access-card"><span>↗</span><div><div className="telegram-access-card__heading"><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3>{!premiumTelegram.simulated && <span className={`order-status order-status--${String(premiumTelegram.connectionStatus || "not-linked").toLowerCase().replaceAll("_", "-")}`}>{premiumTelegram.active ? (language === "de" ? "AKTIV" : "ACTIVE") : String(premiumTelegram.connectionStatus || "NOT_LINKED").replaceAll("_", " ")}</span>}</div><p>{language === "de" ? "Verbinde dein Telegram-Konto sicher mit deiner aktiven Premium- oder VIP-Membership. Der persönliche Kanal-Link wird erst im Bot erstellt, an genau dein Telegram-Konto gebunden und direkt nach dem Beitritt entwertet." : "Securely link your Telegram account to your active Premium or VIP membership. Your personal channel link is created only inside the bot, bound to your Telegram account and revoked immediately after you join."}</p>{premiumTelegram.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der Produktivansicht für diese Membership freigeschaltet. Geheimwerte werden nicht simuliert." : "Unlocked for this membership in the production view. Secret values are not simulated."}</small> : <><p className="telegram-privacy-note">{language === "de" ? "Datensparsam: gespeichert werden nur Telegram-Konto-ID, Zugangsstatus und notwendige Zeitpunkte – keine Chats, Profilbilder oder Telegram-Benutzernamen." : "Data-minimised: only the Telegram account ID, access status and required timestamps are stored—never chats, profile photos or Telegram usernames."}</p>{premiumTelegram.active ? <small className="simulation-perk-state">{language === "de" ? "Sicher verbunden. Bei Ablauf deiner Membership wird der Kanalzugang automatisch entfernt." : "Securely connected. Channel access is removed automatically when your membership ends."}</small> : <button className="primary-action" type="button" disabled={busy || premiumTelegram.connectionStatus === "ADMIN_SUSPENDED"} onClick={connectTelegram}>{premiumTelegram.linked ? (language === "de" ? "Zugang in Telegram öffnen" : "Open access in Telegram") : (language === "de" ? "Telegram sicher verbinden" : "Securely connect Telegram")}</button>}</>}</div></article>}
+          {serviceDiscountPercent === 15 && <article className="perk-access-card service-discount"><strong>15 %</strong><div><h3>{language === "de" ? "Dein Rabatt auf alle Dienstleistungen" : "Your discount on all services"}</h3><p>{language === "de" ? "Als aktives Premium Shadow oder VIP Shadow Mitglied erhältst du 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Nenne bei deiner Anfrage die E-Mail-Adresse deines Mitgliedskontos, damit der Rabatt im Angebot berücksichtigt werden kann." : "Active Premium Shadow and VIP Shadow members receive 15% off every Jason Shadow service. Include your membership email in your enquiry so the discount can be applied to your quote."}</p><a className="secondary-action" href="https://jason-shadow.com/#kontakt" target="_blank" rel="noreferrer">{language === "de" ? "Dienstleistung anfragen" : "Enquire about a service"} <ExternalLinkIcon /></a></div></article>}
+          {vipEligible && <article className="perk-access-card"><span>18+</span><div><h3>{language === "de" ? "Optionaler privater VIP-Bereich" : "Optional private VIP area"}</h3><p>{language === "de" ? "Separater Zugang mit aktiver VIP-Mitgliedschaft und Altersprüfung." : "Separate access with active VIP membership and age verification."}</p><button type="button" className="secondary-action" onClick={() => setModal("vip-adult")}>{language === "de" ? "Privaten Bereich öffnen" : "Open private area"}</button></div></article>}
+
+          <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? membershipName(entitlement.tier) : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
+          {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{membershipName(entitlement.paused.tier)} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
+          {entitlement?.active && entitlement.tier === "EXCLUSIVE_PREMIUM" && premiumTelegram && <article className="perk-access-card is-private telegram-access-card"><span><ExternalLinkIcon /></span><div><div className="telegram-access-card__heading"><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3>{!premiumTelegram.simulated && <span className={`order-status order-status--${String(premiumTelegram.connectionStatus || "not-linked").toLowerCase().replaceAll("_", "-")}`}>{premiumTelegram.active ? (language === "de" ? "AKTIV" : "ACTIVE") : String(premiumTelegram.connectionStatus || "NOT_LINKED").replaceAll("_", " ")}</span>}</div><p>{language === "de" ? "Verbinde dein Telegram-Konto sicher mit deiner aktiven Premium Shadow Membership. Der persönliche Kanal-Link wird erst im Bot erstellt, an genau dein Telegram-Konto gebunden und direkt nach dem Beitritt entwertet." : "Securely link your Telegram account to your active Premium Shadow membership. Your personal channel link is created only inside the bot, bound to your Telegram account and revoked immediately after you join."}</p>{premiumTelegram.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der Produktivansicht für diese Membership freigeschaltet. Geheimwerte werden nicht simuliert." : "Unlocked for this membership in the production view. Secret values are not simulated."}</small> : <><p className="telegram-privacy-note">{language === "de" ? "Datensparsam: gespeichert werden nur Telegram-Konto-ID, Zugangsstatus und notwendige Zeitpunkte – keine Chats, Profilbilder oder Telegram-Benutzernamen." : "Data-minimised: only the Telegram account ID, access status and required timestamps are stored—never chats, profile photos or Telegram usernames."}</p>{premiumTelegram.active ? <small className="simulation-perk-state">{language === "de" ? "Sicher verbunden. Bei Ablauf deiner Membership wird der Kanalzugang automatisch entfernt." : "Securely connected. Channel access is removed automatically when your membership ends."}</small> : <button className="primary-action" type="button" disabled={busy || premiumTelegram.connectionStatus === "ADMIN_SUSPENDED"} onClick={connectTelegram}>{premiumTelegram.linked ? (language === "de" ? "Zugang in Telegram öffnen" : "Open access in Telegram") : (language === "de" ? "Telegram sicher verbinden" : "Securely connect Telegram")}</button>}</>}</div></article>}
           {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3>{vipWhatsapp.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der VIP-Produktivansicht freigeschaltet; Geheimwerte werden in der Simulation nicht ausgegeben." : "Unlocked in the VIP production view; secret values are not exposed in simulation."}</small> : <><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></>}</div></article>}
           {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Vorteile werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
         </div>}
         {dashboardTab === "newsletter" && <section className="privacy-card privacy-card--newsletter">
-          <p className="eyebrow">THE ORDER OF SHADOWS · NEWSLETTER</p><h3>{language === "de" ? "Post aus meiner Musikwelt." : "A note from my world of music."}</h3>
+          <p className="eyebrow">ORDER OF SHADOWS · NEWSLETTER</p><h3>{language === "de" ? "Post aus meiner Musikwelt." : "A note from my world of music."}</h3>
           <p>{language === "de" ? "Musik, Sprecherprojekte und Einblicke hinter die Kulissen — nur wenn du sie möchtest. Deine Mitgliedschaft und dein Newsletter-Abo sind unabhängig voneinander." : "Music, voice projects and stories behind the scenes — only if you want them. Your membership and newsletter subscription are independent."}</p>
           <p role="status">{privacyLoading ? (language === "de" ? "Einstellungen werden geladen …" : "Loading preferences …") : privacy?.newsletter?.status === "SUBSCRIBED" ? (language === "de" ? "Aktiv und per E-Mail bestätigt" : "Subscribed and confirmed by email") : privacy?.newsletter?.status === "PENDING" ? (language === "de" ? "Deine E-Mail-Bestätigung steht noch aus." : "Your email confirmation is still pending.") : (language === "de" ? "Nicht abonniert" : "Not subscribed")}</p>
           {!privacyLoading && (privacy?.newsletter?.status === "SUBSCRIBED" ? <button className="secondary-action" type="button" disabled={busy} onClick={unsubscribeFromNewsletter}>{language === "de" ? "Newsletter abbestellen" : "Unsubscribe"}</button> : <button className="primary-action" type="button" disabled={busy || !user.emailVerification || !privacy?.profile?.complete} onClick={subscribeToNewsletter}>{privacy?.newsletter?.status === "PENDING" ? (language === "de" ? "Bestätigung erneut anfordern" : "Resend confirmation") : (language === "de" ? "Musik-Newsletter abonnieren" : "Subscribe to the music newsletter")}</button>)}
@@ -1850,8 +1797,10 @@ export default function App() {
       </div>}
     </Modal>}
 
+    {modal === "vip-adult" && vipEligible && <Modal title={language === "de" ? "Privater VIP-Bereich" : "Private VIP area"} eyebrow="VIP SHADOW · 18+" onClose={() => setModal(null)} t={t} wide><React.Suspense fallback={<p role="status">{ui.loading}</p>}><VipPrivateArea language={language} membership={membership} user={user} readOnly={isAdminSimulation} onRefresh={refresh} /></React.Suspense></Modal>}
+
     {modal === "membership" && tierSelection.length > 0 && <Modal
-      title={tierSelection[0].displayName.replace(/\s[–-].*$/, "")}
+      title={membershipName(tierSelection[0].tier)}
       eyebrow={language === "de" ? "WÄHLE DEIN ERLEBNIS" : "CHOOSE YOUR EXPERIENCE"}
       onClose={() => setModal(null)}
       t={t}
