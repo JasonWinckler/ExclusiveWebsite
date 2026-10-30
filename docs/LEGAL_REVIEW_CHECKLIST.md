@@ -44,7 +44,8 @@ The operator performs and records these controls during live operation:
 
 Read [ORDER_OF_SHADOWS_TRANSITION.md](ORDER_OF_SHADOWS_TRANSITION.md). Confirm the
 new offer, unchanged prices/term lengths, shared BTS access, 15% service benefit,
-Premium-only Telegram, optional verified VIP area, VIP arrangements, newsletter consent wording
+no Telegram music benefit, approved VIP WhatsApp contact, optional verified onsite VIP area,
+VIP arrangements, newsletter consent wording
 and consumer notices against the deployed product. Existing paid commitments
 and withdrawal/refund rights remain applicable. Do not silently transfer old
 newsletter consent to a materially different purpose.

@@ -56,7 +56,8 @@ export async function membershipFixture(options: {
     USER_RATE_LIMITER: { limit: async () => ({ success: true }) },
     PROTECTED_CONTENT_MODE: "private-r2-v1", AGE_REVIEW_MODE: "manual-r2-v1",
     CONTENT_MEDIA: { get: mediaGet, head: async () => ({ etag: "test-etag", size: 18 }) },
-    MUSIC_COMMUNITY_REVIEWED: "true", TELEGRAM_BOT_TOKEN: "x".repeat(40), TELEGRAM_CHAT_ID: "-123",
+    VIP_WHATSAPP_MUSIC_REVIEWED: "true", MUSIC_TELEGRAM_REVIEWED: "false",
+    TELEGRAM_BOT_TOKEN: "x".repeat(40), TELEGRAM_CHAT_ID: "-123",
     TELEGRAM_BOT_USERNAME: "TestBot", TELEGRAM_INVITE_ENCRYPTION_KEY: "test-key",
   } as unknown as MembershipEnv;
   const ctx = { waitUntil: () => {} } as unknown as ExecutionContext;

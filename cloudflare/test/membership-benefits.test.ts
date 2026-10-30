@@ -72,21 +72,21 @@ describe("Shadow membership access", () => {
     const result = await f.request("/v1/membership/status");
     expect(result.status).toBe(200);
     expect(await result.json()).toMatchObject({
-      benefits: { serviceDiscountPercent: tier === "EXCLUSIVE_BASIC" ? 0 : 15, telegramAvailable: tier === "EXCLUSIVE_PREMIUM" },
+      benefits: { serviceDiscountPercent: tier === "EXCLUSIVE_BASIC" ? 0 : 15, telegramAvailable: false },
       entitlement: { serviceDiscountPercent: tier === "EXCLUSIVE_BASIC" ? 0 : 15 },
       adultArea: { eligible: tier === "EXCLUSIVE_VIP", available: false, ageStatus: "NOT_STARTED" },
     });
     f.sqlite.close();
   });
 
-  it("keeps Telegram Premium-only even if VIP also has a Premium record", async () => {
+  it("does not include Telegram in music membership even with Premium and VIP records", async () => {
     const premium = await membershipFixture({ tier: "EXCLUSIVE_PREMIUM" });
-    expect(await telegramPerkStatus(premium.env, premium.userId)).toMatchObject({ available: true, tier: "EXCLUSIVE_PREMIUM" });
+    await expect(telegramPerkStatus(premium.env, premium.userId)).rejects.toMatchObject({ code: "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED" });
     premium.sqlite.prepare(`INSERT INTO entitlements (id, appwrite_user_id, product_id, tier, status,
       starts_at, expires_at, created_at, updated_at) VALUES ('also-vip', ?, 'exclusive_vip_30d', 'EXCLUSIVE_VIP',
       'ACTIVE', ?, ?, ?, ?)`)
       .run(premium.userId, premium.now, premium.future, premium.now, premium.now);
-    await expect(telegramPerkStatus(premium.env, premium.userId)).rejects.toMatchObject({ code: "ACTIVE_PREMIUM_REQUIRED" });
+    await expect(telegramPerkStatus(premium.env, premium.userId)).rejects.toMatchObject({ code: "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED" });
     premium.sqlite.close();
   });
 });

@@ -1,6 +1,8 @@
 // Cloudflare-native browser API. Authentication uses a same-origin HttpOnly
 // session cookie; the browser never receives service credentials or JWTs.
 
+import { productCatalogPath } from "./membership-policy.js";
+
 export const cloudflareConfig = Object.freeze({
   apiBaseUrl: (
     import.meta.env.VITE_CLOUDFLARE_API_BASE_URL ||
@@ -415,7 +417,7 @@ export const updateProfileEmail = async (email, password, locale = "de", current
 );
 
 export const getProducts = (locale = "de") => apiRequest(
-  `/v1/products?locale=${locale === "en" ? "en" : "de"}`,
+  productCatalogPath(locale),
   { authenticated: false, simulation: false },
 );
 export const getMembershipStatus = () => apiRequest("/v1/membership/status", { device: true });

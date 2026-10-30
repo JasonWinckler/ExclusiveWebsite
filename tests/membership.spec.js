@@ -60,7 +60,7 @@ test('verified members review billing and explicitly order one-time SEPA support
   await dialog.getByRole('button', { name: 'ORDER & PAY WITH SEPA' }).click();
   await dialog.getByRole('button', { name: 'Payment details', exact: true }).click();
   await expect(dialog).toContainText('Order of Shadows - ID #TEST123');
-  expect(state.paymentBody).toMatchObject({ productSku: 'exclusive-basic-30d', locale: 'en', digitalContentConsent: true, withdrawalAcknowledgement: true, billing: { name: 'Synthetic Supporter', countryCode: 'DE' } });
+  expect(state.paymentBody).toMatchObject({ productSku: 'exclusive-basic-30d', locale: 'en', termsVersion: 'ORDER-2026-10-30-V3', digitalContentConsent: true, withdrawalAcknowledgement: true, billing: { name: 'Synthetic Supporter', countryCode: 'DE' } });
   const paymentRequest = state.requests.find(({ path }) => path.endsWith('/payments/sepa-orders'));
   expect(paymentRequest.headers['idempotency-key']).toBeTruthy();
   expect(state.requests.filter(({ path }) => /age-verification/.test(path))).toEqual([]);

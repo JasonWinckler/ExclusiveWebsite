@@ -20,8 +20,6 @@ import {
   getCurrentUser,
   getMembershipStatus,
   getPaymentOrders,
-  getPremiumTelegramPerk,
-  createPremiumTelegramClaim,
   getPrivacyOverview,
   getProducts,
   getVipWhatsappPerk,
@@ -53,6 +51,7 @@ import {
   usRegions,
 } from "./lib/privacy";
 import { friendlyErrorMessage } from "./lib/error-messages";
+import { membershipTermsVersion } from "./lib/membership-policy.js";
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => {
@@ -91,7 +90,7 @@ const copy = {
     premium: "Premium Shadow",
     vip: "VIP Shadow",
     basicText: "Unterstütze Musik und Sprecherarbeit mit vollem Behind-the-Scenes-Zugang.",
-    premiumText: "Derselbe Behind-the-Scenes-Zugang, 15 % Rabatt auf alle Dienstleistungen und privates Telegram.",
+    premiumText: "Derselbe Behind-the-Scenes-Zugang, 15 % Rabatt auf alle Dienstleistungen und ausgewählte Themen-Votings.",
     vipText: "Derselbe Behind-the-Scenes-Zugang, 15 % Service-Rabatt, VIP-Meet-ups und ein optionaler privater 18+-Bereich mit Altersprüfung.",
     buy: "Zugang wählen",
     trial: "Einmaliges Schnupperangebot",
@@ -147,7 +146,7 @@ const copy = {
     premium: "Premium Shadow",
     vip: "VIP Shadow",
     basicText: "Support the music and voice work with full behind-the-scenes access.",
-    premiumText: "The same behind-the-scenes access, 15% off all services and private Telegram.",
+    premiumText: "The same behind-the-scenes access, 15% off all services and selected topic votes.",
     vipText: "The same behind-the-scenes access, 15% off services, VIP meet-ups and an optional private 18+ area with age verification.",
     buy: "Choose access",
     trial: "One-time trial offer",
@@ -571,7 +570,6 @@ export default function App() {
   const [privacyLoading, setPrivacyLoading] = useState(false);
   const [registrationCountry, setRegistrationCountry] = useState("DE");
   const [registrationRegion, setRegistrationRegion] = useState("");
-  const [premiumTelegram, setPremiumTelegram] = useState(null);
   const [vipWhatsapp, setVipWhatsapp] = useState(null);
   const [billing, setBilling] = useState({ name: "", street: "", postalCode: "", city: "", countryCode: "DE" });
   const [tierSelection, setTierSelection] = useState([]);
@@ -603,38 +601,6 @@ export default function App() {
     recordAnalyticsEvent(eventName, language).catch(() => null);
   };
 
-  const connectTelegram = async () => {
-    const telegramWindow = window.open("about:blank", "shadows-telegram-access");
-    if (telegramWindow) telegramWindow.opener = null;
-    setBusy(true);
-    setNotice("");
-    try {
-      const result = await createPremiumTelegramClaim();
-      setPremiumTelegram(result);
-      if (result.active) {
-        telegramWindow?.close();
-        setNotice(language === "de"
-          ? "Dein Telegram-Zugang ist bereits aktiv."
-          : "Your Telegram access is already active.");
-        return;
-      }
-      const telegramUrl = new URL(result.botUrl);
-      if (telegramUrl.protocol !== "https:" || telegramUrl.hostname !== "t.me") {
-        throw new Error("INVALID_TELEGRAM_LINK");
-      }
-      if (telegramWindow) telegramWindow.location.replace(telegramUrl.toString());
-      else window.location.assign(telegramUrl.toString());
-      setNotice(language === "de"
-        ? "Telegram wurde geöffnet. Starte den Bot und folge dort deinem persönlichen Einmal-Link."
-        : "Telegram has opened. Start the bot and follow your personal one-time link there.");
-    } catch (error) {
-      telegramWindow?.close();
-      setNotice(friendlyErrorMessage(error, language, t.genericError));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const refresh = async (sessionUser = null) => {
     const current = sessionUser || await getCurrentUser();
     if (
@@ -650,9 +616,6 @@ export default function App() {
       setMembership(simulatedUser ? nextMembership : null);
       setOrders([]);
       const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
-      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
-        ? { available: true, simulated: true }
-        : null);
       setVipWhatsapp(tier === "EXCLUSIVE_VIP"
         ? { available: true, simulated: true }
         : null);
@@ -669,7 +632,6 @@ export default function App() {
     if (!current) {
       setMembership(null);
       setOrders([]);
-      setPremiumTelegram(null);
       setVipWhatsapp(null);
       setPrivacy(null);
       return current;
@@ -688,7 +650,6 @@ export default function App() {
     if (current.labels?.includes("admin")) {
       setMembership(null);
       setOrders([]);
-      setPremiumTelegram(null);
       setVipWhatsapp(null);
       setPrivacy(null);
       return current;
@@ -702,16 +663,12 @@ export default function App() {
       setMembership(nextMembership);
       setOrders(orderResult.orders || []);
       const tier = nextMembership?.entitlement?.active ? nextMembership.entitlement.tier : null;
-      setPremiumTelegram(tier === "EXCLUSIVE_PREMIUM"
-        ? await getPremiumTelegramPerk().catch(() => null)
-        : null);
       setVipWhatsapp(tier === "EXCLUSIVE_VIP"
         ? await getVipWhatsappPerk().catch(() => null)
         : null);
     } catch {
       setMembership({ account: { status: "BACKEND_UNAVAILABLE" }, entitlement: { active: false } });
       setOrders([]);
-      setPremiumTelegram(null);
       setVipWhatsapp(null);
     }
     return current;
@@ -737,20 +694,6 @@ export default function App() {
     document.title = t.metaTitle;
     localStorage.setItem(languageKey, language);
   }, [language, t]);
-
-  useEffect(() => {
-    if (!premiumTelegram || premiumTelegram.simulated || !entitlement?.active) return undefined;
-    const refreshTelegramStatus = () => {
-      if (document.visibilityState !== "visible") return;
-      getPremiumTelegramPerk().then(setPremiumTelegram).catch(() => undefined);
-    };
-    window.addEventListener("focus", refreshTelegramStatus);
-    document.addEventListener("visibilitychange", refreshTelegramStatus);
-    return () => {
-      window.removeEventListener("focus", refreshTelegramStatus);
-      document.removeEventListener("visibilitychange", refreshTelegramStatus);
-    };
-  }, [premiumTelegram?.simulated, entitlement?.active]);
 
   useEffect(() => {
     if (!getAdminSimulationRole()) recordAnalyticsEvent("page_view", language).catch(() => null);
@@ -1080,7 +1023,6 @@ export default function App() {
       setUser(null);
       setMembership(null);
       setOrders([]);
-      setPremiumTelegram(null);
       setVipWhatsapp(null);
       setPrivacy(null);
       setGallery([]);
@@ -1129,7 +1071,7 @@ export default function App() {
     setNotice("");
     try {
       const order = await createSepaOrder(selectedProduct.sku, billing, language, {
-        termsVersion: "ORDER-2026-10-30-V2",
+        termsVersion: membershipTermsVersion,
         digitalContentConsent: digitalConsentAccepted,
         withdrawalAcknowledgement: digitalConsentAccepted,
       });
@@ -1338,7 +1280,6 @@ export default function App() {
       setUser(null);
       setMembership(null);
       setOrders([]);
-      setPremiumTelegram(null);
       setVipWhatsapp(null);
       setPrivacy(null);
       setDashboardTab("overview");
@@ -1507,7 +1448,7 @@ export default function App() {
       <OrderClosing language={language} onRegister={() => openAuth("register")} onNewsletter={() => { setNewsletterIntent(true); openAuth("register"); }} />
       </>}
     </main>
-    <footer id="legal" className="order-footer"><div><a href="https://jason-shadow.com/" className="order-footer-logo"><img src="/assets/music/logo.png" width="1774" height="887" alt="Jason Shadow — The Healing Shadow" loading="lazy" /></a><p>{language === "de" ? "Musik. Worte. Und die Menschen dahinter." : "Music. Words. And the people behind them."}</p></div><nav aria-label={language === "de" ? "Weitere Informationen" : "More information"}><a href="https://jason-shadow.com/">{language === "de" ? "Zur Musikwebsite" : "Music website"} <ExternalLinkIcon /></a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a><a href="/datenschutz/">{t.privacy}</a></nav><p className="order-copyright">© {new Date().getFullYear()} Jason Shadow · The Order of Shadows</p></footer>
+    <footer id="legal" className="order-footer"><div><a href="https://jason-shadow.com/" className="order-footer-logo"><img src="/assets/music/logo.png" width="1774" height="887" alt="Jason Shadow — The Healing Shadow" loading="lazy" /></a><p>{language === "de" ? "Musik. Worte. Und die Menschen dahinter." : "Music. Words. And the people behind them."}</p></div><nav aria-label={language === "de" ? "Weitere Informationen" : "More information"}><a href="https://jason-shadow.com/">{language === "de" ? "Zur Musikwebsite" : "Music website"} <ExternalLinkIcon /></a><a href="https://jason-shadow.com/affiliates">{language === "de" ? "Affiliate-Programm" : "Affiliate Program"} <ExternalLinkIcon /></a><a href="/linktree/">Links</a><a href="/legal/">{t.legalLink}</a><a href="/datenschutz/">{t.privacy}</a></nav><p className="order-copyright">© {new Date().getFullYear()} Jason Shadow · The Order of Shadows</p></footer>
 
     {modal === "auth" && <Modal
       title={mode === "register" ? t.createAccount : mode === "login" ? t.welcomeBack : t.reset}
@@ -1759,9 +1700,7 @@ export default function App() {
 
           <article className="perk-access-card">{entitlement?.active ? <MembershipMark tier={entitlement.tier} /> : <LockIcon />}<div><h3>{entitlement?.active ? membershipName(entitlement.tier) : (language === "de" ? "Free Preview" : "Free Preview")}</h3><p>{entitlement?.expiresAt ? `${ui.expires}: ${new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.expiresAt))}` : ui.noMembership}</p></div></article>
           {entitlement?.paused && <article className="perk-access-card is-paused"><MembershipMark tier={entitlement.paused.tier} /><div><h3>{membershipName(entitlement.paused.tier)} · {language === "de" ? "Pausiert" : "Paused"}</h3><p>{language === "de" ? "Deine verbleibende Laufzeit geht nicht verloren und beginnt wieder am" : "Your remaining term is preserved and resumes on"} {new Intl.DateTimeFormat(language === "de" ? "de-DE" : "en-GB", { dateStyle: "medium" }).format(new Date(entitlement.paused.resumesAt))}.</p></div></article>}
-          {entitlement?.active && entitlement.tier === "EXCLUSIVE_PREMIUM" && premiumTelegram && <article className="perk-access-card is-private telegram-access-card"><span><ExternalLinkIcon /></span><div><div className="telegram-access-card__heading"><h3>{language === "de" ? "Dein privater Telegram-Kanal" : "Your private Telegram channel"}</h3>{!premiumTelegram.simulated && <span className={`order-status order-status--${String(premiumTelegram.connectionStatus || "not-linked").toLowerCase().replaceAll("_", "-")}`}>{premiumTelegram.active ? (language === "de" ? "AKTIV" : "ACTIVE") : String(premiumTelegram.connectionStatus || "NOT_LINKED").replaceAll("_", " ")}</span>}</div><p>{language === "de" ? "Verbinde dein Telegram-Konto sicher mit deiner aktiven Premium Shadow Membership. Der persönliche Kanal-Link wird erst im Bot erstellt, an genau dein Telegram-Konto gebunden und direkt nach dem Beitritt entwertet." : "Securely link your Telegram account to your active Premium Shadow membership. Your personal channel link is created only inside the bot, bound to your Telegram account and revoked immediately after you join."}</p>{premiumTelegram.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der Produktivansicht für diese Membership freigeschaltet. Geheimwerte werden nicht simuliert." : "Unlocked for this membership in the production view. Secret values are not simulated."}</small> : <><p className="telegram-privacy-note">{language === "de" ? "Datensparsam: gespeichert werden nur Telegram-Konto-ID, Zugangsstatus und notwendige Zeitpunkte – keine Chats, Profilbilder oder Telegram-Benutzernamen." : "Data-minimised: only the Telegram account ID, access status and required timestamps are stored—never chats, profile photos or Telegram usernames."}</p>{premiumTelegram.active ? <small className="simulation-perk-state">{language === "de" ? "Sicher verbunden. Bei Ablauf deiner Membership wird der Kanalzugang automatisch entfernt." : "Securely connected. Channel access is removed automatically when your membership ends."}</small> : <button className="primary-action" type="button" disabled={busy || premiumTelegram.connectionStatus === "ADMIN_SUSPENDED"} onClick={connectTelegram}>{premiumTelegram.linked ? (language === "de" ? "Zugang in Telegram öffnen" : "Open access in Telegram") : (language === "de" ? "Telegram sicher verbinden" : "Securely connect Telegram")}</button>}</>}</div></article>}
-          {vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3>{vipWhatsapp.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der VIP-Produktivansicht freigeschaltet; Geheimwerte werden in der Simulation nicht ausgegeben." : "Unlocked in the VIP production view; secret values are not exposed in simulation."}</small> : <><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></>}</div></article>}
-          {!premiumTelegram && !vipWhatsapp && entitlement?.active && <p className="upload-note">{language === "de" ? "Deine laufzeitabhängigen Vorteile werden hier automatisch freigeschaltet." : "Term-specific benefits unlock here automatically."}</p>}
+          {membershipReady && entitlement?.active && entitlement.tier === "EXCLUSIVE_VIP" && vipWhatsapp && <article className="perk-access-card is-vip"><span>VIP</span><div><h3>{language === "de" ? "Meine private WhatsApp-Nummer" : "My private WhatsApp number"}</h3>{vipWhatsapp.simulated ? <small className="simulation-perk-state">{language === "de" ? "In der VIP-Produktivansicht freigeschaltet; Geheimwerte werden in der Simulation nicht ausgegeben." : "Unlocked in the VIP production view; secret values are not exposed in simulation."}</small> : <><p>{vipWhatsapp.phoneNumber}</p><a className="primary-action" href={vipWhatsapp.whatsappUrl} target="_blank" rel="noreferrer">{language === "de" ? "WhatsApp öffnen" : "Open WhatsApp"}</a></>}</div></article>}
         </div>}
         {dashboardTab === "newsletter" && <section className="privacy-card privacy-card--newsletter">
           <p className="eyebrow">ORDER OF SHADOWS · NEWSLETTER</p><h3>{language === "de" ? "Post aus meiner Musikwelt." : "A note from my world of music."}</h3>

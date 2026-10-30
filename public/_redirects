@@ -1,0 +1,4 @@
+# Retired affiliate page; resolve these before Pages' automatic SPA fallback.
+/affiliates https://jason-shadow.com/affiliates 301
+/affiliates/ https://jason-shadow.com/affiliates 301
+/affiliates/index.html https://jason-shadow.com/affiliates 301

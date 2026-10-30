@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockMembershipApi } from './membership-fixtures.js';
+import { membershipTermsVersion } from '../src/lib/membership-policy.js';
 
 const pages = [
   ['/', 'home'], ['/de/', 'seo-de'], ['/en/', 'seo-en'], ['/linktree/', 'linktree'],
@@ -30,15 +31,27 @@ test.describe('membership public experience', () => {
   test.beforeEach(async ({ page }) => { await mockMembershipApi(page); });
 
   test('home uses the music brand, bilingual copy and official logo', async ({ page }) => {
+    const catalogRequests = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/member/v1/products') {
+        catalogRequests.push({ locale: url.searchParams.get('locale'), catalog: url.searchParams.get('catalog') });
+      }
+    });
     await page.goto('/?lang=en');
+    await expect.poll(() => catalogRequests).toContainEqual({ locale: 'en', catalog: membershipTermsVersion });
     await expect(page).toHaveTitle(/Jason Shadow.*Exclusive Membership/);
     await expect(page.locator('.order-brand')).toHaveAttribute('href', 'https://jason-shadow.com/');
     await expect(page.locator('.order-brand img')).toHaveAttribute('src', '/assets/music/logo.png');
     await expect(page.locator('#pricing')).toContainText(/no automatic renewal/i);
+    await expect(page.locator('body')).not.toContainText(/telegram/i);
     await expect(page.locator('a[href*="onlyfans" i], script[src*="paypal" i]')).toHaveCount(0);
     await page.getByRole('button', { name: 'DE', exact: true }).click();
+    await expect.poll(() => catalogRequests).toContainEqual({ locale: 'de', catalog: membershipTermsVersion });
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#pricing')).toContainText(/keine automatische Verlängerung/i);
+    await expect(page.locator('body')).not.toContainText(/telegram/i);
+    expect(catalogRequests.every(({ catalog }) => catalog === membershipTermsVersion)).toBe(true);
   });
 
   test('German membership heading fits narrow phone viewports', async ({ page }) => {

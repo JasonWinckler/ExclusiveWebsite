@@ -45,22 +45,25 @@ gerätegebundenen Zehn-Minuten-Sitzung erreichbar.
 - Rechnungskopien bleiben privat und dürfen nur für Support, Betroffenenrechte
   oder steuerliche Pflichten geöffnet werden.
 
-## Persönliche Telegram-Einladungen
+## VIP-WhatsApp und historische Telegram-Zugänge
 
-Premium und VIP erhalten den Telegram-Vorteil über den produktiven
-`@ShadowsTemptationAccessBot`. Das Mitglied erzeugt im Dashboard einen zehn
-Minuten gültigen Bot-Link. In D1 liegt nur dessen SHA-256-Digest. Erst nachdem
-das Mitglied den Bot selbst gestartet hat, wird die minimale numerische
-Telegram-Konto-ID mit dem Website-Konto verknüpft und ein 15 Minuten gültiger,
-auf dieses Telegram-Konto gebundener Kanal-Link im privaten Bot-Chat gesendet.
-Nach dem Beitritt widerruft der Webhook den Kanal-Link unmittelbar.
+WhatsApp ist vom Betreiber für die Musik- und Sprecherarbeit freigegeben.
+Aktive VIP-Mitglieder erhalten den Kontakt über den geschützten Vorteil;
+`VIP_WHATSAPP_MUSIC_REVIEWED=true` kennzeichnet diese Freigabe.
 
-Der Reiter „Telegram“ zeigt Status und technische Fehler, aber weder
-Telegram-Benutzernamen noch Profilbilder oder Chats. Dort kann der Zugang neu
-gesendet, administrativ pausiert oder die Verknüpfung vollständig gelöscht
-werden. Membership-Ende, Kontosperre und Kontolöschung entziehen den Zugang;
-eine spätere Reaktivierung sendet automatisch einen neuen Einmal-Link. Der
-stündliche Membership-Job dient zusätzlich als Abgleich-Failsafe.
+Telegram ist kein Vorteil einer Musik-Mitgliedschaft. Das vorhandene Ziel ist
+für Erwachsenen-Inhalte bestimmt und darf nicht mit der Musik-Mitgliedschaft
+beworben oder verknüpft werden. `MUSIC_TELEGRAM_REVIEWED=false` sperrt neue
+Verknüpfungen, Reaktivierungen und Einladungen. Die frühere gemeinsame Variable
+`MUSIC_COMMUNITY_REVIEWED` wird nicht mehr ausgewertet. Der optionale separate
+VIP-Bereich auf dieser Website eröffnet keinen Telegram-Zugang.
+
+Vorhandene Telegram-Zuordnungen bleiben für die Verwaltung, Löschung und den
+Entzug früherer Zugänge erhalten. Migration 0029 deaktiviert die Katalogvorteile,
+löscht aber keine historischen Zuordnungen und entfernt für sich genommen keine
+bestehenden Kanalmitglieder. Administrativer Entzug, Kontolöschung und der
+bestehende Wartungsabgleich bleiben nutzbar. Telegram-Benutzernamen, Profilbilder
+und Chats werden weiterhin nicht gespeichert.
 
 MFA ist für das Administratorkonto organisatorisch verpflichtend. Siehe
 [Sicherheit](SECURITY.md) und

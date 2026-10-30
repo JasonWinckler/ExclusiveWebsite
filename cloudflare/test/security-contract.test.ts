@@ -112,7 +112,8 @@ describe("browser and repository security contract", () => {
     expect(migration).toContain("title_en");
     expect(migration).toContain("description_en");
     expect(membership).toContain("COALESCE(k.title_en, k.title)");
-    expect(frontendApi).toContain('locale=${locale === "en" ? "en" : "de"}');
+    expect(frontendApi).toContain("productCatalogPath(locale)");
+    expect(read("src/lib/membership-policy.js")).toContain('locale=${locale === "en" ? "en" : "de"}');
     expect(admin).toContain('action: "MEMBERSHIP_MANUALLY_GRANTED"');
     expect(admin).toContain('/^\\/v1\\/users\\/([^/]+)\\/membership$/');
     expect(frontendApi).toContain("adminGrantMembership");
@@ -406,6 +407,6 @@ describe("browser and repository security contract", () => {
     expect(telegram).toContain("sendTelegramAccessConfirmation");
     expect(membership).toContain('requestUrl.pathname === "/v1/telegram/webhook"');
     expect(frontend).not.toContain("premiumTelegram.inviteUrl");
-    expect(frontend).toContain("createPremiumTelegramClaim");
+    expect(frontend).not.toContain("createPremiumTelegramClaim");
   });
 });

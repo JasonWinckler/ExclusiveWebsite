@@ -5,7 +5,7 @@ import type { MembershipEnv } from "../src/shared/types";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("music community cutover", () => {
-  it.each(["false", undefined])("revokes a pre-cutover invitation and removes a new join when review is %s", async (MUSIC_COMMUNITY_REVIEWED) => {
+  it.each(["false", undefined])("revokes a pre-cutover invitation and removes a new join when Telegram review is %s", async (MUSIC_TELEGRAM_REVIEWED) => {
     const statements: string[] = [];
     const DB = {
       prepare(sql: string) {
@@ -24,7 +24,8 @@ describe("music community cutover", () => {
     } as unknown as D1Database;
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true, result: true }));
     vi.stubGlobal("fetch", fetchMock);
-    const env = { DB, MUSIC_COMMUNITY_REVIEWED, TELEGRAM_BOT_TOKEN: "x".repeat(40), TELEGRAM_CHAT_ID: "-123",
+    const env = { DB, MUSIC_TELEGRAM_REVIEWED, VIP_WHATSAPP_MUSIC_REVIEWED: "true", MUSIC_COMMUNITY_REVIEWED: "true",
+      TELEGRAM_BOT_TOKEN: "x".repeat(40), TELEGRAM_CHAT_ID: "-123",
       TELEGRAM_BOT_USERNAME: "TestBot", TELEGRAM_INVITE_ENCRYPTION_KEY: "test-key", TELEGRAM_WEBHOOK_SECRET: "test-secret" } as unknown as MembershipEnv;
     const result = await handleTelegramWebhook(new Request("https://membership.internal/v1/telegram/webhook", {
       method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-secret" },

@@ -99,7 +99,8 @@ export interface MembershipEnv extends BaseEnv {
   TELEGRAM_INVITE_ENCRYPTION_KEY?: string;
   TELEGRAM_INVITE_KEY_VERSION?: string;
   VIP_WHATSAPP_NUMBER?: string;
-  MUSIC_COMMUNITY_REVIEWED?: string;
+  VIP_WHATSAPP_MUSIC_REVIEWED?: string;
+  MUSIC_TELEGRAM_REVIEWED?: string;
 }
 
 export interface AdminEnv extends BaseEnv {

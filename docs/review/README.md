@@ -26,14 +26,14 @@ No real test email or newsletter was sent for this review.
 
 ![Music newsletter design](newsletter-preview.png)
 
-## Verification
+## Current local verification
 
 - Production frontend build and existing bundle budgets pass.
-- Backend TypeScript checks and all 152 tests in 20 files pass, including
+- Backend TypeScript checks and all 173 tests in 23 files pass, including
   migration preservation, content separation, newsletter consent, owner-role
   repair guards and maintenance compatibility during migration.
-- All ten rollout guard and diagnostic tests pass.
-- All 68 Playwright checks pass on desktop and mobile with synthetic API fixtures,
+- All 24 rollout guard and diagnostic tests pass.
+- All 70 Playwright checks pass on desktop and mobile with synthetic API fixtures,
   including the final layout and age-review refresh corrections.
 - Original logo and owned artist photographs were copied from the music website.
 
@@ -43,7 +43,7 @@ membership/payment behavior still need controlled production verification.
 The [transition guide](../ORDER_OF_SHADOWS_TRANSITION.md) documents the guarded
 production workflow and release checks.
 
-## Production status — 2026-10-30
+## Production history — 2026-10-30, migrations 0027/0028
 
 The independent owner operation [succeeded in production](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046845875):
 the existing `business@jason-shadow.com` account has ADMIN access with MFA
@@ -68,8 +68,56 @@ The workflow uses `CLOUDFLARE_API_TOKEN`; the global API key is not used. Worker
 configurations preserve existing operational variables during both scripted and
 automatic Cloudflare deployments; explicit configuration still takes precedence.
 
-Remaining operational checks: external Premium Telegram/VIP WhatsApp destinations
-remain behind `MUSIC_COMMUNITY_REVIEWED=false` until owner review; archived adult
-posts require individual administrator publication; earlier newsletter consent
-requires a new music opt-in. Actual mailbox delivery and provider/cached sender
-names have not been verified by sending a test message.
+At that release, both external destinations remained behind the former shared
+review gate. The owner has since approved WhatsApp for music and clarified that
+Telegram is an adult-content destination, outside every music membership.
+The follow-up source correction is described below; the earlier release record
+does not establish that this correction is live.
+
+## WhatsApp/Telegram correction — verified production release
+
+Current source removes Telegram benefits from all music tiers and introduces
+migration `0029_remove_telegram_music_perks.sql`. The destinations have separate
+configuration: `VIP_WHATSAPP_MUSIC_REVIEWED=true` for the approved VIP music
+contact and `MUSIC_TELEGRAM_REVIEWED=false` for Telegram. The former shared flag
+is unused. Historical Telegram records and their cleanup/revocation controls
+remain; no adult Telegram routing is added. New checkout terms use
+`ORDER-2026-10-30-V3`, preserving earlier acceptance snapshots. Privacy remains V2.
+
+Backend typechecking and all 173 tests in 23 files pass for this correction,
+as do all 24 focused rollout guard and diagnostic tests and 70 desktop/mobile
+browser checks. Production build and bundle budgets pass.
+Migration 0029 and the independent contact gates were deployed in
+[run 41053535266](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41053535266).
+The final [revision-aware catalog release](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41054899735)
+verified commit `2ce61a15cd1bbc4b266e0c299beb85d74f2dd77b`, all service bindings,
+both normal German/English frontend catalog URLs and the canonical Pages
+revision/assets. Existing catalog caches are isolated by offer revision, and
+the browser uses the same revision for checkout terms and catalog requests.
+
+Production metadata checks confirmed WhatsApp music approval enabled, Telegram
+music approval disabled and the private WhatsApp number present as a secret
+binding. The number itself was not read or disclosed. Separate public checks
+confirmed zero Telegram benefits in DE and EN, including previously cached
+unversioned catalog URLs. Newsletter delivery resumed after verification.
+No authenticated member impersonation, external contact message or Telegram
+membership modification was performed by the release process. The screenshots
+above use synthetic accounts and remain local design evidence.
+
+## Affiliate program
+
+The central affiliate page is `https://jason-shadow.com/affiliates`. The member
+site, localized landing pages and link hub link there. The former `/affiliates`,
+`/affiliates/` and `/affiliates/index.html` routes have exact permanent 301 rules
+in `public/_redirects`; the unused local affiliate stylesheet was removed.
+No local affiliate page or sitemap entry is retained.
+
+The final build includes these redirect rules and excludes the old stylesheet.
+A local Pages runtime check verified all three destinations and the unchanged
+SPA fallback. Ten affected desktop/mobile browser checks and twelve direct
+footer-link/label checks passed without visiting the external affiliate page or
+submitting a form.
+
+Archived adult posts still require individual administrator publication, and
+earlier newsletter consent requires a new music opt-in. Actual mailbox delivery
+and provider/cached sender names have not been verified by sending a test message.

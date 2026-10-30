@@ -59,7 +59,7 @@ import type {
 
 const AGE_INSTRUCTIONS_VERSION = "manual-age-v6";
 const PRIVACY_NOTICE_VERSION = "PRIVACY-MUSIC-2026-10-30-V2";
-const MEMBERSHIP_TERMS_VERSION = "ORDER-2026-10-30-V2";
+const MEMBERSHIP_TERMS_VERSION = "ORDER-2026-10-30-V3";
 type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
 type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
 const ISO_COUNTRIES = new Set(`
@@ -181,7 +181,7 @@ function memberBenefits(accountReady: boolean, tier: string | null, ageStatus: s
   const vip = accountReady && tier === "EXCLUSIVE_VIP";
   const discount = accountReady && ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"].includes(tier ?? "") ? 15 : 0;
   return {
-    benefits: { serviceDiscountPercent: discount, telegramAvailable: accountReady && tier === "EXCLUSIVE_PREMIUM" },
+    benefits: { serviceDiscountPercent: discount, telegramAvailable: false },
     adultArea: {
       eligible: vip,
       ageVerified: ageStatus === "APPROVED",
@@ -2184,7 +2184,7 @@ async function vipWhatsappPerk(
     throw new ApiError(403, "VIP_WHATSAPP_PERK_NOT_AVAILABLE");
   }
   if (!access.expires_at) throw new ApiError(403, "ACTIVE_VIP_REQUIRED");
-  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "VIP_WHATSAPP_MUSIC_REVIEW_REQUIRED");
+  if (env.VIP_WHATSAPP_MUSIC_REVIEWED !== "true") throw new ApiError(503, "VIP_WHATSAPP_MUSIC_REVIEW_REQUIRED");
   if (!env.VIP_WHATSAPP_NUMBER) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
   const digits = env.VIP_WHATSAPP_NUMBER.replace(/\D/g, "");
   if (!/^[1-9]\d{7,14}$/.test(digits)) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
@@ -3709,7 +3709,9 @@ async function route(
   if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
     const locale = requestUrl.searchParams.get("locale") === "en" ? "en" : "de";
     const cacheKey = productCatalogCacheKey(request, locale, origin);
-    const edgeCache = await caches.open("order-of-shadows-products-v3");
+    // Offer changes advance the checkout terms revision. Keep their catalogs
+    // isolated too: older edge entries may still advertise withdrawn benefits.
+    const edgeCache = await caches.open(`order-of-shadows-products-${MEMBERSHIP_TERMS_VERSION}`);
     const cached = await edgeCache.match(cacheKey);
     if (cached) return withRequestId(cached, correlationId);
     await enforceRateLimit(
