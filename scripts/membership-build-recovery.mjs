@@ -1,9 +1,9 @@
 // Bounded recovery of one failed Cloudflare CI build. Never print API payloads,
 // environment bindings, raw build logs or credentials. This does not touch D1.
 import {readFileSync,readdirSync} from 'node:fs';
-const worker = 'exclusive-membership-api';
-const failedBuild = '43b2a4cb-bfc0-4dee-9bbd-7d1166f8fe49';
-const targetCommit = 'd8e7a921f90aa966c3ac9f7d3a429c576520a38f';
+const worker = 'exclusive-identity-projection';
+const failedBuild = '289b0bba-affe-4f58-8e79-8d53bf79d9a0';
+const targetCommit = '2bdc61bab8561fda7fcc4c3db5c71a4c70caa61e';
 function assert(value, message) { if (!value) throw new Error(message); }
 const tag = process.env.GITHUB_REF || '';
 const match = /^refs\/tags\/exclusive-build-(inspect|retry)-([a-f0-9]{40})$/.exec(tag);
