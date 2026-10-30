@@ -128,6 +128,11 @@ continues with delivery paused. It then records a D1 Time Travel recovery
 bookmark, applies the reviewed migrations, deploys the other Workers and
 publishes the built frontend to the existing Pages production branch.
 
+All Worker configurations set `keep_vars: true`, and the scripted deployment
+also uses `--keep-vars`. Dashboard-only operational variables therefore survive
+automatic Cloudflare deployments as well. Explicit source configuration and
+the newsletter pause override still take precedence; secrets remain intact.
+
 Before resuming ordinary opted-in newsletter delivery, the script verifies
 canonical API health and service bindings, renamed products and benefits,
 Premium/VIP discounts, the absence of a VIP Telegram benefit, exact built

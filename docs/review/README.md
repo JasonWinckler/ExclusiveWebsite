@@ -50,14 +50,26 @@ the existing `business@jason-shadow.com` account has ADMIN access with MFA
 required. Previous sessions were revoked; password/MFA credentials and profile
 data were preserved. The owner must sign in again.
 
-The website/backend release remains blocked. [Read-only inspection](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046283377)
-confirmed D1 is still at migration 0026 and migrations 0027/0028 are pending.
-All five Worker metadata requests and the Pages project request returned HTTP
-403; Pages reported Cloudflare code 10000. No site deployment, schema migration,
-newsletter queue change or test mail was performed by this task.
+The updated API token passed the [read-only production inspection](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046781892).
+The coordinated [production rollout succeeded](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41050723595)
+at reviewed revision `ea3a904ceb09055e9c47eb45b36103191c1df012`:
 
-Extend the existing token used by GitHub Actions secret `CLOUDFLARE_API_TOKEN`
-with account-level **Workers Scripts: Edit** and **Cloudflare Pages: Edit** for
-the existing account, retaining **D1: Edit** and its other existing permissions.
-If replacing the token, update it in the repository’s Actions secrets. Rerun
-inspection before using the exact-revision production deployment workflow.
+- Newsletter maintenance was paused and drained before recording a D1 recovery
+  bookmark and applying migrations 0027/0028.
+- All five Workers and the existing Pages project were deployed. The canonical
+  Pages commit and frontend asset hashes matched the reviewed release.
+- Public API health/service bindings, Basic/Premium/VIP Shadow names, both 15%
+  service discounts and removal of the VIP Telegram benefit passed live checks.
+  A separate anonymous request to private VIP content returned HTTP 401.
+- Ordinary opted-in newsletter delivery was resumed after verification. No
+  test email, payment, private media publication or customer impersonation occurred.
+
+The workflow uses `CLOUDFLARE_API_TOKEN`; the global API key is not used. Worker
+configurations preserve existing operational variables during both scripted and
+automatic Cloudflare deployments; explicit configuration still takes precedence.
+
+Remaining operational checks: external Premium Telegram/VIP WhatsApp destinations
+remain behind `MUSIC_COMMUNITY_REVIEWED=false` until owner review; archived adult
+posts require individual administrator publication; earlier newsletter consent
+requires a new music opt-in. Actual mailbox delivery and provider/cached sender
+names have not been verified by sending a test message.

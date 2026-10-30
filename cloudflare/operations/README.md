@@ -10,7 +10,8 @@ The operation was **applied and verified in production on 2026-10-30** by
 at reviewed revision `b14978a0e97fe40a588c637a3ab1d3594ef33780`. Post-checks
 confirmed the exact verified active account, ADMIN role, required MFA, revoked
 prior sessions and one audit event. Passwords and MFA secrets were preserved.
-This evidence is separate from local tests and from the blocked website rollout.
+This evidence is separate from local tests and from the subsequently completed
+[website rollout](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41050723595).
 
 The reviewed GitHub workflow also supports an independent `owner-admin`
 operation with an explicit full commit SHA, or a lightweight tag named
