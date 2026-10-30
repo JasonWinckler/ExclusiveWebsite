@@ -134,7 +134,7 @@ describe("authorization fails closed", () => {
     }).code).toBe("JURISDICTION_NOT_ALLOWED");
   });
 
-  it("enforces the Basic, Premium, and VIP hierarchy while Free needs no paid entitlement", () => {
+  it("shares music content across paid tiers while Free needs no paid entitlement", () => {
     const common = {
       profile: activeProfile,
       contentStatus: "ACTIVE" as const,
@@ -160,7 +160,7 @@ describe("authorization fails closed", () => {
         expires_at: "2027-01-01T00:00:00.000Z",
       },
       requiredTier: "EXCLUSIVE_PREMIUM",
-    }).code).toBe("INSUFFICIENT_TIER");
+    }).allowed).toBe(true);
     expect(authorizeProtectedContent({
       ...common,
       entitlement: {

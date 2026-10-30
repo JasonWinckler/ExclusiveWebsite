@@ -32,6 +32,7 @@
     "service": "exclusive-identity-projection"
   }],
   "vars": {
+    "NEWSLETTER_DELIVERY_ENABLED": "true",
     "INACTIVE_ACCOUNT_DAYS": "30",
     "DELETION_GRACE_DAYS": "7",
     "MAINTENANCE_BATCH_SIZE": "50",
@@ -58,6 +59,7 @@
         "service": "exclusive-identity-projection-preview"
       }],
       "vars": {
+        "NEWSLETTER_DELIVERY_ENABLED": "true",
         "INACTIVE_ACCOUNT_DAYS": "30",
         "DELETION_GRACE_DAYS": "1",
         "MAINTENANCE_BATCH_SIZE": "10",

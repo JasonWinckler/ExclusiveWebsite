@@ -2,10 +2,13 @@ import React from "react";
 
 const content = {
   en: {
-    eyebrow: "THE INNER CIRCLE OF JASON SHADOW",
+    eyebrow: "JASON SHADOW · THE HEALING SHADOW",
+    heroFirst: "Exclusive",
+    heroSecond: "Membership.",
+    community: "The community: Order of Shadows",
     lead: "Closer to the music. Part of the story.",
-    intro: "Support my work as a singer and speaker. Step behind the scenes, share the journey, and become part of The Order of Shadows.",
-    join: "Join the Order of Shadows",
+    intro: "Support my work as a singer and speaker. Get the same behind-the-scenes access with every membership, plus the personal benefits that suit you.",
+    join: "Join the Shadows",
     explore: "Explore memberships",
     assurance: "Your support. Your choice. No automatic renewal.",
     portraitCaption: "JASON SHADOW",
@@ -16,29 +19,31 @@ const content = {
     experienceIntro: "Come a little closer to the work, the preparation, and the person behind the voice.",
     photoCaption: "On stage at KÖPI am Ring, Rheine",
     benefits: [
-      { number: "I", title: "Behind the scenes", text: "Discover members-only photos, videos, and personal updates from my music and speaker work. The moments around the performance, shared with you." },
-      { number: "II", title: "A place in the circle", text: "Follow the journey and join the conversation through member comments. Premium and VIP memberships also include the private Telegram community." },
-      { number: "III", title: "An even closer connection", text: "VIP includes personal meet-ups by arrangement and private WhatsApp access. A chance to connect beyond the screen, with the details agreed together." },
+      { number: "I", title: "Behind the scenes", text: "Discover members-only photos, videos and personal updates from my music and speaker work. Basic Shadow, Premium Shadow and VIP Shadow all include the same behind-the-scenes collection." },
+      { number: "II", title: "Benefits beyond the content", text: "Premium Shadow and VIP Shadow include 15% off all services offered by Jason Shadow. Premium Shadow also includes the private Telegram community." },
+      { number: "III", title: "An even closer connection", text: "VIP Shadow includes personal meet-ups by arrangement and private WhatsApp access. A chance to connect beyond the screen, with the details agreed together." },
     ],
     supportEyebrow: "YOUR SUPPORT MAKES A DIFFERENCE",
     supportTitle: "Give the next chapter a voice.",
     supportText: "Your membership supports the creative work behind the music and spoken word. Choose the level that feels right for you, and receive exclusive access as a thank-you for being part of it.",
     supportNote: "A paid supporter membership with benefits. Contributions are not charitable donations.",
-    stepsEyebrow: "03 / YOUR PLACE IN THE ORDER",
+    stepsEyebrow: "03 / YOUR MEMBERSHIP",
     stepsTitle: "A simple beginning.",
     steps: [
       { title: "Create your account.", text: "Register, verify your email, and set up your profile. Newsletter subscription is always optional." },
-      { title: "Choose your membership.", text: "Select Basic, Premium, or VIP and the term that suits you. Review the full price before ordering." },
+      { title: "Choose your membership.", text: "Select Basic Shadow, Premium Shadow or VIP Shadow and the term that suits you. Review the full price before ordering." },
       { title: "Support. Connect. Discover.", text: "Pay by SEPA transfer. Your membership becomes active once payment is confirmed. There is no automatic renewal." },
     ],
     faqEyebrow: "A FEW THINGS TO KNOW",
     faqTitle: "Before you step inside.",
     faqs: [
-      { q: "What is The Order of Shadows?", a: "The Order of Shadows is Jason Shadow’s supporter community for his music and speaker business. A paid membership gives you behind-the-scenes access and the benefits included in your selected tier." },
-      { q: "What is the difference between the memberships?", a: "Basic opens the first collection of behind-the-scenes content. Premium includes Basic and Premium content plus the private Telegram community. VIP includes all content, private WhatsApp access, and personal meet-ups by arrangement. The membership selector lists the full benefits and terms." },
+      { q: "What is the Exclusive Membership?", a: "It is Jason Shadow’s paid supporter membership for his music and speaker business. Order of Shadows is the name of the community. All three paid memberships include the same behind-the-scenes content; their additional personal benefits differ." },
+      { q: "What is the difference between the memberships?", a: "Basic Shadow includes all music behind-the-scenes posts and member comments. Premium Shadow adds the private Telegram community and 15% off all Jason Shadow services. VIP Shadow includes the same behind-the-scenes content, the 15% service discount, WhatsApp contact and meet-ups by arrangement. Telegram is a Premium Shadow benefit, not a VIP Shadow benefit." },
+      { q: "How does the 15% service discount work?", a: "Premium Shadow and VIP Shadow receive 15% off all services offered by Jason Shadow. Mention your active membership when requesting a quote. The service, date and discounted total are agreed before booking." },
       { q: "How do payment and renewal work?", a: "Choose a fixed term and pay once by SEPA bank transfer using the payment details provided with your order. Access starts after payment is confirmed. Your membership does not renew automatically." },
-      { q: "How do VIP meet-ups work?", a: "Personal meet-ups are included with VIP membership and arranged together. Dates, location, availability, and the applicable conditions are agreed in advance. Please read the VIP meet-up details before choosing your membership." },
+      { q: "How do VIP meet-ups work?", a: "Personal meet-ups are included with VIP Shadow membership and arranged together. Dates, location, availability, and the applicable conditions are agreed in advance. Please read the VIP meet-up details before choosing your membership." },
       { q: "Will I receive a newsletter automatically?", a: "No. The newsletter is optional and requires your separate consent and email confirmation. You can withdraw your consent at any time. Essential account and order emails are separate from the newsletter." },
+      { q: "Is there a separate optional VIP area?", a: "Yes. An optional private 18+ area is available only to active VIP Shadow members who separately complete age verification. It is separate from the shared music content and is not required to use the music membership." },
       { q: "Is this a tax-deductible donation?", a: "No charitable donation receipt is issued. This is a paid membership that supports Jason Shadow’s business and includes membership benefits. Your order provides the price, term, and payment information before you commit." },
     ],
     newsletterEyebrow: "LETTERS FROM THE SHADOWS",
@@ -51,10 +56,13 @@ const content = {
     closingText: "The music is the beginning. The connection is what makes it matter.",
   },
   de: {
-    eyebrow: "DER INNERE KREIS VON JASON SHADOW",
+    eyebrow: "JASON SHADOW · THE HEALING SHADOW",
+    heroFirst: "Exklusive",
+    heroSecond: "Mitgliedschaft.",
+    community: "Die Community: Order of Shadows",
     lead: "Näher an der Musik. Teil der Geschichte.",
-    intro: "Unterstütze meine Arbeit als Sänger und Sprecher. Blicke hinter die Kulissen, begleite meinen Weg und werde Teil von The Order of Shadows.",
-    join: "Werde Teil von The Order of Shadows",
+    intro: "Unterstütze meine Arbeit als Sänger und Sprecher. Jede Mitgliedschaft öffnet dieselben Einblicke hinter die Kulissen – ergänzt um die persönlichen Vorteile, die zu dir passen.",
+    join: "Mitglied werden",
     explore: "Mitgliedschaften entdecken",
     assurance: "Deine Unterstützung. Deine Wahl. Keine automatische Verlängerung.",
     portraitCaption: "JASON SHADOW",
@@ -65,29 +73,31 @@ const content = {
     experienceIntro: "Komm näher an die Arbeit, die Vorbereitung und den Menschen hinter der Stimme.",
     photoCaption: "Auf der Bühne im KÖPI am Ring, Rheine",
     benefits: [
-      { number: "I", title: "Hinter den Kulissen", text: "Entdecke exklusive Fotos, Videos und persönliche Einblicke in meine Arbeit als Sänger und Sprecher. Die Momente rund um den Auftritt – mit dir geteilt." },
-      { number: "II", title: "Dein Platz im Kreis", text: "Begleite meinen Weg und tausche dich in den Mitglieder-Kommentaren aus. Premium und VIP enthalten außerdem den Zugang zur privaten Telegram-Community." },
-      { number: "III", title: "Noch persönlicher verbunden", text: "Mit VIP sind persönliche Treffen nach Vereinbarung und mein privater WhatsApp-Kontakt inklusive. Eine Verbindung über den Bildschirm hinaus – die Details stimmen wir gemeinsam ab." },
+      { number: "I", title: "Hinter den Kulissen", text: "Entdecke exklusive Fotos, Videos und persönliche Einblicke in meine Arbeit als Sänger und Sprecher. Basic Shadow, Premium Shadow und VIP Shadow erhalten dieselbe Behind-the-Scenes-Sammlung." },
+      { number: "II", title: "Vorteile über die Inhalte hinaus", text: "Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Bei Premium Shadow ist außerdem die private Telegram-Community inklusive." },
+      { number: "III", title: "Noch persönlicher verbunden", text: "Mit VIP Shadow sind persönliche Treffen nach Vereinbarung und mein privater WhatsApp-Kontakt inklusive. Die Details stimmen wir gemeinsam ab." },
     ],
     supportEyebrow: "DEINE UNTERSTÜTZUNG BEWEGT ETWAS",
     supportTitle: "Gib dem nächsten Kapitel eine Stimme.",
     supportText: "Deine Mitgliedschaft unterstützt die kreative Arbeit hinter Musik und gesprochenem Wort. Wähle die Stufe, die zu dir passt, und erhalte exklusive Einblicke als Dankeschön für deine Unterstützung.",
     supportNote: "Eine kostenpflichtige Fördermitgliedschaft mit Vorteilen. Die Beiträge sind keine gemeinnützigen Spenden.",
-    stepsEyebrow: "03 / DEIN PLATZ IM ORDEN",
+    stepsEyebrow: "03 / DEINE MITGLIEDSCHAFT",
     stepsTitle: "Ein einfacher Anfang.",
     steps: [
       { title: "Erstelle dein Konto.", text: "Registriere dich, bestätige deine E-Mail und richte dein Profil ein. Die Newsletter-Anmeldung ist freiwillig." },
-      { title: "Wähle deine Mitgliedschaft.", text: "Entscheide dich für Basic, Premium oder VIP und deine gewünschte Laufzeit. Prüfe den Gesamtpreis vor der Bestellung." },
+      { title: "Wähle deine Mitgliedschaft.", text: "Entscheide dich für Basic Shadow, Premium Shadow oder VIP Shadow und deine gewünschte Laufzeit. Prüfe den Gesamtpreis vor der Bestellung." },
       { title: "Unterstützen. Verbinden. Entdecken.", text: "Bezahle per SEPA-Überweisung. Nach bestätigtem Zahlungseingang wird dein Zugang aktiviert. Es gibt keine automatische Verlängerung." },
     ],
     faqEyebrow: "GUT ZU WISSEN",
     faqTitle: "Bevor du eintrittst.",
     faqs: [
-      { q: "Was ist The Order of Shadows?", a: "The Order of Shadows ist die Unterstützer-Community für Jason Shadows Musik- und Sprecher-Business. Mit einer kostenpflichtigen Mitgliedschaft erhältst du Einblicke hinter die Kulissen und die Vorteile deiner gewählten Stufe." },
-      { q: "Wie unterscheiden sich die Mitgliedschaften?", a: "Basic eröffnet dir die erste Sammlung von Einblicken hinter die Kulissen. Premium umfasst Basic- und Premium-Inhalte sowie die private Telegram-Community. VIP enthält alle Inhalte, privaten WhatsApp-Kontakt und persönliche Treffen nach Vereinbarung. Alle Vorteile und Laufzeiten findest du in der Mitgliedschaftsauswahl." },
+      { q: "Was ist die exklusive Mitgliedschaft?", a: "Damit unterstützt du Jason Shadows Musik- und Sprecher-Business. Order of Shadows ist der Name der Community. Alle drei kostenpflichtigen Mitgliedschaften enthalten dieselben Behind-the-Scenes-Inhalte und unterscheiden sich bei den zusätzlichen persönlichen Vorteilen." },
+      { q: "Wie unterscheiden sich die Mitgliedschaften?", a: "Basic Shadow enthält alle Musik-Behind-the-Scenes-Beiträge und Mitglieder-Kommentare. Premium Shadow ergänzt die private Telegram-Community und 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. VIP Shadow enthält dieselben Einblicke, den 15-%-Rabatt, WhatsApp-Kontakt und Treffen nach Vereinbarung. Telegram gehört zu Premium Shadow und ist bei VIP Shadow nicht enthalten." },
+      { q: "Wie funktioniert der 15-%-Rabatt auf Dienstleistungen?", a: "Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Nenne deine aktive Mitgliedschaft bei deiner Anfrage. Leistung, Termin und rabattierter Gesamtpreis werden vor der Buchung vereinbart." },
       { q: "Wie funktionieren Zahlung und Verlängerung?", a: "Du wählst eine feste Laufzeit und bezahlst einmalig per SEPA-Überweisung mit den Zahlungsdaten aus deiner Bestellung. Dein Zugang startet nach bestätigtem Zahlungseingang. Deine Mitgliedschaft verlängert sich nicht automatisch." },
-      { q: "Wie funktionieren die VIP-Treffen?", a: "Persönliche Treffen sind bei VIP inklusive und werden gemeinsam vereinbart. Termin, Ort, Verfügbarkeit und die geltenden Bedingungen stimmen wir vorab ab. Bitte lies die Hinweise zu VIP-Treffen, bevor du deine Mitgliedschaft auswählst." },
+      { q: "Wie funktionieren die VIP-Treffen?", a: "Persönliche Treffen sind bei VIP Shadow inklusive und werden gemeinsam vereinbart. Termin, Ort, Verfügbarkeit und die geltenden Bedingungen stimmen wir vorab ab. Bitte lies die Hinweise zu VIP-Treffen, bevor du deine Mitgliedschaft auswählst." },
       { q: "Erhalte ich automatisch einen Newsletter?", a: "Nein. Der Newsletter ist freiwillig und erfordert deine separate Einwilligung sowie eine Bestätigung per E-Mail. Du kannst deine Einwilligung jederzeit widerrufen. Notwendige Konto- und Bestellnachrichten sind davon unabhängig." },
+      { q: "Gibt es einen separaten optionalen VIP-Bereich?", a: "Ja. Der freiwillige private Bereich ab 18 ist nur für aktive VIP-Shadow-Mitglieder nach gesonderter Altersprüfung zugänglich. Er ist von den gemeinsamen Musik-Inhalten getrennt und keine Voraussetzung für die Musik-Mitgliedschaft." },
       { q: "Ist mein Beitrag eine steuerlich absetzbare Spende?", a: "Es wird keine gemeinnützige Spendenbescheinigung ausgestellt. Du erwirbst eine kostenpflichtige Mitgliedschaft mit Vorteilen und unterstützt damit Jason Shadows Business. Preis, Laufzeit und Zahlungsinformationen siehst du vor deiner verbindlichen Bestellung." },
     ],
     newsletterEyebrow: "LETTERS FROM THE SHADOWS",
@@ -109,7 +119,8 @@ export function OrderLanding({ language = "en", onRegister }) {
     <section className="order-hero" id="top" aria-labelledby="order-title">
       <div className="order-hero-copy">
         <p className="order-eyebrow"><span aria-hidden="true">✦</span>{c.eyebrow}</p>
-        <h1 id="order-title">The Order<br /><em>of Shadows.</em></h1>
+        <h1 id="order-title">{c.heroFirst}<br /><em>{c.heroSecond}</em></h1>
+        <p className="order-community-name">{c.community}</p>
         <p className="order-hero-lead">{c.lead}</p>
         <p className="order-hero-intro">{c.intro}</p>
         <div className="order-hero-actions">

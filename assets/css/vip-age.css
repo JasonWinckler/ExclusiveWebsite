@@ -1,0 +1,220 @@
+/* Optional VIP review controls, loaded only with the verification component. */
+
+.vip-age-panel .live-recorder { display: grid; gap: 12px; padding: 18px; border: 1px solid rgba(255,202,144,.28); border-radius: 18px; background: rgba(255,255,255,.045); }
+.vip-age-panel .live-photo-capture { display:grid;gap:14px;padding:18px;border:1px solid rgba(255,202,144,.28);border-radius:18px;background:rgba(255,255,255,.045); }
+.vip-age-panel .live-photo-capture.is-complete { border-color:rgba(130,255,180,.34);background:rgba(40,120,75,.09); }
+.vip-age-panel .live-photo-capture__head { display:flex;align-items:center;gap:12px;min-width:0; }
+.vip-age-panel .live-photo-capture__head>span { display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:var(--gold);color:#2a0810;font-weight:900; }
+.vip-age-panel .live-photo-capture__head>div { min-width:0; }
+.vip-age-panel .live-photo-capture__head strong, .vip-age-panel .live-photo-capture__head small { display:block;overflow-wrap:anywhere; }
+.vip-age-panel .live-photo-capture__head small { margin-top:4px;color:var(--muted);font-size:.78rem;line-height:1.45; }
+.vip-age-panel .live-photo-capture .camera-frame[hidden] { display:none; }
+.vip-age-panel .live-photo-capture .camera-frame img { width:100%;height:100%;object-fit:contain; }
+.vip-age-panel .live-photo-capture>.primary-action, .vip-age-panel .live-photo-capture>.secondary-action { justify-self:start; }
+.vip-age-panel .live-recorder__head { display: flex; justify-content: space-between; gap: 20px; color: var(--gold); }
+.vip-age-panel .live-recorder > p { margin: 0; color: var(--muted); line-height: 1.55; }
+.vip-age-panel .camera-frame { position: relative; overflow: hidden; min-height: 250px; border-radius: 16px; background: #050002; }
+.vip-age-panel .camera-frame::before { content: ""; display: block; padding-top: 56.25%; }
+.vip-age-panel .camera-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.vip-age-panel .camera-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.vip-age-panel .live-recorder__ready { color: #a8ffcc !important; font-weight: 900; }
+.vip-age-panel .verification-rules { overflow: hidden; border: 1px solid rgba(255,202,144,.26); border-radius: 16px; background: rgba(8,0,3,.42); }
+.vip-age-panel .verification-rules summary {
+  display: grid;
+  grid-template-columns: 30px minmax(0,1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 15px 17px;
+  color: var(--cream);
+  cursor: pointer;
+  list-style: none;
+}
+.vip-age-panel .verification-rules summary::-webkit-details-marker { display: none; }
+.vip-age-panel .verification-rules summary > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 10px;
+  color: #210008;
+  background: var(--gold);
+  font-size: .75rem;
+  font-weight: 900;
+}
+.vip-age-panel .verification-rules summary small {
+  color: var(--gold);
+  font-size: 1.2rem;
+  transition: transform 160ms ease;
+}
+.vip-age-panel .verification-rules[open] summary small { transform: rotate(45deg); }
+.vip-age-panel .verification-rules > div { padding: 0 17px 17px; }
+.vip-age-panel .verification-rules ol, .vip-age-panel .challenge-list { display: grid; gap: 9px; margin: 0; padding-left: 22px; color: var(--muted); line-height: 1.5; }
+.vip-age-panel .verification-rules p { margin: 14px 0 0; color: var(--gold); font-size: .82rem; line-height: 1.5; }
+.vip-age-panel .challenge-list { margin: 14px 0 18px; color: var(--cream); }
+
+.vip-age-panel .liveness-code-card {
+  display:grid;
+  gap:8px;
+  padding:18px;
+  border:1px solid rgba(255,216,158,.58);
+  border-radius:18px;
+  text-align:center;
+  background:linear-gradient(135deg,rgba(255,91,32,.16),rgba(105,9,22,.28));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+}
+.vip-age-panel .liveness-code-card span {
+  color:var(--gold);
+  font-size:.76rem;
+  font-weight:900;
+  letter-spacing:.18em;
+}
+.vip-age-panel .liveness-code-card strong {
+  font-family:Cinzel,Georgia,serif;
+  font-size:clamp(2rem,8vw,3.2rem);
+  letter-spacing:.22em;
+  overflow-wrap:anywhere;
+}
+.vip-age-panel .liveness-code-card p { margin:0;color:var(--muted);line-height:1.5; }
+
+@media(max-width:760px) {
+  .vip-age-panel .liveness-code-card strong { font-size:clamp(1.8rem,12vw,2.8rem);letter-spacing:.14em; }
+}
+
+.vip-age-panel .verification-lead { max-width: 760px; margin-top: -8px; font-size: 1.02rem; }
+.vip-age-panel .verification-journey {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 10px;
+  margin: 24px 0;
+}
+.vip-age-panel .verification-journey > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 66px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,202,144,.16);
+  border-radius: 16px;
+  background: rgba(8,0,3,.32);
+  color: var(--muted);
+}
+.vip-age-panel .verification-journey span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: .75rem;
+  font-weight: 800;
+}
+.vip-age-panel .verification-journey strong { font-size: .82rem; line-height: 1.25; }
+.vip-age-panel .verification-journey > .is-active {
+  border-color: rgba(255,202,144,.42);
+  background: linear-gradient(135deg,rgba(255,91,32,.12),rgba(105,9,22,.22));
+  color: var(--gold);
+}
+.vip-age-panel .verification-assurance {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  margin: 0 0 24px;
+  padding: 20px;
+  border: 1px solid rgba(255,202,144,.32);
+  border-radius: 20px;
+  background: linear-gradient(135deg,rgba(255,202,144,.08),rgba(8,0,3,.44));
+}
+.vip-age-panel .verification-assurance__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgba(255,202,144,.42);
+  border-radius: 16px;
+  color: var(--gold);
+  background: rgba(255,202,144,.08);
+}
+.vip-age-panel .verification-assurance svg { width: 27px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.vip-age-panel .verification-assurance h3 { margin: 0 0 8px; color: var(--cream); font-size: 1rem; }
+.vip-age-panel .verification-assurance p { margin: 5px 0 0; color: var(--muted); font-size: .86rem; line-height: 1.55; }
+.vip-age-panel .verification-assurance__content { min-width: 0; }
+.vip-age-panel .verification-deletion-notice {
+  margin-top: 12px !important;
+  padding: 12px 14px;
+  border: 1px solid rgba(130,255,180,.2);
+  border-radius: 13px;
+  color: #cdf8dc !important;
+  background: rgba(33,126,73,.1);
+}
+.vip-age-panel .verification-deletion-notice strong { color: #a8ffcc; }
+.vip-age-panel .verification-trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.vip-age-panel .verification-trust-badges span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255,202,144,.28);
+  border-radius: 999px;
+  color: var(--cream);
+  background: rgba(8,0,3,.42);
+  font-size: .72rem;
+  font-weight: 900;
+}
+.vip-age-panel .verification-trust-badges svg { width: 17px; height: 17px; }
+.vip-age-panel .verification-security-details {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: .8rem;
+}
+.vip-age-panel .verification-security-details summary { color: var(--gold); cursor: pointer; font-weight: 900; }
+.vip-age-panel .verification-security-details ul { display: grid; gap: 7px; margin: 10px 0 0; padding-left: 19px; line-height: 1.5; }
+.vip-age-panel .verification-start, .vip-age-panel .verification-upload { display: grid; gap: 16px; }
+.vip-age-panel .verification-start .form-field { margin: 0; }
+.vip-age-panel .verification-primary { width: 100%; min-height: 58px; }
+.vip-age-panel .verification-document-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,202,144,.24);
+  border-radius: 16px;
+  background: rgba(255,255,255,.035);
+}
+.vip-age-panel .verification-document-badge > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255,202,144,.1);
+  color: var(--gold);
+  font-weight: 800;
+}
+.vip-age-panel .verification-document-badge strong, .vip-age-panel .verification-document-badge small { display: block; }
+.vip-age-panel .verification-document-badge small { margin-top: 2px; color: var(--muted); }
+
+@media (max-width: 700px) {
+  .vip-age-panel .verification-journey { grid-template-columns: 1fr; }
+  .vip-age-panel .verification-journey > div { min-height: 54px; }
+  .vip-age-panel .verification-assurance { grid-template-columns: 1fr; }
+}
+.vip-age-panel { display:grid; gap:18px; min-width:0; }
+.vip-age-panel .vip-age-optional { padding:16px; margin:0; border-left:2px solid var(--gold); color:var(--muted); background:rgba(239,209,138,.05); font-size:.85rem; line-height:1.7; }
+.vip-age-panel .verification-assurance { border-radius:3px; background:rgba(239,209,138,.04); box-shadow:none; }
+.vip-age-panel .verification-assurance__icon { border-radius:50%; background:none; box-shadow:none; }
+.vip-age-panel .verification-start,.vip-age-panel .verification-upload { display:grid; gap:18px; width:100%; border:0; padding:0; background:none; }
+.vip-age-panel .live-recorder,.vip-age-panel .live-photo-capture,.vip-age-panel .verification-journey>div { border-radius:3px; background:rgba(239,209,138,.03); }
+.vip-age-panel .vip-age-status { display:grid; gap:10px; color:var(--gold); border:1px solid var(--stroke); padding:20px; margin:0; line-height:1.7; }
+.vip-age-panel .vip-age-status span { color:var(--muted); font-size:.85rem; }
+.vip-age-panel .camera-frame img,.vip-age-panel .camera-frame video { width:100%; display:block; max-height:420px; object-fit:contain; }
+.vip-age-panel .camera-frame [hidden],.vip-age-panel .camera-frame[hidden] { display:none; }
+.vip-age-panel .form-field select { width:100%; min-height:48px; color:var(--cream); background:#220108; border:1px solid var(--stroke); padding:10px; font:inherit; }
+.vip-age-panel .verification-lead { margin:0; }
+@media(max-width:600px){.vip-age-panel .verification-journey{grid-template-columns:1fr}.vip-age-panel .verification-assurance{padding:18px}.vip-age-panel .verification-trust-badges{flex-direction:column;align-items:flex-start}.vip-age-panel .verification-rules summary{flex-wrap:wrap}.vip-age-panel .camera-actions>*{width:100%;max-width:100%}}

@@ -1,5 +1,5 @@
 import "../assets/css/admin.css";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   adminActivatePaymentOrder,
   adminArchivePaymentOrder,
@@ -34,6 +34,8 @@ import {
   adminVerifyUserEmail,
   adminUpdateContent,
   adminUploadContent,
+  adminFetchContentReviewMedia,
+  adminPublishAdultContent,
   getProducts,
   getAdminSessionExpiry,
   requestPasswordReset,
@@ -45,8 +47,8 @@ const copy = {
   de: {
     title: "Admin-Bereich",
     subtitle: "Musik, Community, Mitgliedschaften und Zahlungseingänge",
-    age: "Historische Altersprüfungen",
-    content: "Behind the scenes",
+    age: "VIP-Altersprüfung",
+    content: "Content studio",
     payments: "SEPA-Abgleich",
     refresh: "Aktualisieren",
     logout: "Abmelden",
@@ -61,7 +63,7 @@ const copy = {
     approved: "Die Altersprüfung wurde freigegeben.",
     rejected: "Die Altersprüfung wurde abgelehnt.",
     privacy: "Prüfdateien werden nur über den geschützten Admin-Endpunkt geladen. Jeder Abruf wird protokolliert.",
-    uploadTitle: "Neuen Musik- oder Behind-the-Scenes-Beitrag erstellen",
+    uploadTitle: "Neuen Beitrag erstellen",
     slug: "Slug",
     contentTitle: "Titel",
     tier: "Mitgliedschaft / Zugriff",
@@ -71,7 +73,7 @@ const copy = {
     currentContent: "Beiträge und Archiv",
     noContent: "Noch keine Beiträge vorhanden.",
     csvTitle: "N26-CSV importieren",
-    csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Order of Shadows - ID #…“ für den Abgleich verarbeitet. Alte Referenzen mit „Exclusive Content - ID #…“ bleiben gültig; die vollständige CSV wird nicht gespeichert.",
+    csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Order of Shadows - ID #…“ für den Abgleich verarbeitet. Bestehende Zahlungsreferenzen bleiben gültig; die vollständige CSV wird nicht gespeichert.",
     import: "CSV prüfen und zuordnen",
     importDone: "N26-CSV wurde verarbeitet.",
     ordersTitle: "Zahlungsaufträge",
@@ -88,8 +90,8 @@ const copy = {
   en: {
     title: "Admin portal",
     subtitle: "Music, community, memberships and incoming payments",
-    age: "Legacy age reviews",
-    content: "Behind the scenes",
+    age: "VIP age review",
+    content: "Content studio",
     payments: "SEPA matching",
     refresh: "Refresh",
     logout: "Log out",
@@ -104,7 +106,7 @@ const copy = {
     approved: "Age verification was approved.",
     rejected: "Age verification was rejected.",
     privacy: "Evidence is loaded only through the protected admin endpoint. Every access is audited.",
-    uploadTitle: "Create a music or behind-the-scenes post",
+    uploadTitle: "Create a new post",
     slug: "Slug",
     contentTitle: "Title",
     tier: "Membership / access",
@@ -114,7 +116,7 @@ const copy = {
     currentContent: "Posts and archive",
     noContent: "No posts yet.",
     csvTitle: "Import N26 CSV",
-    csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Order of Shadows - ID #…” reference are processed for matching. Legacy “Exclusive Content - ID #…” references remain valid; the complete CSV is not stored.",
+    csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Order of Shadows - ID #…” reference are processed for matching. Existing payment references remain valid; the complete CSV is not stored.",
     import: "Check and match CSV",
     importDone: "The N26 CSV was processed.",
     ordersTitle: "Payment orders",
@@ -132,9 +134,9 @@ const copy = {
 
 const tierLabels = {
   FREE: "Free Preview",
-  EXCLUSIVE_BASIC: "Order Basic",
-  EXCLUSIVE_PREMIUM: "Order Premium",
-  EXCLUSIVE_VIP: "Order VIP",
+  EXCLUSIVE_BASIC: "Basic Shadow",
+  EXCLUSIVE_PREMIUM: "Premium Shadow",
+  EXCLUSIVE_VIP: "VIP Shadow",
 };
 
 const approvalChecklist = {
@@ -214,6 +216,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [items, setItems] = useState([]);
   const [editingItem, setEditingItem] = useState(null);
+  const [contentScope, setContentScope] = useState("MUSIC");
+  const [adultReviewItem, setAdultReviewItem] = useState(null);
+  const [adultReviewPreview, setAdultReviewPreview] = useState(null);
+  const adultReviewGeneration = useRef(0);
   const [comments, setComments] = useState([]);
   const [commentReasons, setCommentReasons] = useState({});
   const [orders, setOrders] = useState([]);
@@ -328,6 +334,33 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     };
   }, [preview?.url]);
 
+  useEffect(() => {
+    const previewUrl = adultReviewPreview?.url;
+    if (!previewUrl) return undefined;
+    const close = () => {
+      adultReviewGeneration.current += 1;
+      setAdultReviewPreview(null);
+    };
+    const timer = window.setTimeout(close, 120_000);
+    const onHidden = () => { if (document.visibilityState === "hidden") close(); };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onHidden);
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [adultReviewPreview?.url]);
+
+  useEffect(() => {
+    if (tab !== "content") {
+      adultReviewGeneration.current += 1;
+      setAdultReviewPreview(null);
+      setAdultReviewItem(null);
+    }
+  }, [tab]);
+
+  useEffect(() => () => { adultReviewGeneration.current += 1; }, []);
+
   const selectCase = async (caseId) => {
     setBusy(true);
     setError("");
@@ -389,18 +422,24 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const form = event.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
-    if (editingItem && editingItem.content_scope !== "MUSIC") {
+    if (editingItem && !["MUSIC", "VIP_ADULT"].includes(editingItem.content_scope)) {
       setError(friendlyErrorMessage({ code: "LEGACY_CONTENT_QUARANTINED" }, language));
       return;
     }
     if (!editingItem && (!(file instanceof File) || !file.size)) return;
+    if (contentScope === "VIP_ADULT" && data.get("adultContentReviewed") !== "on") {
+      setError(friendlyErrorMessage({ code: "ADULT_CONTENT_REVIEW_REQUIRED" }, language));
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
     try {
       const payload = {
         title: String(data.get("title") || ""),
-        tier: String(data.get("tier") || ""),
+        tier: contentScope === "VIP_ADULT" ? "EXCLUSIVE_VIP" : (editingItem?.required_tier === "FREE" ? "FREE" : "EXCLUSIVE_BASIC"),
+        contentScope,
+        adultContentReviewed: contentScope === "VIP_ADULT" && data.get("adultContentReviewed") === "on",
         bodyText: String(data.get("bodyText") || ""),
         allowComments: data.get("allowComments") === "on",
       };
@@ -410,9 +449,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           slug: String(data.get("slug") || ""),
           ...payload,
         });
-      if (file instanceof File && file.size) await adminUploadContent(item.id, file);
+      if (file instanceof File && file.size) await adminUploadContent(item.id, file, { adultContentReviewed: contentScope === "VIP_ADULT" });
       form.reset();
       setEditingItem(null);
+      setContentScope("MUSIC");
       setNotice(editingItem
         ? (language === "de" ? "Der Beitrag wurde aktualisiert." : "The post was updated.")
         : t.published);
@@ -425,13 +465,61 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   };
 
   const editContent = (item) => {
-    if (item.content_scope !== "MUSIC") return;
+    if (!["MUSIC", "VIP_ADULT"].includes(item.content_scope)) return;
+    setContentScope(item.content_scope);
     setEditingItem(item);
     setNotice("");
     setError("");
     requestAnimationFrame(() => {
       document.querySelector(".post-composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  };
+
+  const closeAdultReview = () => {
+    adultReviewGeneration.current += 1;
+    setAdultReviewItem(null);
+    setAdultReviewPreview(null);
+  };
+
+  const openAdultReview = async (item) => {
+    const generation = ++adultReviewGeneration.current;
+    setAdultReviewItem(item);
+    setAdultReviewPreview(null);
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await adminFetchContentReviewMedia(item.id);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      if (generation !== adultReviewGeneration.current) { URL.revokeObjectURL(url); return; }
+      setAdultReviewPreview({ url, type: response.headers.get("content-type") || blob.type, itemId: item.id });
+    } catch (requestError) {
+      if (generation === adultReviewGeneration.current) setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const publishReviewedAdult = async (event) => {
+    event.preventDefault();
+    if (!adultReviewItem || adultReviewPreview?.itemId !== adultReviewItem.id) return;
+    const data = new FormData(event.currentTarget);
+    const reason = String(data.get("reason") || "").trim();
+    if (data.get("adultContentReviewed") !== "on" || reason.length < 10) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminPublishAdultContent(adultReviewItem.id, { adultContentReviewed: true, reason });
+      closeAdultReview();
+      await loadContent();
+      setNotice(language === "de" ? "Der einzeln geprüfte Beitrag wurde im altersverifizierten privaten VIP-Bereich veröffentlicht." : "The individually reviewed post was published in the age-verified private VIP area.");
+    } catch (requestError) {
+      setError(friendlyErrorMessage(requestError, language, t.genericError));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const deleteContent = async (item) => {
@@ -448,7 +536,8 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     setNotice("");
     try {
       await adminDeleteContent(item.id, reason.trim());
-      if (editingItem?.id === item.id) setEditingItem(null);
+      if (editingItem?.id === item.id) { setEditingItem(null); setContentScope("MUSIC"); }
+      if (adultReviewItem?.id === item.id) closeAdultReview();
       setNotice(language === "de" ? "Der Beitrag wurde gelöscht." : "The post was deleted.");
       await Promise.all([loadContent(), loadComments()]);
     } catch (requestError) {
@@ -606,6 +695,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   };
 
   const queueNewDrop = async (item) => {
+    if (item.content_scope !== "MUSIC" || item.content_status !== "ACTIVE") return;
     if (!window.confirm(language === "de"
       ? `„${item.title}“ als New Drop an alle bestätigten Newsletter-Abonnenten senden?`
       : `Send “${item.title}” as a New Drop to all confirmed newsletter subscribers?`)) return;
@@ -773,7 +863,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
   return <div className="admin-shell">
     <header className="admin-header">
-      <div><a className="brand brand--wordmark" href="/">The Order of Shadows</a><p>{t.subtitle}</p></div>
+      <div><a className="brand brand--wordmark" href="/">Jason Shadow</a><p>{language === "de" ? "Exklusive Mitgliedschaft" : "Exclusive Membership"} · {t.subtitle}</p></div>
       <div className="admin-header__actions">
         <span>{user.email}</span>
         <div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div>
@@ -797,25 +887,25 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
       {tab === "overview" && <section className="admin-overview-grid">
         <article className="admin-metric-card"><span>{language === "de" ? "Aktive Nutzer" : "Active users"}</span><strong>{users.filter((item) => item.account_status === "ACTIVE").length}</strong><small>{users.length} {language === "de" ? "Konten gesamt" : "accounts total"}</small></article>
-        <article className="admin-metric-card"><span>{language === "de" ? "Historische Altersprüfungen" : "Legacy age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "VIP-Altersprüfungen" : "VIP age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
-        <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE" && item.content_scope === "MUSIC").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE" && ["MUSIC", "VIP_ADULT"].includes(item.content_scope)).length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</span><strong>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("privacy")}>{language === "de" ? "Bearbeiten →" : "Review →"}</button></article>
         <article className="admin-metric-card"><span>Telegram</span><strong>{telegramConnections.filter((item) => item.status === "ACTIVE").length}</strong><small>{telegramConnections.length} {language === "de" ? "Verknüpfungen" : "connections"}</small><button className="text-button" type="button" onClick={() => setTab("telegram")}>{language === "de" ? "Verwalten →" : "Manage →"}</button></article>
       </section>}
 
       {tab === "telegram" && <section className="admin-panel telegram-admin-panel">
-        <div className="admin-panel__heading"><div><p className="eyebrow">PRIVATE COMMUNITY ACCESS</p><h2>{language === "de" ? "Telegram-Zugänge" : "Telegram access"}</h2><p className="admin-note">{language === "de" ? "Einmalige Bot-Verknüpfung, kontogebundene Einladungen und automatischer Entzug bei Membership-Ende. Gespeichert werden weder Telegram-Benutzernamen noch Profilbilder oder Chat-Inhalte." : "One-time bot linking, account-bound invitations and automatic removal when a membership ends. Telegram usernames, profile photos and chat content are never stored."}</p></div><button className="secondary-action" type="button" disabled={busy} onClick={configureTelegram}>{language === "de" ? "Webhook sicher neu verbinden" : "Securely reconnect webhook"}</button></div>
+        <div className="admin-panel__heading"><div><p className="eyebrow">PRIVATE COMMUNITY ACCESS</p><h2>{language === "de" ? "Telegram-Zugänge" : "Telegram access"}</h2><p className="admin-note">{language === "de" ? "Telegram ist ein Vorteil von Premium Shadow; VIP Shadow enthält keinen Telegram-Zugang. Einmalige Bot-Verknüpfung, kontogebundene Einladungen und automatischer Entzug bei Ende der Berechtigung. Gespeichert werden weder Telegram-Benutzernamen noch Profilbilder oder Chat-Inhalte." : "Telegram is a Premium Shadow benefit; VIP Shadow does not include Telegram access. One-time bot linking, account-bound invitations and automatic removal when eligibility ends. Telegram usernames, profile photos and chat content are never stored."}</p></div><button className="secondary-action" type="button" disabled={busy} onClick={configureTelegram}>{language === "de" ? "Webhook sicher neu verbinden" : "Securely reconnect webhook"}</button></div>
         <div className="telegram-admin-summary"><span><strong>{telegramConnections.filter((item) => item.status === "ACTIVE").length}</strong>{language === "de" ? "Aktiv" : "Active"}</span><span><strong>{telegramConnections.filter((item) => item.status === "INVITE_SENT").length}</strong>{language === "de" ? "Einladung gesendet" : "Invite sent"}</span><span><strong>{telegramConnections.filter((item) => item.status === "ERROR").length}</strong>{language === "de" ? "Prüfung nötig" : "Needs review"}</span></div>
         <div className="telegram-admin-list">{telegramConnections.length ? telegramConnections.map((connection) => {
           const reason = telegramReasons[connection.appwrite_user_id] || "";
           return <article className="telegram-admin-card" key={connection.appwrite_user_id}>
-            <div className="telegram-admin-card__head"><div><strong>{connection.display_name || "Order Member"}</strong><span>{connection.email}</span></div><span className="order-status">{String(connection.status).replaceAll("_", " ")}</span></div>
+            <div className="telegram-admin-card__head"><div><strong>{connection.display_name || "Shadow Member"}</strong><span>{connection.email}</span></div><span className="order-status">{String(connection.status).replaceAll("_", " ")}</span></div>
             <dl className="admin-facts"><div><dt>Membership</dt><dd>{connection.active_tier ? tierLabels[connection.active_tier] : (language === "de" ? "Nicht aktiv" : "Inactive")}</dd></div><div><dt>{language === "de" ? "Verknüpft" : "Linked"}</dt><dd>{formatDate(connection.linked_at, language)}</dd></div><div><dt>{language === "de" ? "Beigetreten" : "Joined"}</dt><dd>{formatDate(connection.joined_at, language)}</dd></div><div><dt>{language === "de" ? "Letzter Abgleich" : "Last sync"}</dt><dd>{formatDate(connection.last_synced_at, language)}</dd></div>{connection.last_error_code && <div><dt>Error</dt><dd>{connection.last_error_code}</dd></div>}</dl>
             <label className="form-field"><span>{language === "de" ? "Nachvollziehbare Admin-Begründung" : "Documented admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setTelegramReasons((current) => ({ ...current, [connection.appwrite_user_id]: event.target.value }))} /></label>
-            <div className="decision-actions"><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || !connection.active_tier} onClick={() => manageTelegram(connection, "RESTORE")}>{language === "de" ? "Zugang neu senden" : "Resend access"}</button><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || connection.status === "ADMIN_SUSPENDED"} onClick={() => manageTelegram(connection, "REMOVE")}>{language === "de" ? "Zugang pausieren" : "Pause access"}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageTelegram(connection, "UNLINK")}>{language === "de" ? "Verknüpfung löschen" : "Delete connection"}</button></div>
+            <div className="decision-actions"><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || connection.active_tier !== "EXCLUSIVE_PREMIUM"} onClick={() => manageTelegram(connection, "RESTORE")}>{language === "de" ? "Zugang neu senden" : "Resend access"}</button><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || connection.status === "ADMIN_SUSPENDED"} onClick={() => manageTelegram(connection, "REMOVE")}>{language === "de" ? "Zugang pausieren" : "Pause access"}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageTelegram(connection, "UNLINK")}>{language === "de" ? "Verknüpfung löschen" : "Delete connection"}</button></div>
           </article>;
-        }) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Telegram-Verknüpfungen" : "No Telegram connections yet"}</h3><p>{language === "de" ? "Sobald ein Premium- oder VIP-Mitglied den Bot verbindet, erscheint der datensparsame Status hier." : "Once a Premium or VIP member connects the bot, the data-minimised status appears here."}</p></div>}</div>
+        }) : <div className="member-empty-state"><h3>{language === "de" ? "Noch keine Telegram-Verknüpfungen" : "No Telegram connections yet"}</h3><p>{language === "de" ? "Sobald ein Premium-Shadow-Mitglied den Bot verbindet, erscheint der datensparsame Status hier." : "Once a Premium Shadow member connects the bot, the data-minimised status appears here."}</p></div>}</div>
       </section>}
 
       {tab === "monitoring" && <section className="admin-panel system-monitoring">
@@ -823,7 +913,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <div className="admin-overview-grid">
           <article className="admin-metric-card"><span>{language === "de" ? "Besucher · 30 Tage" : "Visitors · 30 days"}</span><strong>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.visitors || 0), 0)}</strong><small>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.page_views || 0), 0)} Page Views</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Aktive Konten" : "Active accounts"}</span><strong>{Number(monitoring?.funnel?.users?.active || 0)}</strong><small>{Number(monitoring?.funnel?.users?.total || 0)} {language === "de" ? "gesamt" : "total"}</small></article>
-          <article className="admin-metric-card"><span>{language === "de" ? "Historische Altersprüfungen" : "Legacy age reviews"}</span><strong>{Number(monitoring?.funnel?.ageVerification?.pending || 0)}</strong><small>{Number(monitoring?.funnel?.ageVerification?.cleanup_pending || 0)} cleanup pending</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "VIP-Altersprüfungen" : "VIP age reviews"}</span><strong>{Number(monitoring?.funnel?.ageVerification?.pending || 0)}</strong><small>{Number(monitoring?.funnel?.ageVerification?.cleanup_pending || 0)} cleanup pending</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Bezahlte Aufträge" : "Paid orders"}</span><strong>{Number(monitoring?.funnel?.orders?.paid || 0)}</strong><small>{Number(monitoring?.funnel?.orders?.pending || 0)} {language === "de" ? "offen" : "pending"}</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Aktive Memberships" : "Active memberships"}</span><strong>{Number(monitoring?.funnel?.entitlements?.active || 0)}</strong></article>
           <article className="admin-metric-card"><span>Newsletter</span><strong>{Number(monitoring?.funnel?.newsletter?.subscribed || 0)}</strong><small>{Number(monitoring?.funnel?.newsletter?.pending || 0)} Double-Opt-in pending</small></article>
@@ -832,7 +922,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <div className="monitoring-conversions">
           {[
             [language === "de" ? "Registrierung abgeschlossen" : "Registration completed", "registration_completed", "registration_started"],
-            [language === "de" ? "Historische Altersprüfung eingereicht" : "Legacy age review submitted", "age_submitted", "age_started"],
+            [language === "de" ? "VIP-Altersprüfung eingereicht" : "VIP age review submitted", "age_submitted", "age_started"],
             [language === "de" ? "Auftrag erstellt" : "Order created", "order_created", "checkout_started"],
             [language === "de" ? "Newsletter-Opt-in gestartet" : "Newsletter opt-in started", "newsletter_opt_in", "page_view"],
           ].map(([label, resultEvent, sourceEvent]) => {
@@ -856,23 +946,24 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </section>}
 
       {tab === "simulation" && <section className="admin-panel role-simulation-panel">
-        <div className="admin-panel__heading"><div><p className="eyebrow">SECURE PRODUCTION VIEW</p><h2>{language === "de" ? "Vollständige Website aus Nutzersicht" : "Full website from a member perspective"}</h2><p className="admin-note">{language === "de" ? "Öffnet die gesamte produktive Website in der gewählten Rolle – einschließlich aller dafür freigegebenen Musikbeiträge und Medien. Die Ansicht bleibt schreibgeschützt und ist nur mit Adminrolle, MFA, registriertem Gerät und aktiver 10-Minuten-Sitzung verfügbar." : "Opens the complete production website in the selected role, including music posts and media available to that role. The view remains read-only and requires an admin role, MFA, a registered device and an active 10-minute session."}</p></div></div>
-        <label className="form-field simulation-role-select"><span>{language === "de" ? "Rolle / Membership" : "Role / membership"}</span><select value={simulationRole} onChange={(event) => setSimulationRole(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Email pending</option><option value="FREE">Email verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Order Basic</option><option value="EXCLUSIVE_PREMIUM">Order Premium</option><option value="EXCLUSIVE_VIP">Order VIP</option></select></label>
+        <div className="admin-panel__heading"><div><p className="eyebrow">SECURE PRODUCTION VIEW</p><h2>{language === "de" ? "Vollständige Website aus Nutzersicht" : "Full website from a member perspective"}</h2><p className="admin-note">{language === "de" ? "Öffnet die gesamte produktive Website in der gewählten Rolle – einschließlich aller dafür freigegebenen Musikbeiträge und Medien. Der private VIP-Bereich für Erwachsene ist von der Simulation ausgeschlossen. Die Ansicht bleibt schreibgeschützt und ist nur mit Adminrolle, MFA, registriertem Gerät und aktiver 10-Minuten-Sitzung verfügbar." : "Opens the complete production website in the selected role, including music posts and media available to that role. The private VIP adult area is excluded from simulation. The view remains read-only and requires an admin role, MFA, a registered device and an active 10-minute session."}</p></div></div>
+        <label className="form-field simulation-role-select"><span>{language === "de" ? "Rolle / Membership" : "Role / membership"}</span><select value={simulationRole} onChange={(event) => setSimulationRole(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Email pending</option><option value="FREE">Email verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Basic Shadow</option><option value="EXCLUSIVE_PREMIUM">Premium Shadow</option><option value="EXCLUSIVE_VIP">VIP Shadow</option></select></label>
         <div className="simulation-launch-card">
-          <div><span className="order-status">{simulationRole.replace("EXCLUSIVE_", "Order ")}</span><h3>{language === "de" ? "Produktivansicht starten" : "Start production view"}</h3><p>{language === "de" ? "Die aktuelle Admin-Sitzung bleibt bestehen. Mit „Zurück zum Adminbereich“ beendest du die Simulation, ohne dich abzumelden." : "Your current admin session remains active. Use “Back to admin” to end the simulation without signing out."}</p></div>
+          <div><span className="order-status">{tierLabels[simulationRole] || simulationRole}</span><h3>{language === "de" ? "Produktivansicht starten" : "Start production view"}</h3><p>{language === "de" ? "Die aktuelle Admin-Sitzung bleibt bestehen. Mit „Zurück zum Adminbereich“ beendest du die Simulation, ohne dich abzumelden." : "Your current admin session remains active. Use “Back to admin” to end the simulation without signing out."}</p></div>
           <button className="primary-action" type="button" onClick={() => startAdminSimulation(simulationRole)}>{language === "de" ? "Gesamte Website simulieren" : "Simulate full website"} →</button>
         </div>
       </section>}
 
       {tab === "users" && <section className="admin-panel user-management">
         <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "ACCOUNT CONTROL" : "ACCOUNT CONTROL"}</p><h2>{language === "de" ? "Nutzerverwaltung" : "User management"}</h2></div><span>{users.length}</span></div>
+        <p className="admin-note">{language === "de" ? "Alle bezahlten Stufen haben denselben Zugang zu Musik und Behind-the-Scenes-Inhalten. Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Leistungen von Jason Shadow. Telegram ist ausschließlich bei Premium Shadow enthalten; VIP Shadow bietet den separat altersverifizierten privaten Bereich." : "All paid tiers share the same music and behind-the-scenes access. Premium Shadow and VIP Shadow receive a 15% discount on all Jason Shadow services. Telegram is exclusive to Premium Shadow; VIP Shadow offers the separately age-verified private area."}</p>
         <label className="form-field user-search"><span>{language === "de" ? "Suchen" : "Search"}</span><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder={language === "de" ? "Name, E-Mail oder User-ID" : "Name, email or user ID"} /></label>
         <div className="admin-user-list">{users.filter((profile) => `${profile.display_name} ${profile.email} ${profile.appwrite_user_id}`.toLowerCase().includes(userSearch.toLowerCase())).map((profile) => {
           const restricted = profile.account_status === "RESTRICTED";
           const reason = userReasons[profile.appwrite_user_id] || "";
           return <article className="admin-user-card" key={profile.appwrite_user_id}>
             <div className="admin-user-card__head"><div><strong>{profile.display_name || "Member"}</strong><span>{profile.email}</span></div><span className="order-status">{profile.account_status}</span></div>
-            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>{language === "de" ? "Historische Altersprüfung" : "Legacy age review"}</dt><dd>{profile.age_status}</dd></div><div><dt>Membership</dt><dd>{profile.entitlement_tier ? `${tierLabels[profile.entitlement_tier]} · ${formatDate(profile.entitlement_expires_at, language)}` : (language === "de" ? "Keine aktive" : "No active membership")}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
+            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>{language === "de" ? "VIP-Altersprüfung" : "VIP age review"}</dt><dd>{profile.age_status}</dd></div><div><dt>Membership</dt><dd>{profile.entitlement_tier ? `${tierLabels[profile.entitlement_tier]} · ${formatDate(profile.entitlement_expires_at, language)}` : (language === "de" ? "Keine aktive" : "No active membership")}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
             <label className="form-field"><span>{language === "de" ? "Admin-Begründung" : "Admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))} placeholder={language === "de" ? "Für Sperrung, Freigabe oder Löschung" : "For restriction, restore or deletion"} /></label>
             <div className="admin-membership-grant">
               <label className="form-field"><span>{language === "de" ? "Membership manuell vergeben" : "Grant membership manually"}</span><select value={membershipSelections[profile.appwrite_user_id] || "exclusive-basic-30d"} onChange={(event) => setMembershipSelections((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))}>{membershipProducts.map((product) => <option value={product.sku} key={product.sku}>{product.displayName}</option>)}</select></label>
@@ -904,7 +995,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </section>}
 
       {tab === "age" && <section className="admin-grid">
-        <p className="admin-note admin-panel--wide">{language === "de" ? "Nur zur Bearbeitung bestehender Prüfungen und fristgerechten Löschung alter Nachweise. Die Musik-Mitgliedschaft benötigt keine Ausweisprüfung." : "For existing review cases and timely deletion of legacy evidence only. Music membership does not require an identity-document review."}</p>
+        <p className="admin-note admin-panel--wide">{language === "de" ? "Prüfe freiwillige Altersnachweise für den separaten privaten VIP-Bereich. Die normale Musik-Mitgliedschaft und ihre Behind-the-Scenes-Inhalte benötigen keine Altersprüfung. Bestehende und historische Fälle bleiben den vertraulichen Prüf- und Löschregeln unterworfen." : "Review voluntary age-verification requests for the separate private VIP area. Ordinary music membership and behind-the-scenes content do not require age verification. Existing and historical cases remain subject to the private review and deletion rules."}</p>
         <article className="admin-panel"><h2>{t.pending}</h2>{cases.length ? <div className="admin-list">{cases.map((item) => <button type="button" className={selectedCase?.case?.id === item.id ? "is-active" : ""} onClick={() => selectCase(item.id)} key={item.id}><strong>{item.display_name || item.appwrite_user_id}</strong><span>{item.evidence_count} Dateien · {formatDate(item.submitted_at, language)}</span></button>)}</div> : <p>{t.noCases}</p>}</article>
         <article className="admin-panel admin-review">{selectedCase ? <>
           <p className="eyebrow">{selectedCase.case.manual_review_status}</p>
@@ -916,7 +1007,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           <h3>{t.evidence}</h3><p className="admin-note">{t.privacy}</p>
           <div className="evidence-list">{selectedEvidence.map((item) => <button className="secondary-action" type="button" onClick={() => openEvidence(item)} key={item.id}>{t.open}: {item.evidence_kind} · {formatBytes(item.size_bytes)}</button>)}</div>
           {preview && <div className="evidence-preview">{preview.type.startsWith("video/") ? <video src={preview.url} controls playsInline /> : <img src={preview.url} alt={preview.kind} />}</div>}
-          <fieldset className="review-checklist"><legend>Pflichtprüfung vor Freigabe</legend>{requiredReviewItems.map((item) => <label key={item}><input type="checkbox" checked={checkedReviewItems.includes(item)} onChange={(event) => setCheckedReviewItems((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{(approvalChecklist[language] || approvalChecklist.de)[item]}</span></label>)}</fieldset>
+          <fieldset className="review-checklist"><legend>{language === "de" ? "Pflichtprüfung vor Freigabe" : "Required review before approval"}</legend>{requiredReviewItems.map((item) => <label key={item}><input type="checkbox" checked={checkedReviewItems.includes(item)} onChange={(event) => setCheckedReviewItems((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{(approvalChecklist[language] || approvalChecklist.de)[item]}</span></label>)}</fieldset>
           <label className="form-field"><span>{t.reason}</span><textarea id="admin-decision-reason" minLength="3" maxLength="500" required /></label>
           <div className="decision-actions"><button className="primary-action" type="button" disabled={busy || checkedReviewItems.length !== requiredReviewItems.length} onClick={() => decide("APPROVED")}>{t.approve}</button><button className="danger-action" type="button" disabled={busy} onClick={() => decide("REJECTED")}>{t.reject}</button></div>
         </> : <p>{t.selectCase}</p>}</article>
@@ -926,21 +1017,49 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <article className="admin-panel post-composer">
           <p className="eyebrow">{language === "de" ? "CREATOR STUDIO" : "CREATOR STUDIO"}</p>
           <h2>{editingItem ? (language === "de" ? "Beitrag bearbeiten" : "Edit post") : t.uploadTitle}</h2>
-          <p className="admin-note">{editingItem
-            ? (language === "de" ? "Bearbeite deinen Musik- oder Behind-the-Scenes-Beitrag. Eine neue Mediendatei ersetzt das bisherige Medium." : "Edit your music or behind-the-scenes post. Choosing new media replaces the existing file.")
-            : (language === "de" ? "Veröffentliche ausschließlich Musik-, Sprecher- und Behind-the-Scenes-Inhalte. Erfolgreiche Uploads werden sofort für die gewählte Stufe veröffentlicht." : "Publish only music, voice-work and behind-the-scenes content. Successful uploads publish immediately for the selected membership level.")}</p>
+          <p className="admin-note">{language === "de" ? "Musik und Behind-the-Scenes werden gemeinsam für alle bezahlten Stufen veröffentlicht. Der getrennte private VIP-Bereich ist ausschließlich für aktive, altersverifizierte VIP-Shadow-Mitglieder. Bestehende Archivbeiträge bleiben gesperrt, bis du jeden Beitrag einzeln prüfst und gezielt für VIP veröffentlichst." : "Music and behind-the-scenes posts are shared by all paid tiers. The separate private VIP area is exclusively for active, age-verified VIP Shadow members. Archived posts remain unavailable until you individually review and explicitly publish each one for VIP."}</p>
           <form className="admin-form post-composer__form" onSubmit={uploadContent} key={editingItem?.id || "new-post"}>
             <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" defaultValue={editingItem?.title || ""} placeholder={language === "de" ? "Zum Beispiel: Ein Abend im Studio…" : "For example: An evening in the studio…"} required /></label>
             <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" defaultValue={editingItem?.body_text || ""} placeholder={language === "de" ? "Teile eine Probe, eine Song-Idee oder einen Einblick in deine Sprecherarbeit…" : "Share a rehearsal, a song idea or a glimpse of your voice work…"} /></label>
-            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="studio-diary-01" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue={editingItem?.required_tier || "FREE"}>{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
+            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="studio-diary-01" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{language === "de" ? "Inhaltsbereich" : "Content area"}</span><select name="contentScope" aria-label={language === "de" ? "Inhaltsbereich" : "Content area"} value={contentScope} onChange={(event) => setContentScope(event.target.value)} disabled={Boolean(editingItem)}><option value="MUSIC">{language === "de" ? "Musik & Behind-the-Scenes" : "Music & behind the scenes"}</option><option value="VIP_ADULT">{language === "de" ? "Privater VIP-Bereich · altersverifiziert" : "Private VIP area · age verified"}</option></select></label></div>
+            <p className="admin-note">{contentScope === "VIP_ADULT" ? (language === "de" ? "Zugang: ausschließlich aktive VIP-Shadow-Mitglieder mit bestätigter Altersprüfung. Keine Newsletter-Veröffentlichung." : "Access: active VIP Shadow members with approved age verification only. Excluded from newsletters.") : editingItem?.required_tier === "FREE" ? (language === "de" ? "Bestehende Vorschau für registrierte Mitglieder; der bisherige Zugriff bleibt erhalten." : "Existing preview for registered members; its current access is preserved.") : (language === "de" ? "Gemeinsamer Zugriff: Basic Shadow, Premium Shadow und VIP Shadow." : "Shared access: Basic Shadow, Premium Shadow and VIP Shadow.")}</p>
+            {contentScope === "VIP_ADULT" && <label className="checkout-confirmation"><input name="adultContentReviewed" type="checkbox" required /><span>{language === "de" ? "Ich habe diesen Beitrag für die Veröffentlichung im separaten altersverifizierten VIP-Bereich geprüft." : "I have reviewed this post for publication in the separate age-verified VIP area."}</span></label>}
             <label className="media-drop-field"><span>{editingItem ? (language === "de" ? "Medium optional ersetzen" : "Optionally replace media") : t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required={!editingItem} /></label>
-            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Mitglieder mit aktiver bezahlter Mitgliedschaft dürfen diesen Beitrag kommentieren." : "Members with an active paid membership may comment on this post."}</span></label>
-            <div className="composer-publish-row"><small>{editingItem ? (language === "de" ? "Änderungen sind nach dem Speichern sofort aktiv." : "Changes are active immediately after saving.") : (language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload.")}</small><div className="decision-actions">{editingItem && <button className="secondary-action" type="button" disabled={busy} onClick={() => setEditingItem(null)}>{language === "de" ? "Abbrechen" : "Cancel"}</button>}<button className="primary-action" disabled={busy}>{editingItem ? (language === "de" ? "Änderungen speichern" : "Save changes") : t.publish}</button></div></div>
+            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Berechtigte Mitglieder dürfen diesen Beitrag kommentieren." : "Members with access to this post may comment on it."}</span></label>
+            <div className="composer-publish-row"><small>{editingItem ? (language === "de" ? "Änderungen sind nach dem Speichern sofort aktiv." : "Changes are active immediately after saving.") : (language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload.")}</small><div className="decision-actions">{editingItem && <button className="secondary-action" type="button" disabled={busy} onClick={() => { setEditingItem(null); setContentScope("MUSIC"); }}>{language === "de" ? "Abbrechen" : "Cancel"}</button>}<button className="primary-action" disabled={busy}>{editingItem ? (language === "de" ? "Änderungen speichern" : "Save changes") : t.publish}</button></div></div>
           </form>
         </article>
         <article className="admin-panel">
           <h2>{t.currentContent}</h2>
-          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}{item.content_scope !== "MUSIC" && <> · {language === "de" ? "ARCHIV · NICHT FÜR MITGLIEDER" : "ARCHIVE · NOT AVAILABLE TO MEMBERS"}</>}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy || item.content_scope !== "MUSIC" || item.content_status !== "ACTIVE"} onClick={() => queueNewDrop(item)}>{language === "de" ? "Als New Drop senden" : "Send as New Drop"}</button><button className="secondary-action" type="button" disabled={busy || item.content_scope !== "MUSIC"} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
+          {items.length ? <div className="content-admin-list">{["MUSIC", "VIP_ADULT", "LEGACY_ADULT"].map((scope) => {
+            const scopedItems = items.filter((item) => (item.content_scope || "LEGACY_ADULT") === scope);
+            if (!scopedItems.length) return null;
+            return <section key={scope} className="admin-content-scope">
+              <h3>{scope === "MUSIC" ? (language === "de" ? "Musik & Behind-the-Scenes · gemeinsame Mitgliedsinhalte" : "Music & behind the scenes · shared member content") : scope === "VIP_ADULT" ? (language === "de" ? "Privater VIP-Bereich · altersverifiziert" : "Private VIP area · age verified") : (language === "de" ? "Gesperrtes Archiv · Einzelprüfung erforderlich" : "Quarantined archive · individual review required")}</h3>
+              {scopedItems.map((item) => <div className="content-admin-card" key={item.id}>
+                <div><strong>{item.title}</strong><span>{scope === "MUSIC" ? (item.required_tier === "FREE" ? tierLabels.FREE : "Basic Shadow · Premium Shadow · VIP Shadow") : scope === "VIP_ADULT" ? "VIP Shadow · 18+" : (language === "de" ? "Nicht für Mitglieder sichtbar" : "Not visible to members")} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div>
+                <div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small>
+                  <div className="content-admin-card__actions">
+                    {scope === "MUSIC" && <button className="secondary-action" type="button" disabled={busy || item.content_status !== "ACTIVE"} onClick={() => queueNewDrop(item)}>{language === "de" ? "Als New Drop senden" : "Send as New Drop"}</button>}
+                    {scope !== "LEGACY_ADULT" && <button className="secondary-action" type="button" disabled={busy || item.content_status === "RETIRED"} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button>}
+                    {scope !== "MUSIC" && <button className="secondary-action" type="button" disabled={busy || item.content_status === "RETIRED" || !item.content_type} onClick={() => openAdultReview(item)}>{language === "de" ? "Privat prüfen" : "Review privately"}</button>}
+                    <button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button>
+                  </div>
+                </div>
+              </div>)}
+            </section>;
+          })}</div> : <p>{t.noContent}</p>}
+          {adultReviewItem && <section className="admin-panel adult-content-review" aria-labelledby="adult-review-title">
+            <div className="admin-panel__heading"><h3 id="adult-review-title">{language === "de" ? "Einzelprüfung für den privaten VIP-Bereich" : "Individual review for the private VIP area"}</h3><button type="button" className="secondary-action" onClick={closeAdultReview}>{language === "de" ? "Prüfung schließen" : "Close review"}</button></div>
+            <strong>{adultReviewItem.title}</strong>
+            <p className="admin-note">{language === "de" ? "Die Vorschau ist nur über deine geschützte Admin-Sitzung verfügbar. Sie wird beim Verlassen dieser Ansicht, beim Wechsel in den Hintergrund oder nach zwei Minuten geschlossen. Erst die folgende ausdrückliche Freigabe veröffentlicht diesen einzelnen Beitrag für altersverifizierte VIP-Mitglieder." : "This preview is available only through your protected admin session. It closes when you leave this view, move it into the background or after two minutes. Only the explicit approval below publishes this individual post to age-verified VIP members."}</p>
+            {adultReviewPreview ? <div className="evidence-preview">{adultReviewPreview.type.startsWith("video/") ? <video src={adultReviewPreview.url} controls playsInline /> : <img src={adultReviewPreview.url} alt={language === "de" ? "Geschützte Inhaltsprüfung" : "Protected content review"} />}</div> : <p>{busy ? t.loading : (language === "de" ? "Vorschau geschlossen. Öffne die Einzelprüfung erneut, um fortzufahren." : "Preview closed. Reopen the individual review to continue.")}</p>}
+            <form className="admin-form" onSubmit={publishReviewedAdult} key={adultReviewItem.id}>
+              <label className="checkout-confirmation"><input name="adultContentReviewed" type="checkbox" required /><span>{language === "de" ? "Ich habe diesen einzelnen Beitrag geprüft und gebe ihn ausschließlich für den separaten altersverifizierten VIP-Bereich frei." : "I have reviewed this individual post and approve it exclusively for the separate age-verified VIP area."}</span></label>
+              <label className="form-field"><span>{language === "de" ? "Dokumentierte Prüfbegründung" : "Documented review reason"}</span><textarea name="reason" minLength="10" maxLength="1000" required /></label>
+              <button className="primary-action" type="submit" disabled={busy || adultReviewPreview?.itemId !== adultReviewItem.id}>{language === "de" ? "Geprüften Beitrag für VIP veröffentlichen" : "Publish reviewed post for VIP"}</button>
+            </form>
+          </section>}
         </article>
         <article className="admin-panel admin-panel--wide comment-moderation">
           <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>

@@ -125,15 +125,19 @@ async function eligibleTelegramAccess(
       CASE WHEN p.preferred_locale = 'en' THEN 'en' ELSE 'de' END AS preferred_locale
     FROM user_profiles p
     JOIN entitlements e ON e.appwrite_user_id = p.appwrite_user_id
-      AND e.tier IN ('EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP')
+      AND e.tier = 'EXCLUSIVE_PREMIUM'
       AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
       AND e.paused_at IS NULL
     WHERE p.appwrite_user_id = ? AND p.account_status = 'ACTIVE'
       AND p.email_verified = 1 AND p.administrative_hold = 0 AND p.deletion_job_hold = 0
+      AND NOT EXISTS (SELECT 1 FROM entitlements vip
+        WHERE vip.appwrite_user_id = p.appwrite_user_id AND vip.tier = 'EXCLUSIVE_VIP'
+          AND vip.status = 'ACTIVE' AND vip.starts_at <= ? AND vip.expires_at > ?
+          AND vip.paused_at IS NULL)
     ORDER BY CASE e.tier WHEN 'EXCLUSIVE_VIP' THEN 2 ELSE 1 END DESC,
       e.expires_at DESC
     LIMIT 1
-  `).bind(now, now, userId).first<TelegramAccess>();
+  `).bind(now, now, userId, now, now).first<TelegramAccess>();
 }
 
 async function connectionForUser(
@@ -176,7 +180,7 @@ export async function telegramPerkStatus(
   if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
-  if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
+  if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
   return telegramStatusPayload(env, access, await connectionForUser(env, userId));
 }
 
@@ -301,7 +305,7 @@ export async function createTelegramClaim(
   if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   const config = requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
-  if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
+  if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
   const connection = await connectionForUser(env, userId);
   if (connection?.status === "ADMIN_SUSPENDED") {
     throw new ApiError(403, "TELEGRAM_ACCESS_ADMIN_SUSPENDED");
@@ -553,7 +557,7 @@ export async function listTelegramConnections(env: MembershipEnv): Promise<Recor
       (SELECT e.tier FROM entitlements e WHERE e.appwrite_user_id = c.appwrite_user_id
         AND e.tier IN ('EXCLUSIVE_PREMIUM','EXCLUSIVE_VIP') AND e.status = 'ACTIVE'
         AND e.starts_at <= ? AND e.expires_at > ? AND e.paused_at IS NULL
-        ORDER BY e.expires_at DESC LIMIT 1) AS active_tier
+        ORDER BY CASE e.tier WHEN 'EXCLUSIVE_VIP' THEN 2 ELSE 1 END DESC, e.expires_at DESC LIMIT 1) AS active_tier
     FROM telegram_connections c JOIN user_profiles p
       ON p.appwrite_user_id = c.appwrite_user_id
     ORDER BY c.updated_at DESC LIMIT 250`).bind(now, now).all();
@@ -617,7 +621,7 @@ export async function administerTelegramConnection(
     return { userId, status: "ADMIN_SUSPENDED" };
   }
   const access = await eligibleTelegramAccess(env, userId);
-  if (!access) throw new ApiError(409, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
+  if (!access) throw new ApiError(409, "ACTIVE_PREMIUM_REQUIRED");
   await issueInvite(env, access, connection.telegram_user_id, true);
   await writeTelegramAudit(env, administratorUserId, userId, "TELEGRAM_ACCESS_RESTORED", connection.status, "INVITE_SENT", reason.trim(), correlationId);
   return { userId, status: "INVITE_SENT" };

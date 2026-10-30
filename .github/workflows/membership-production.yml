@@ -1,0 +1,114 @@
+name: Membership production rollout
+
+on:
+  push:
+    branches: [codex/membership-benefits-newsletter-fix]
+    tags: ['exclusive-release-*', 'exclusive-owner-admin-*']
+    paths:
+      - '.github/workflows/membership-production.yml'
+      - 'scripts/prod-*.mjs'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Read-only inspection or reviewed production deployment'
+        type: choice
+        options: [inspect, deploy, owner-admin]
+        default: inspect
+        required: true
+      expected_commit:
+        description: 'Exact full commit SHA; required for deploy or owner-admin'
+        type: string
+        required: false
+      restore_owner_admin:
+        description: 'Apply the reviewed one-time existing-owner admin repair'
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exclusive-membership-production
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate exact requested revision
+        id: request
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_COMMIT: ${{ inputs.expected_commit }}
+          INPUT_RESTORE: ${{ inputs.restore_owner_admin }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          operation=inspect
+          expected="$GITHUB_SHA"
+          restore=false
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            operation="${INPUT_OPERATION:-inspect}"
+            expected="${INPUT_COMMIT:-$GITHUB_SHA}"
+            restore="${INPUT_RESTORE:-false}"
+            if [[ "$operation" != inspect && -z "${INPUT_COMMIT:-}" ]]; then
+              echo 'Mutating operations require an explicit full expected_commit.' >&2
+              exit 1
+            fi
+          elif [[ "$GITHUB_REF" == refs/tags/exclusive-owner-admin-* ]]; then
+            operation=owner-admin
+            expected="${GITHUB_REF#refs/tags/exclusive-owner-admin-}"
+            restore=true
+          elif [[ "$GITHUB_REF" == refs/tags/exclusive-release-admin-* ]]; then
+            operation=deploy
+            expected="${GITHUB_REF#refs/tags/exclusive-release-admin-}"
+            restore=true
+          elif [[ "$GITHUB_REF" == refs/tags/exclusive-release-* ]]; then
+            operation=deploy
+            expected="${GITHUB_REF#refs/tags/exclusive-release-}"
+          elif [[ "$GITHUB_REF" != refs/heads/codex/membership-benefits-newsletter-fix ]]; then
+            echo 'Unexpected trigger.' >&2
+            exit 1
+          fi
+          [[ "$operation" == inspect || "$operation" == deploy || "$operation" == owner-admin ]]
+          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$restore" == true || "$restore" == false ]]
+          if [[ "$GITHUB_REF" == refs/tags/* && "$expected" != "$GITHUB_SHA" ]]; then
+            echo 'Release tag must name its exact commit SHA. Use a lightweight tag.' >&2
+            exit 1
+          fi
+          echo "operation=$operation" >> "$GITHUB_OUTPUT"
+          echo "commit=$expected" >> "$GITHUB_OUTPUT"
+          echo "restore=$restore" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.request.outputs.commit }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: cloudflare/pnpm-lock.yaml
+      - name: Install pinned backend dependencies
+        run: pnpm --dir cloudflare install --frozen-lockfile
+      - name: Install frontend and browser test dependencies
+        if: steps.request.outputs.operation == 'deploy'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Inspect or deploy the reviewed production revision
+        env:
+          CI: 'true'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PRODUCTION_OPERATION: ${{ steps.request.outputs.operation }}
+          EXPECTED_COMMIT: ${{ steps.request.outputs.commit }}
+          RESTORE_OWNER_ADMIN: ${{ steps.request.outputs.restore }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: node scripts/prod-rollout.mjs

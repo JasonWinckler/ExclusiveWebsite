@@ -3,8 +3,8 @@ import {
   errorResponse,
   jsonResponse,
   logEvent,
-  parsePositiveInt,
   readJsonBody,
+  requestId,
 } from "../shared/http";
 import { hashPassword, secretsEqual } from "../shared/security";
 import { sendMicrosoftGraphEmail } from "../shared/microsoft-graph";
@@ -91,15 +91,21 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
     path === "/list-sessions" ||
     path === "/delete-session" ||
     path === "/send-transactional-email";
-  const expectedSecret = path === "/send-transactional-email" && env.AUTH_EMAIL_SERVICE_SECRET
-    ? env.AUTH_EMAIL_SERVICE_SECRET
-    : labelServicePath
+  const expectedSecret = labelServicePath
     ? env.LABEL_SYNC_SERVICE_SECRET
     : env.ACCOUNT_LIFECYCLE_SERVICE_SECRET;
-  if (!await secretsEqual(
+  const suppliedSecret = request.headers.get("X-Internal-Service-Secret") ?? "";
+  // Auth and membership/maintenance are distinct private mail callers. An
+  // auth-specific key must not disable the membership sender's existing key.
+  // Both comparisons run; the additional key authorizes only this endpoint.
+  const serviceAuthorized = await secretsEqual(
     expectedSecret,
-    request.headers.get("X-Internal-Service-Secret") ?? "",
-  )) {
+    suppliedSecret,
+  );
+  const authMailAuthorized = path === "/send-transactional-email" &&
+    Boolean(env.AUTH_EMAIL_SERVICE_SECRET) &&
+    await secretsEqual(env.AUTH_EMAIL_SERVICE_SECRET!, suppliedSecret);
+  if (!serviceAuthorized && !authMailAuthorized) {
     throw new ApiError(403, "INTERNAL_SERVICE_AUTH_REQUIRED");
   }
 
@@ -179,6 +185,7 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
       clientId: env.GRAPH_CLIENT_ID,
       clientSecret: env.GRAPH_CLIENT_SECRET,
       senderMailbox: env.GRAPH_SENDER_MAILBOX,
+      senderDisplayName: env.GRAPH_SENDER_NAME,
       recipientEmail: user.email,
       recipientName: typeof user.name === "string" ? user.name : undefined,
       messageId: body.messageId,
@@ -235,10 +242,16 @@ async function handleRequest(request: Request, env: IdentityProjectionEnv): Prom
 
 export default {
   async fetch(request: Request, env: IdentityProjectionEnv): Promise<Response> {
+    const correlationId = requestId(request);
     try {
       return await handleRequest(request, env);
     } catch (error) {
-      return errorResponse(error);
+      logEvent(error instanceof ApiError && error.status < 500 ? "warn" : "error", "identity_request_failed", {
+        requestId: correlationId,
+        operation: new URL(request.url).pathname === "/send-transactional-email" ? "transactional-email" : "identity",
+        code: error instanceof ApiError ? error.code : "INTERNAL_ERROR",
+      });
+      return errorResponse(error, { requestId: correlationId });
     }
   },
 } satisfies ExportedHandler<IdentityProjectionEnv>;

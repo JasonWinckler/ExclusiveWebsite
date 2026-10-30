@@ -31,7 +31,7 @@ test.describe('membership public experience', () => {
 
   test('home uses the music brand, bilingual copy and official logo', async ({ page }) => {
     await page.goto('/?lang=en');
-    await expect(page).toHaveTitle(/The Order of Shadows.*Jason Shadow/);
+    await expect(page).toHaveTitle(/Jason Shadow.*Exclusive Membership/);
     await expect(page.locator('.order-brand')).toHaveAttribute('href', 'https://jason-shadow.com/');
     await expect(page.locator('.order-brand img')).toHaveAttribute('src', '/assets/music/logo.png');
     await expect(page.locator('#pricing')).toContainText(/no automatic renewal/i);
@@ -39,6 +39,21 @@ test.describe('membership public experience', () => {
     await page.getByRole('button', { name: 'DE', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#pricing')).toContainText(/keine automatische Verlängerung/i);
+  });
+
+  test('German membership heading fits narrow phone viewports', async ({ page }) => {
+    for (const width of [320, 360, 393]) {
+      await page.setViewportSize({ width, height: 850 });
+      await page.goto('/?lang=de');
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator('h1')).toContainText('Mitgliedschaft.');
+      const dimensions = await page.evaluate(() => {
+        const heading = document.querySelector('h1');
+        return { pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, headingOverflow: heading.scrollWidth - heading.clientWidth };
+      });
+      expect(dimensions.pageOverflow).toBeLessThanOrEqual(1);
+      expect(dimensions.headingOverflow).toBeLessThanOrEqual(1);
+    }
   });
 
   test('login offers password visibility and recovery without exposing secrets', async ({ page }) => {
@@ -98,9 +113,9 @@ test.describe('membership public experience', () => {
   test('localized landing pages have crawlable music membership SEO', async ({ page }) => {
     for (const language of ['de', 'en']) {
       await page.goto(`/${language}/`);
-      await expect(page).toHaveTitle(/The Order of Shadows/);
+      await expect(page).toHaveTitle(language === 'de' ? /Jason Shadow.*Exklusive Mitgliedschaft/ : /Jason Shadow.*Exclusive Membership/);
       await expect(page.locator('html')).toHaveAttribute('lang', language);
-      await expect(page.locator('h1')).toContainText(language === 'de' ? 'Hinter der Stimme' : 'Behind the voice');
+      await expect(page.locator('h1')).toContainText(language === 'de' ? /Exklusive\s*Mitgliedschaft/ : /Exclusive\s*Membership/);
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://exclusive.jason-shadow.com/${language}/`);
       expect(await page.locator('script[type="application/ld+json"]').count()).toBeGreaterThan(0);
     }

@@ -81,7 +81,7 @@ describe("browser and repository security contract", () => {
       .toContain("N26_CSV_EXACT_MATCH");
   });
 
-  it("preserves historical age evidence review while retiring new collection", () => {
+  it("limits new private age evidence collection to active VIP members", () => {
     const migration = read("cloudflare/migrations/0001_initial.sql");
     const ageRouteMigration = read("cloudflare/migrations/0014_localized_catalog_and_age_routes.sql");
     const membership = read("cloudflare/src/workers/membership-api.ts");
@@ -98,7 +98,7 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain("requiredAgeEvidence(ageCase.document_type)");
     expect(admin).toContain("AGE_APPROVAL_CHECKLIST_INCOMPLETE");
     expect(admin).toContain("deleteAgeEvidenceImmediately");
-    expect(membership).toContain('throw new ApiError(410, "AGE_VERIFICATION_RETIRED")');
+    expect(membership).toContain("await requireVipAgeEligibility(request, env, identity.userId)");
     expect(frontend).not.toContain("navigator.mediaDevices.getUserMedia");
     expect(frontend).not.toContain("new MediaRecorder");
   });
@@ -253,7 +253,8 @@ describe("browser and repository security contract", () => {
     expect(migration).toContain("DEFAULT 'LEGACY_ADULT'");
     expect(migration).toContain("ELSE 'DISABLED'");
     expect(policy).toContain('input.contentScope !== "MUSIC"');
-    expect(membership).toContain("c.content_scope = 'MUSIC'");
+    expect(membership).toContain("c.content_scope = ?");
+    expect(membership).toContain(".bind(scope)");
     expect(membership).toContain("contentScope: content.content_scope");
     expect(membership).toContain("contentScope: row.content_scope");
     expect(admin).toContain('item.content_scope !== "MUSIC"');

@@ -886,11 +886,12 @@ async function cleanupExpiredInvoiceArchives(
   return removed;
 }
 
-async function processNewsletterDeliveries(
+export async function processNewsletterDeliveries(
   env: MaintenanceEnv,
   now: string,
   batchSize: number,
 ): Promise<number> {
+  if (env.NEWSLETTER_DELIVERY_ENABLED === "false") return 0;
   const deliveries = await env.DB.prepare(`SELECT d.id, d.campaign_id,
       d.appwrite_user_id, d.locale, d.attempt_count, c.subject_de, c.subject_en,
       c.preview_de, c.preview_en, c.content_item_id, n.status AS subscription_status
