@@ -1,5 +1,6 @@
 // Bounded recovery of one failed Cloudflare CI build. Never print API payloads,
 // environment bindings, raw build logs or credentials. This does not touch D1.
+import {readFileSync,readdirSync} from 'node:fs';
 const worker = 'exclusive-membership-api';
 const failedBuild = '43b2a4cb-bfc0-4dee-9bbd-7d1166f8fe49';
 const targetCommit = 'd8e7a921f90aa966c3ac9f7d3a429c576520a38f';
@@ -33,6 +34,9 @@ assert(build?.build_trigger_metadata?.commit_hash === targetCommit && build?.bui
 assert(/^[a-f0-9-]{36}$/.test(build?.trigger?.trigger_uuid || ''), 'Invalid exact build trigger.');
 console.log(JSON.stringify({worker,commit:targetCommit,...safeBuild(build)}));
 const diagnostics = new Set();
+const knownTestFiles = readdirSync('cloudflare/test').filter(file=>file.endsWith('.test.ts'));
+const knownTestTitles = knownTestFiles.flatMap(file => [...readFileSync(`cloudflare/test/${file}`,'utf8').matchAll(/\b(?:it|test)\(\s*"([^"\n]+)"/g)].map(item=>item[1]));
+const testFailures = new Set();
 const categories = [
   ['dependency_install', /failed to install|dependency installation|ERR_PNPM|ERESOLVE|EINTEGRITY/i],
   ['missing_module', /cannot find module|could not resolve|module not found/i],
@@ -53,6 +57,10 @@ for (let page = 0; page < 10; page++) {
   lineCount += lines.length;
   for (const line of lines) {
     const text = typeof line?.[1] === 'string' ? line[1] : '';
+    if (/FAIL|failed|\u00d7|\u274c|timed out|timeout/i.test(text)) {
+      for (const name of knownTestFiles) if(text.includes(name)) testFailures.add(name);
+      for (const title of knownTestTitles) if(text.includes(title)) testFailures.add(title);
+    }
     for (const [label,pattern] of categories) if (pattern.test(text)) diagnostics.add(label);
     for (const item of text.matchAll(/\b(?:ERR_PNPM_[A-Z_]+|TS[0-9]{4}|ELIFECYCLE|EAI_AGAIN|SIGKILL)\b/g)) diagnostics.add(item[0]);
     for (const item of text.matchAll(/\[code:\s*([0-9]{1,9})\]/g)) diagnostics.add(`Cloudflare code ${item[1]}`);
@@ -60,10 +68,12 @@ for (let page = 0; page < 10; page++) {
   if (!logs?.truncated || !logs.cursor || logs.cursor === cursor) break;
   cursor = logs.cursor;
 }
-console.log(JSON.stringify({logLinesInspected:lineCount,diagnostics:[...diagnostics].sort(),rawLogsWithheld:true}));
+console.log(JSON.stringify({logLinesInspected:lineCount,diagnostics:[...diagnostics].sort(),knownSourceTestFailures:[...testFailures].sort(),rawLogsWithheld:true}));
 if (match[1] === 'retry') {
   assert(build.build_outcome === 'fail' && build.status === 'stopped', 'Only the reviewed failed/stopped build may be retried.');
   const retry = await api(`/builds/triggers/${build.trigger.trigger_uuid}/builds`, {branch:'main',commit_hash:targetCommit});
   assert(/^[a-f0-9-]{36}$/.test(retry?.build_uuid || ''), 'Retry response did not contain a valid build ID; do not repeat blindly.');
+  assert(retry?.build_trigger_metadata?.commit_hash === targetCommit && retry?.build_trigger_metadata?.branch === 'main' &&
+    [worker,script[0].tag].includes(retry?.trigger?.external_script_id), 'Retry source metadata did not verify the exact commit/Worker. Do not repeat; inspect the provider build status.');
   console.log(JSON.stringify({exactCommitRetryRequested:true,worker,commit:targetCommit,...safeBuild(retry)}));
 } else console.log('Read-only inspection complete. No retry, deployment, database change or message requested.');
