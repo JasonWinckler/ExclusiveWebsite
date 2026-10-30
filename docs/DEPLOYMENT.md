@@ -6,6 +6,10 @@ Cloudflare Pages ist mit GitHub verbunden. Pushes auf `main` bauen mit
 `npm run build` und veröffentlichen `dist`. Pages Functions in `functions/`
 stellen das Same-Origin-Gateway bereit; Bindings stehen in `wrangler.jsonc`.
 
+Für die Umstellung zu The Order of Shadows gilt zusätzlich
+[ORDER_OF_SHADOWS_TRANSITION.md](ORDER_OF_SHADOWS_TRANSITION.md).
+Die Domain bleibt `exclusive.jason-shadow.com`.
+
 ## Backend-Reihenfolge
 
 1. D1-Time-Travel-Bookmark notieren.

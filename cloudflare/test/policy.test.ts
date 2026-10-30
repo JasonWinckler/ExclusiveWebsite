@@ -24,7 +24,7 @@ const activeProfile: UserProfileRow = {
 };
 
 describe("authorization fails closed", () => {
-  it("does not grant access from a legacy label alone", () => {
+  it("allows a verified music supporter without collecting age evidence", () => {
     const decision = authorizeProtectedContent({
       profile: { ...activeProfile, age_status: "NOT_STARTED" },
       entitlement: {
@@ -36,13 +36,51 @@ describe("authorization fails closed", () => {
       },
       requiredTier: "EXCLUSIVE_VIP",
       contentStatus: "ACTIVE",
+      contentScope: "MUSIC",
       activeDeviceCount: 1,
       deviceLimit: 3,
       currentDeviceActive: true,
       jurisdictionAllowed: true,
       now: "2026-07-01T00:00:00.000Z",
     });
-    expect(decision).toEqual({ allowed: false, code: "AGE_NOT_APPROVED" });
+    expect(decision).toEqual({ allowed: true, code: "ALLOWED" });
+  });
+
+  it("never exposes legacy or unclassified content even to an age-approved VIP", () => {
+    const base = {
+      profile: activeProfile,
+      entitlement: null,
+      requiredTier: "FREE" as const,
+      contentStatus: "ACTIVE" as const,
+      activeDeviceCount: 1,
+      deviceLimit: 3,
+      currentDeviceActive: true,
+      jurisdictionAllowed: true,
+    };
+    expect(authorizeProtectedContent(base).code).toBe("LEGACY_CONTENT_QUARANTINED");
+    expect(authorizeProtectedContent({ ...base, contentScope: "LEGACY_ADULT" }).code)
+      .toBe("LEGACY_CONTENT_QUARANTINED");
+    expect(authorizeProtectedContent({ ...base, contentScope: "MUSIC" }).allowed).toBe(true);
+  });
+
+  it("retains email, account, hold and device protections for music posts", () => {
+    const base = {
+      profile: { ...activeProfile, age_status: "NOT_STARTED" as const },
+      entitlement: null,
+      requiredTier: "FREE" as const,
+      contentStatus: "ACTIVE" as const,
+      contentScope: "MUSIC" as const,
+      activeDeviceCount: 1,
+      deviceLimit: 3,
+      currentDeviceActive: true,
+      jurisdictionAllowed: true,
+    };
+    expect(authorizeProtectedContent({ ...base, profile: { ...base.profile, email_verified: 0 } }).code)
+      .toBe("EMAIL_NOT_VERIFIED");
+    expect(authorizeProtectedContent({ ...base, profile: { ...base.profile, administrative_hold: 1 } }).code)
+      .toBe("ACCOUNT_HELD");
+    expect(authorizeProtectedContent({ ...base, contentStatus: "DISABLED" }).code).toBe("CONTENT_NOT_ACTIVE");
+    expect(authorizeProtectedContent({ ...base, activeDeviceCount: 4 }).code).toBe("DEVICE_LIMIT_EXCEEDED");
   });
 
   it("rejects expired entitlements", () => {
@@ -57,6 +95,7 @@ describe("authorization fails closed", () => {
       },
       requiredTier: "EXCLUSIVE_BASIC",
       contentStatus: "ACTIVE",
+      contentScope: "MUSIC",
       activeDeviceCount: 1,
       deviceLimit: 3,
       currentDeviceActive: true,
@@ -78,6 +117,7 @@ describe("authorization fails closed", () => {
       },
       requiredTier: "EXCLUSIVE_PREMIUM" as const,
       contentStatus: "ACTIVE" as const,
+      contentScope: "MUSIC" as const,
       activeDeviceCount: 1,
       deviceLimit: 3,
       now: "2026-07-01T00:00:00.000Z",
@@ -98,6 +138,7 @@ describe("authorization fails closed", () => {
     const common = {
       profile: activeProfile,
       contentStatus: "ACTIVE" as const,
+      contentScope: "MUSIC" as const,
       activeDeviceCount: 1,
       deviceLimit: 3,
       currentDeviceActive: true,

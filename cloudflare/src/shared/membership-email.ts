@@ -46,7 +46,7 @@ function formattedDate(value: string, locale: MembershipLocale): string {
 
 function tierName(tier: string): string {
   return tier
-    .replace(/^EXCLUSIVE_/, "Exclusive ")
+    .replace(/^EXCLUSIVE_/, "")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -68,8 +68,8 @@ export function membershipActivationEmail(
       subject: `Deine ${tierName(input.tier)} Membership wurde bestätigt`,
       preheader: `${input.productName} und dein Zugangszeitraum wurden bestätigt.`,
       kicker: "DEIN ZUGANG IST BESTÄTIGT",
-      title: "Willkommen hinter dem Schatten.",
-      intro: "Dein Zahlungseingang wurde bestätigt und dein persönlicher Zugangszeitraum ist jetzt verbindlich hinterlegt.",
+      title: "Willkommen im Orden.",
+      intro: "Dein Zahlungseingang wurde bestätigt und dein persönlicher Zugangszeitraum ist jetzt verbindlich hinterlegt. Danke, dass du meine Musik und meine Arbeit als Sprecher unterstützt.",
       product: "Membership",
       period: "Dein Zugangszeitraum",
       activeFrom: "Aktiv ab",
@@ -84,8 +84,8 @@ export function membershipActivationEmail(
       subject: `Your ${tierName(input.tier)} membership is confirmed`,
       preheader: `${input.productName} and your access period are confirmed.`,
       kicker: "YOUR ACCESS IS CONFIRMED",
-      title: "Welcome beyond the shadow.",
-      intro: "Your payment has been confirmed and your personal access period is now securely recorded.",
+      title: "Welcome to The Order of Shadows.",
+      intro: "Your payment has been confirmed and your personal access period is now securely recorded. Thank you for supporting my music and voice work.",
       product: "Membership",
       period: "Your access period",
       activeFrom: "Active from",
@@ -102,12 +102,12 @@ export function membershipActivationEmail(
     html: `<!doctype html>
 <html lang="${input.locale}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(copy.subject)}</title></head>
-<body style="margin:0;background:#120006;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;background:#240007;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy.preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#120006">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#25000d;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -122,7 +122,7 @@ export function membershipActivationEmail(
           </table>
         </td></tr>
         <tr><td align="center" style="padding:10px 38px 28px">
-          <a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:linear-gradient(135deg,#f26b2f,#9d122a);color:#fff8eb;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
+          <a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
         </td></tr>
         <tr><td style="padding:0 38px 34px;color:#bdaaa4;font-size:14px;line-height:1.6">
           <p style="margin:0 0 14px">${copy.note}</p>
@@ -130,7 +130,7 @@ export function membershipActivationEmail(
           <p style="margin:0"><a href="https://exclusive.jason-shadow.com/legal/" style="color:#f0b46d">${copy.legal}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#f0b46d">${copy.privacy}</a></p>
         </td></tr>
       </table>
-      <p style="margin:18px 0 0;color:#806c68;font-size:12px">Shadow's Temptation · info@exclusive.jason-shadow.com</p>
+      <p style="margin:18px 0 0;color:#806c68;font-size:12px">The Order of Shadows · info@exclusive.jason-shadow.com</p>
     </td></tr>
   </table>
 </body>
@@ -158,7 +158,7 @@ export function membershipRenewalReminderEmail(
       subject: `Noch 7 Tage: Verlängere deine ${tierName(input.tier)} Membership`,
       preheader: `Dein Zugang läuft am ${formattedDate(input.expiresAt, input.locale)} aus.`,
       kicker: "DEIN ZUGANG · NOCH 7 TAGE",
-      title: "Lass den Schatten nicht enden.",
+      title: "Dein nächstes Kapitel im Orden.",
       greeting: `Hallo ${input.displayName},`,
       intro: "deine aktuelle Membership endet in sieben Tagen. Da keine automatische Verlängerung stattfindet, entscheidest du selbst, wann dein nächstes Kapitel beginnt.",
       membership: "Aktueller Zugang",
@@ -171,7 +171,7 @@ export function membershipRenewalReminderEmail(
       subject: `7 days left: renew your ${tierName(input.tier)} membership`,
       preheader: `Your access ends on ${formattedDate(input.expiresAt, input.locale)}.`,
       kicker: "YOUR ACCESS · 7 DAYS LEFT",
-      title: "Do not let the shadow fade.",
+      title: "Your next chapter in the Order.",
       greeting: `Hello ${input.displayName},`,
       intro: "your current membership ends in seven days. There is no automatic renewal, so you decide when your next chapter begins.",
       membership: "Current access",
@@ -185,12 +185,12 @@ export function membershipRenewalReminderEmail(
     html: `<!doctype html>
 <html lang="${input.locale}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(copy.subject)}</title></head>
-<body style="margin:0;background:#120006;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;background:#240007;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy.preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#120006">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#25000d;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -204,14 +204,14 @@ export function membershipRenewalReminderEmail(
           </table>
         </td></tr>
         <tr><td align="center" style="padding:10px 38px 28px">
-          <a href="https://exclusive.jason-shadow.com/?action=renew#pricing" style="display:inline-block;background:linear-gradient(135deg,#f26b2f,#9d122a);color:#fff8eb;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
+          <a href="https://exclusive.jason-shadow.com/?action=renew#pricing" style="display:inline-block;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
         </td></tr>
         <tr><td style="padding:0 38px 34px;color:#bdaaa4;font-size:14px;line-height:1.6">
           <p style="margin:0 0 14px">${copy.note}</p>
           <p style="margin:0"><a href="https://exclusive.jason-shadow.com/legal/" style="color:#f0b46d">${copy.legal}</a></p>
         </td></tr>
       </table>
-      <p style="margin:18px 0 0;color:#806c68;font-size:12px">Shadow's Temptation · info@exclusive.jason-shadow.com</p>
+      <p style="margin:18px 0 0;color:#806c68;font-size:12px">The Order of Shadows · info@exclusive.jason-shadow.com</p>
     </td></tr>
   </table>
 </body>
@@ -223,7 +223,7 @@ export function telegramAccessEmail(
   input: TelegramAccessEmailInput,
 ): { subject: string; html: string } {
   const isGerman = input.locale === "de";
-  const memberName = escapeHtml(input.displayName || (isGerman ? "Exclusive Member" : "Exclusive Member"));
+  const memberName = escapeHtml(input.displayName || (isGerman ? "Mitglied" : "Member"));
   const tier = escapeHtml(tierName(input.tier));
   const copy = isGerman
     ? {
@@ -253,12 +253,12 @@ export function telegramAccessEmail(
     html: `<!doctype html>
 <html lang="${input.locale}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(copy.subject)}</title></head>
-<body style="margin:0;background:#120006;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;background:#240007;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy.preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#120006">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#25000d;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -266,10 +266,10 @@ export function telegramAccessEmail(
           <p style="margin:0;color:#d8c2b9;font-size:17px;line-height:1.65">${copy.intro}</p>
         </td></tr>
         <tr><td style="padding:18px 38px"><div style="background:#180008;border:1px solid #5b3028;border-radius:16px;padding:20px 22px;color:#d8c2b9;font-size:14px;line-height:1.65">${copy.security}</div></td></tr>
-        <tr><td align="center" style="padding:10px 38px 28px"><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:linear-gradient(135deg,#f26b2f,#9d122a);color:#fff8eb;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a></td></tr>
+        <tr><td align="center" style="padding:10px 38px 28px"><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a></td></tr>
         <tr><td style="padding:0 38px 34px;color:#bdaaa4;font-size:14px"><a href="https://exclusive.jason-shadow.com/legal/" style="color:#f0b46d">${copy.legal}</a></td></tr>
       </table>
-      <p style="margin:18px 0 0;color:#806c68;font-size:12px">Shadow's Temptation · info@exclusive.jason-shadow.com</p>
+      <p style="margin:18px 0 0;color:#806c68;font-size:12px">The Order of Shadows · info@exclusive.jason-shadow.com</p>
     </td></tr>
   </table>
 </body>

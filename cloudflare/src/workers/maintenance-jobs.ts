@@ -1,3 +1,4 @@
+import { newsletterEmailHtml } from "../shared/newsletter-email";
 import { getUserProfile, isoNow } from "../shared/db";
 import { ApiError, logEvent, parsePositiveInt } from "../shared/http";
 import {
@@ -885,12 +886,6 @@ async function cleanupExpiredInvoiceArchives(
   return removed;
 }
 
-function escapeNewsletterHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
-  })[character]!);
-}
-
 async function processNewsletterDeliveries(
   env: MaintenanceEnv,
   now: string,
@@ -905,6 +900,11 @@ async function processNewsletterDeliveries(
     WHERE d.status IN ('PENDING','FAILED')
       AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= ?)
       AND c.status IN ('QUEUED','SENDING')
+      AND n.consent_text_version = 'newsletter-music-v2'
+      AND (c.content_item_id IS NULL OR EXISTS (
+        SELECT 1 FROM content_items item WHERE item.id = c.content_item_id
+          AND item.content_scope = 'MUSIC' AND item.content_status = 'ACTIVE'
+      ))
     ORDER BY d.created_at LIMIT ?`)
     .bind(now, batchSize).all<{
       id: string; campaign_id: string; appwrite_user_id: string; locale: "de" | "en";
@@ -932,7 +932,15 @@ async function processNewsletterDeliveries(
     const actionUrl = delivery.content_item_id
       ? "https://exclusive.jason-shadow.com/?action=new-drop"
       : "https://exclusive.jason-shadow.com/";
-    const html = `<!doctype html><html lang="${delivery.locale}"><body style="margin:0;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="Shadow's Temptation" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">NEW DROP · SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${escapeNewsletterHtml(subject)}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${escapeNewsletterHtml(preview)}</p><p style="text-align:center;margin:30px 0"><a href="${actionUrl}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#fff;text-decoration:none;font-weight:bold">${de ? "Jetzt entdecken" : "Discover now"} →</a></p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">Shadow's Temptation · Desire lives in the shadows.<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">Legal &amp; Privacy</a><br><a href="${unsubscribeUrl}" style="display:inline-block;margin-top:10px;color:#968681">${de ? "Newsletter abbestellen" : "Unsubscribe from newsletter"}</a></td></tr></table></td></tr></table></body></html>`;
+    const html = newsletterEmailHtml({
+      locale: delivery.locale,
+      title: subject,
+      intro: preview,
+      kicker: de ? "NEUE EINBLICKE HINTER DIE KULISSEN" : "NEW BEHIND THE SCENES",
+      actionLabel: de ? "Beitrag entdecken" : "Explore the new post",
+      actionUrl,
+      unsubscribeUrl,
+    });
     try {
       await env.DB.prepare(`INSERT INTO newsletter_action_tokens (
         id, appwrite_user_id, purpose, token_sha256, expires_at, created_at

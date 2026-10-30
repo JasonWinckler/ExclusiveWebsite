@@ -1,5 +1,11 @@
 # Produktionsarchitektur
 
+> Historical context: the adult-content and new age-review portions of this document
+> are superseded by [The Order of Shadows transition](ORDER_OF_SHADOWS_TRANSITION.md).
+> Retain applicable privacy, evidence deletion and security controls. Do not use
+> this document to re-enable retired customer verification or publish legacy media.
+
+
 | Ebene | Verantwortung |
 |---|---|
 | Cloudflare Pages | React-Frontend, statische Rechtstexte, Same-Origin-API-Gateway |

@@ -129,7 +129,7 @@ async function eligibleTelegramAccess(
       AND e.status = 'ACTIVE' AND e.starts_at <= ? AND e.expires_at > ?
       AND e.paused_at IS NULL
     WHERE p.appwrite_user_id = ? AND p.account_status = 'ACTIVE'
-      AND p.email_verified = 1 AND p.age_status = 'APPROVED'
+      AND p.email_verified = 1 AND p.administrative_hold = 0 AND p.deletion_job_hold = 0
     ORDER BY CASE e.tier WHEN 'EXCLUSIVE_VIP' THEN 2 ELSE 1 END DESC,
       e.expires_at DESC
     LIMIT 1
@@ -173,6 +173,7 @@ export async function telegramPerkStatus(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
+  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
   if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
@@ -229,6 +230,7 @@ async function issueInvite(
   telegramUserId: string,
   restored = false,
 ): Promise<void> {
+  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   const config = requireTelegramConfiguration(env);
   await revokeStoredInvites(env, access.appwrite_user_id, true);
   const now = isoNow();
@@ -296,6 +298,7 @@ export async function createTelegramClaim(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
+  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   const config = requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
   if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_OR_VIP_REQUIRED");
@@ -439,9 +442,9 @@ async function handleChatMemberUpdate(env: MembershipEnv, update: Record<string,
   const inviteLink = (change?.invite_link as Record<string, unknown> | undefined)?.invite_link;
   if (["member", "administrator", "creator"].includes(nextStatus) && typeof inviteLink === "string") {
     const inviteHash = await sha256Hex(inviteLink);
-    const assignment = await env.DB.prepare(`SELECT id, appwrite_user_id, telegram_user_id
+    const assignment = await env.DB.prepare(`SELECT id, appwrite_user_id, telegram_user_id, expires_at
       FROM telegram_invites WHERE invite_link_sha256 = ? AND status IN ('ISSUED', 'USED')`)
-      .bind(inviteHash).first<{ id: string; appwrite_user_id: string; telegram_user_id: string | null }>();
+      .bind(inviteHash).first<{ id: string; appwrite_user_id: string; telegram_user_id: string | null; expires_at: string }>();
     if (!assignment) return;
     if (assignment.telegram_user_id !== telegramUserId) {
       await telegramApi<boolean>(env, "revokeChatInviteLink", {
@@ -454,6 +457,28 @@ async function handleChatMemberUpdate(env: MembershipEnv, update: Record<string,
     }
     const now = isoNow();
     const existing = await connectionForUser(env, assignment.appwrite_user_id);
+    const access = env.MUSIC_COMMUNITY_REVIEWED === "true"
+      ? await eligibleTelegramAccess(env, assignment.appwrite_user_id) : null;
+    if (!access || assignment.expires_at <= now || existing?.status === "ADMIN_SUSPENDED") {
+      // A pre-cutover invite or expired entitlement must not grant channel access.
+      // Revoke/remove through the Bot API before acknowledging the join webhook.
+      try {
+        await telegramApi<boolean>(env, "revokeChatInviteLink", {
+          chat_id: requireTelegramConfiguration(env).chatId,
+          invite_link: inviteLink,
+        });
+      } finally {
+        await removeTelegramMember(env, telegramUserId);
+      }
+      await env.DB.prepare(`DELETE FROM telegram_invites WHERE id = ?`).bind(assignment.id).run();
+      if (existing?.status !== "ADMIN_SUSPENDED") {
+        await env.DB.prepare(`UPDATE telegram_connections SET status = 'MEMBERSHIP_INACTIVE',
+          removed_at = ?, last_error_code = 'MUSIC_ACCESS_NOT_AVAILABLE', updated_at = ?
+          WHERE appwrite_user_id = ? AND telegram_user_id = ?`)
+          .bind(now, now, assignment.appwrite_user_id, telegramUserId).run();
+      }
+      return;
+    }
     await env.DB.batch([
       env.DB.prepare(`UPDATE telegram_connections SET status = 'ACTIVE', joined_at = ?,
         removed_at = NULL, last_synced_at = ?, last_error_code = NULL, updated_at = ?

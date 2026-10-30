@@ -1,23 +1,17 @@
 {
-  "name": "Shadow’s Temptation",
-  "short_name": "Temptation",
-  "description": "Private, personally curated 18+ creator memberships by Jason Shadow.",
+  "name": "The Order of Shadows",
+  "short_name": "The Order",
+  "description": "Support Jason Shadow’s music and voice work. Behind-the-scenes content and exclusive membership benefits.",
   "lang": "en",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0003",
-  "theme_color": "#170008",
+  "background_color": "#240007",
+  "theme_color": "#240007",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
+      "src": "/assets/music/logo.png",
+      "sizes": "1774x887",
       "type": "image/png",
       "purpose": "any"
     }

@@ -28,23 +28,37 @@ export async function onRequest(context) {
   const source = new URL(context.request.url);
   const requestOrigin = context.request.headers.get("Origin");
   const fetchSite = context.request.headers.get("Sec-Fetch-Site");
+  const rawPath = Array.isArray(context.params.path)
+    ? context.params.path.join("/")
+    : String(context.params.path || "");
+
+  // Webmail opens signed newsletter links as cross-site document navigations.
+  // This exception is confined to the token endpoint, never browser fetches or
+  // account APIs. The membership Worker still validates the real one-use token.
+  const newsletterNavigation = context.request.method === "GET" &&
+    source.pathname === "/api/member/v1/newsletter/action" &&
+    rawPath === "member/v1/newsletter/action" &&
+    context.request.headers.get("Sec-Fetch-Mode") === "navigate" &&
+    context.request.headers.get("Sec-Fetch-Dest") === "document" &&
+    source.searchParams.getAll("purpose").length === 1 &&
+    ["confirm", "unsubscribe"].includes(source.searchParams.get("purpose")) &&
+    source.searchParams.getAll("token").length === 1 &&
+    /^[A-Za-z0-9_-]{43}$/.test(source.searchParams.get("token") || "") &&
+    [...source.searchParams.keys()].every((key) => ["purpose", "token"].includes(key));
 
   // Pages preview domains and arbitrary hosts must never inherit production
   // service bindings. Validate the browser-visible request before rewriting
   // any internal headers.
-  if (source.protocol !== "https:" || source.hostname !== CANONICAL_HOST) {
+  if (source.origin !== CANONICAL_ORIGIN) {
     return reject(421, "CANONICAL_HOST_REQUIRED");
   }
   if (requestOrigin && requestOrigin !== CANONICAL_ORIGIN) {
     return reject(403, "CROSS_ORIGIN_REQUEST_BLOCKED");
   }
-  if (fetchSite && !["same-origin", "none"].includes(fetchSite)) {
+  if (fetchSite && !["same-origin", "none"].includes(fetchSite) && !newsletterNavigation) {
     return reject(403, "CROSS_SITE_REQUEST_BLOCKED");
   }
 
-  const rawPath = Array.isArray(context.params.path)
-    ? context.params.path.join("/")
-    : String(context.params.path || "");
   const segments = rawPath.split("/").filter(Boolean);
   const targetName = segments.shift();
   if (targetName === "health") {

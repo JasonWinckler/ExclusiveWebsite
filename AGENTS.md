@@ -6,9 +6,9 @@ These instructions apply to the entire repository.
 
 ## Project direction
 
-This is the production Cloudflare-native single-creator adult membership
+This is the production Cloudflare-native single-creator music and voice supporter membership
 platform. Cloudflare Pages, Workers, D1 and private R2 own frontend delivery,
-authentication, authorization, age review, SEPA orders, content and
+authentication, authorization, SEPA orders, content and
 administration. Do not introduce Appwrite code, configuration, credentials,
 network calls or deployment dependencies.
 
@@ -17,7 +17,8 @@ network calls or deployment dependencies.
 - Never commit adult media, customer data, identity evidence, challenge videos,
   secrets, real bank details, production environments, databases or backups.
 - Unauthenticated previews use neutral placeholders, never blurred real adult
-  media.
+  media. Legacy adult media must stay quarantined and must never be republished
+  into the music catalog without explicit content review.
 - Protected operations remain server-authorized and fail closed. Never replace
   Cloudflare session validation, D1 authorization or private R2 delivery with a
   frontend-only check.
@@ -30,7 +31,11 @@ network calls or deployment dependencies.
 
 ## Implementation notes
 
-- Preserve the dark red, ember and gold brand design.
-- Keep `/linktree/` available and free of explicit sexual copy except the
-  clearly marked 18+ Exclusive Content link.
+- Use the official Jason Shadow music logo, burgundy, ivory and gold brand
+  design, with The Order of Shadows as the membership identity.
+- Keep `/linktree/` available as the music and membership link hub.
+- The public host remains `exclusive.jason-shadow.com`. Do not move the
+  application to a subpath or change DNS as part of visual work.
+- New music memberships do not collect age evidence. Retained historical
+  evidence still follows the existing private access and deletion rules.
 - Maintain German and English copy together and avoid duplicate text.
