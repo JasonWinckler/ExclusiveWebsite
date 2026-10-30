@@ -20,8 +20,9 @@ test('registration preserves account fields without requiring age evidence or su
   await expect(dialog.locator('input[name="privacyNoticeAccepted"]')).not.toBeChecked();
   await dialog.locator('input[name="privacyNoticeAccepted"]').check();
   await dialog.getByRole('button', { name: 'Create account', exact: true }).click();
-  await expect(dialog).toContainText('Verification pending');
-  await expect(dialog.getByRole('button', { name: 'Resend confirmation email' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Verify your email address' })).toBeVisible();
+  await expect(dialog.getByLabel('6-digit email code')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Request another code in/ })).toBeDisabled();
   await expect(dialog).not.toContainText(/age verification|identity-document|live challenge/i);
   expect(state.registerBody).toMatchObject({ name: 'New Supporter', email: 'supporter@example.test', countryCode: 'DE', privacyNoticeAccepted: true, locale: 'en' });
   expect(state.registerBody.password).toBeUndefined();
@@ -60,7 +61,7 @@ test('verified members review billing and explicitly order one-time SEPA support
   await dialog.getByRole('button', { name: 'ORDER & PAY WITH SEPA' }).click();
   await dialog.getByRole('button', { name: 'Payment details', exact: true }).click();
   await expect(dialog).toContainText('Order of Shadows - ID #TEST123');
-  expect(state.paymentBody).toMatchObject({ productSku: 'exclusive-basic-30d', locale: 'en', termsVersion: 'ORDER-2026-10-30-V3', digitalContentConsent: true, withdrawalAcknowledgement: true, billing: { name: 'Synthetic Supporter', countryCode: 'DE' } });
+  expect(state.paymentBody).toMatchObject({ productSku: 'exclusive-basic-30d', locale: 'en', termsVersion: 'ORDER-2026-10-30-V4', digitalContentConsent: true, withdrawalAcknowledgement: true, billing: { name: 'Synthetic Supporter', countryCode: 'DE' } });
   const paymentRequest = state.requests.find(({ path }) => path.endsWith('/payments/sepa-orders'));
   expect(paymentRequest.headers['idempotency-key']).toBeTruthy();
   expect(state.requests.filter(({ path }) => /age-verification/.test(path))).toEqual([]);
@@ -125,8 +126,7 @@ test('administrator VIP simulation preserves the protected, read-only member vie
   expect(media.headers['x-admin-simulation']).toBe('EXCLUSIVE_VIP');
   expect(media.headers['x-admin-session']).toBeTruthy();
   expect(state.requests.filter(({ path, method }) => path.startsWith('/api/member/') && method !== 'GET')).toEqual([]);
-  await page.getByRole('button', { name: 'Open private area', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('Private content and age evidence are not loaded in simulation.');
+  await expect(page.locator('#vip-private')).toContainText('Private content and age evidence are not loaded in simulation.');
   expect(state.requests.filter(({ scope }) => scope === 'VIP_ADULT')).toEqual([]);
 });
 

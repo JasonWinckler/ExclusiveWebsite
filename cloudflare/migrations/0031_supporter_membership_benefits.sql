@@ -1,0 +1,75 @@
+PRAGMA foreign_keys = ON;
+
+-- Replace the current presentation with a small, non-overlapping supporter
+-- offer for a private/corporate event service business. Keep retired catalog
+-- rows, products, prices, orders and previous acceptance snapshots unchanged.
+UPDATE tier_perks SET active = 0,
+  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE active = 1;
+
+INSERT INTO tier_perks (
+  id, tier, title, title_en, description, description_en,
+  sort_order, active, created_at, updated_at
+) VALUES
+('supporter-basic-bts', 'EXCLUSIVE_BASIC',
+ 'Einblicke in Vorbereitung und Handwerk', 'Behind the scenes: preparation and craft',
+ 'Alle veröffentlichten Musik- und Sprecher-Einblicke während deiner Laufzeit: Vorbereitung, Arbeitsweise und ausgewählte Projekte für private und geschäftliche Anlässe. Derselbe Zugang in jeder bezahlten Stufe.',
+ 'All published music and voice-work insights during your term: preparation, working methods and selected projects for private and business occasions. Every paid tier has the same access.',
+ 10, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-premium-bts', 'EXCLUSIVE_PREMIUM',
+ 'Einblicke in Vorbereitung und Handwerk', 'Behind the scenes: preparation and craft',
+ 'Alle veröffentlichten Musik- und Sprecher-Einblicke während deiner Laufzeit: Vorbereitung, Arbeitsweise und ausgewählte Projekte für private und geschäftliche Anlässe. Derselbe Zugang in jeder bezahlten Stufe.',
+ 'All published music and voice-work insights during your term: preparation, working methods and selected projects for private and business occasions. Every paid tier has the same access.',
+ 10, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-bts', 'EXCLUSIVE_VIP',
+ 'Einblicke in Vorbereitung und Handwerk', 'Behind the scenes: preparation and craft',
+ 'Alle veröffentlichten Musik- und Sprecher-Einblicke während deiner Laufzeit: Vorbereitung, Arbeitsweise und ausgewählte Projekte für private und geschäftliche Anlässe. Derselbe Zugang in jeder bezahlten Stufe.',
+ 'All published music and voice-work insights during your term: preparation, working methods and selected projects for private and business occasions. Every paid tier has the same access.',
+ 10, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-basic-conversation', 'EXCLUSIVE_BASIC',
+ 'Fragen, Ideen und Austausch', 'Questions, ideas and conversation',
+ 'Kommentiere freigeschaltete Beiträge und stelle Fragen zur Vorbereitung, Musik und Sprecherarbeit. Teile deine Ideen direkt im Mitgliederbereich.',
+ 'Comment on posts where comments are enabled, ask about preparation, music and voice work, and share your ideas directly in the members area.',
+ 20, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-premium-conversation', 'EXCLUSIVE_PREMIUM',
+ 'Fragen, Ideen und Austausch', 'Questions, ideas and conversation',
+ 'Kommentiere freigeschaltete Beiträge und stelle Fragen zur Vorbereitung, Musik und Sprecherarbeit. Teile deine Ideen direkt im Mitgliederbereich.',
+ 'Comment on posts where comments are enabled, ask about preparation, music and voice work, and share your ideas directly in the members area.',
+ 20, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-conversation', 'EXCLUSIVE_VIP',
+ 'Fragen, Ideen und Austausch', 'Questions, ideas and conversation',
+ 'Kommentiere freigeschaltete Beiträge und stelle Fragen zur Vorbereitung, Musik und Sprecherarbeit. Teile deine Ideen direkt im Mitgliederbereich.',
+ 'Comment on posts where comments are enabled, ask about preparation, music and voice work, and share your ideas directly in the members area.',
+ 20, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-premium-discount', 'EXCLUSIVE_PREMIUM',
+ '15 % auf alle Dienstleistungen', '15% off all services',
+ '15 % Rabatt auf alle Dienstleistungen von Jason Shadow bei aktiver Mitgliedschaft, auch für private Feiern und Firmenevents. Nenne deine Mitgliedschaft bei der Anfrage; Leistung, Termin und rabattierter Preis werden vor der Buchung vereinbart.',
+ '15% off all Jason Shadow services with an active membership, including private celebrations and corporate events. Mention your membership when enquiring; the service, date and discounted price are agreed before booking.',
+ 30, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-discount', 'EXCLUSIVE_VIP',
+ '15 % auf alle Dienstleistungen', '15% off all services',
+ '15 % Rabatt auf alle Dienstleistungen von Jason Shadow bei aktiver Mitgliedschaft, auch für private Feiern und Firmenevents. Nenne deine Mitgliedschaft bei der Anfrage; Leistung, Termin und rabattierter Preis werden vor der Buchung vereinbart.',
+ '15% off all Jason Shadow services with an active membership, including private celebrations and corporate events. Mention your membership when enquiring; the service, date and discounted price are agreed before booking.',
+ 30, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-whatsapp', 'EXCLUSIVE_VIP',
+ 'Direkter WhatsApp-Kontakt', 'Direct WhatsApp contact',
+ 'Dein persönlicher Kontaktweg für Fragen zur Musik- und Sprecherarbeit sowie zur Abstimmung deiner Anliegen. Im VIP-Dashboard verfügbar; ohne zugesagte Antwortzeit.',
+ 'A personal contact route for questions about music and voice work and to discuss your plans. Available in the VIP dashboard, without a guaranteed response time.',
+ 40, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-meetup', 'EXCLUSIVE_VIP',
+ 'Persönliches Treffen nach Vereinbarung', 'Personal meet-up by arrangement',
+ 'Frage während deiner aktiven VIP-Laufzeit ein persönliches Treffen an. Termin, Ort und Rahmen stimmen wir gemeinsam nach Verfügbarkeit ab; Reise- und Nebenkosten sind nicht enthalten.',
+ 'Request a personal meet-up during your active VIP term. We agree the date, place and arrangements together, subject to availability; travel and incidental expenses are not included.',
+ 50, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+('supporter-vip-secret', 'EXCLUSIVE_VIP',
+ 'Psst... Discover Shadow''s Temptation 😏', 'Psst... Discover Shadow''s Temptation 😏',
+ 'Optionaler, separater Bereich ab 18. Nur mit aktiver VIP-Mitgliedschaft und bestätigter Altersverifikation; vom Musikbereich und Newsletter getrennt.',
+ 'An optional, separate 18+ area. Active VIP membership and approved age verification are required; separate from the music area and newsletter.',
+ 60, 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+ON CONFLICT(tier, title) DO UPDATE SET
+  title_en = excluded.title_en,
+  description = excluded.description,
+  description_en = excluded.description_en,
+  sort_order = excluded.sort_order,
+  active = 1,
+  updated_at = excluded.updated_at;

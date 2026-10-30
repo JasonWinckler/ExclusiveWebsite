@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { getContentItems, fetchContentItem, getContentComments, createContentComment, deleteContentComment, registerCurrentDevice } from "./lib/platform";
 import { friendlyErrorMessage } from "./lib/error-messages";
+import "../assets/css/vip-private.css";
 const VipAgeVerification = React.lazy(() => import("./VipAgeVerification"));
 
 export default function VipPrivateArea({ language, membership, user, readOnly = false, onRefresh }) {
   const de = language === "de";
   const [verifying, setVerifying] = useState(false);
+  const verificationPanel = useRef(null);
+  const [privateHidden, setPrivateHidden] = useState(false);
   const [notice, setNotice] = useState("");
   const [items, setItems] = useState([]);
   const [index, setIndex] = useState(0);
@@ -14,9 +17,14 @@ export default function VipPrivateArea({ language, membership, user, readOnly = 
   const [canComment, setCanComment] = useState(false);
   const [busy, setBusy] = useState(false);
   const eligible = Boolean(membership?.adultArea?.eligible && membership?.entitlement?.active && membership.entitlement.tier === "EXCLUSIVE_VIP");
-  const available = eligible && membership?.adultArea?.available === true && membership?.adultArea?.ageVerified === true;
+  const authorized = eligible && membership?.adultArea?.available === true && membership?.adultArea?.ageVerified === true;
+  const available = authorized && !privateHidden;
   const item = items[index % Math.max(items.length, 1)];
   const errorText = (error) => friendlyErrorMessage(error, language, de ? "Der private Bereich konnte nicht geladen werden." : "The private area could not be loaded.");
+
+  useEffect(() => {
+    if (verifying) verificationPanel.current?.focus();
+  }, [verifying]);
 
   useEffect(() => {
     let current = true;
@@ -89,19 +97,22 @@ export default function VipPrivateArea({ language, membership, user, readOnly = 
     finally { setBusy(false); }
   }
 
-  if (!eligible) return <p>{de ? "Dieser Bereich erfordert eine aktive VIP Shadow Mitgliedschaft." : "This area requires an active VIP Shadow membership."}</p>;
-  if (readOnly) return <p>{de ? "Die Admin-Simulation zeigt diesen Zugang nur zur Orientierung. Private Inhalte und Altersnachweise werden in der Simulation nicht geladen." : "Admin simulation shows this access for orientation only. Private content and age evidence are not loaded in simulation."}</p>;
+  if (!eligible) return null;
   return <div className="vip-private-area">
+    <header className="vip-private-heading">
+      <div><p className="eyebrow">VIP SHADOW · {de ? "NUR FÜR DICH" : "JUST FOR YOU"}</p><h2>Shadow's Temptation</h2></div>
+      <span className="vip-private-age" aria-label={de ? "Nur für Erwachsene ab 18 Jahren" : "Adults aged 18 and over only"}>18+</span>
+    </header>
     {notice && <p className="form-notice" role="status">{notice}</p>}
-    {!available && membership?.adultArea?.ageVerified ? <><p>{de ? "Dein Alter ist bestätigt. Bitte bestätige dieses Gerät für den privaten Zugriff." : "Your age is verified. Confirm this device for private access."}</p><button className="secondary-action" type="button" disabled={busy} onClick={refreshStatus}>{de ? "Gerät bestätigen" : "Confirm device"}</button></> : !available ? <>
-      <p className="modal-intro">{de ? "Dieser freiwillige Bereich enthält Inhalte ausschließlich für Erwachsene. Deine Musik-Mitgliedschaft und der gemeinsame Behind-the-Scenes-Zugang benötigen keine Altersprüfung." : "This optional area contains content for adults only. Your music membership and shared behind-the-scenes access do not require age verification."}</p>
-      {verifying || membership?.ageVerification?.reviewStatus === "READY_FOR_REVIEW" ? <React.Suspense fallback={<p role="status">{de ? "Wird geladen …" : "Loading …"}</p>}><VipAgeVerification language={language} ageVerification={membership?.ageVerification} countryCode={membership?.account?.countryCode} onComplete={async () => { await onRefresh?.(); }} onNotice={setNotice} /></React.Suspense> : <>
-        <p>{de ? "Vor dem ersten Zugriff wird geprüft, dass du mindestens 18 Jahre alt bist. Die Prüfung ist nur für aktive VIP-Mitglieder verfügbar. Nachweise bleiben privat und werden nach der Entscheidung sofort, spätestens nach 48 Stunden, gelöscht." : "Before your first visit, we verify that you are at least 18. Verification is available only to active VIP members. Evidence stays private and is deleted immediately after the decision, or within 48 hours."}</p>
-        <button className="secondary-action" type="button" onClick={() => setVerifying(true)}>{de ? "Altersprüfung öffnen" : "Open age verification"}</button>
-      </>}
-      <button className="text-button" type="button" onClick={refreshStatus}>{de ? "Prüfstatus aktualisieren" : "Refresh verification status"}</button>
+    {readOnly ? <p>{de ? "Die Admin-Simulation zeigt diesen Zugang nur zur Orientierung. Private Inhalte und Altersnachweise werden in der Simulation nicht geladen." : "Admin simulation shows this access for orientation only. Private content and age evidence are not loaded in simulation."}</p> : authorized && privateHidden ? <button className="vip-private-teaser" type="button" onClick={() => setPrivateHidden(false)}>{de ? "Private Galerie wieder öffnen" : "Reopen private gallery"}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="M4 12 12 4M4 4h8v8" /></svg></button> : !available && membership?.adultArea?.ageVerified ? <><p>{de ? "Dein Alter ist bestätigt. Bitte bestätige dieses Gerät für den privaten Zugriff." : "Your age is verified. Confirm this device for private access."}</p><button className="secondary-action" type="button" disabled={busy} onClick={refreshStatus}>{de ? "Gerät bestätigen" : "Confirm device"}</button></> : !available ? <>
+      <p className="vip-private-intro">{de ? "Eine andere Seite von Jason. Ein freiwilliger, privater Bereich für aktive VIP-Mitglieder – ausschließlich ab 18 und nach bestätigter Altersprüfung." : "Another side of Jason. An optional, private space for active VIP members — strictly 18+ and only after approved age verification."}</p>
+      {verifying || membership?.ageVerification?.reviewStatus === "READY_FOR_REVIEW" ? <div id="vip-age-verification" ref={verificationPanel} tabIndex={-1} aria-label={de ? "Altersverifikation" : "Age verification"}>
+        <p className="upload-note">{de ? "Deine Musik-Mitgliedschaft und der gemeinsame Behind-the-Scenes-Zugang benötigen keine Altersprüfung." : "Your music membership and shared behind-the-scenes access do not require age verification."}</p>
+        <React.Suspense fallback={<p role="status">{de ? "Wird geladen …" : "Loading …"}</p>}><VipAgeVerification language={language} ageVerification={membership?.ageVerification} countryCode={membership?.account?.countryCode} onComplete={async () => { await onRefresh?.(); }} onNotice={setNotice} /></React.Suspense>
+        <button className="text-button" type="button" disabled={busy} onClick={refreshStatus}>{de ? "Prüfstatus aktualisieren" : "Refresh verification status"}</button>
+      </div> : <button className="vip-private-teaser" type="button" onClick={() => setVerifying(true)}>Tempted? Discover my secret side!<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="M4 12 12 4M4 4h8v8" /></svg></button>}
     </> : <>
-      <p className="upload-note">{de ? "Aktive VIP-Mitgliedschaft · Alter bestätigt · Privater Zugriff" : "Active VIP membership · Age verified · Private access"}</p>
+      <div className="vip-private-status"><p className="upload-note">{de ? "Aktive VIP-Mitgliedschaft · Alter bestätigt · Privater Zugriff" : "Active VIP membership · Age verified · Private access"}</p><button className="text-button" type="button" onClick={() => setPrivateHidden(true)}>{de ? "Privaten Bereich ausblenden" : "Hide private area"}</button></div>
       {busy && <p role="status">{de ? "Wird geladen …" : "Loading …"}</p>}
       {item ? <article className="creator-post">
         <div className="post-carousel__navigation"><button className="secondary-action" type="button" disabled={items.length < 2 || busy} aria-label={de ? "Vorheriger Beitrag" : "Previous post"} onClick={() => setIndex((index + items.length - 1) % items.length)}>←</button><span>{index + 1} / {items.length}</span><button className="secondary-action" type="button" disabled={items.length < 2 || busy} aria-label={de ? "Nächster Beitrag" : "Next post"} onClick={() => setIndex((index + 1) % items.length)}>→</button></div>

@@ -167,6 +167,7 @@ export function sendTransactionalEmail(
     messageId: string;
     subject: string;
     html: string;
+    emailChangeTokenId?: string;
   },
 ): Promise<void> {
   return callIdentityService(service, secret, "/send-transactional-email", input);

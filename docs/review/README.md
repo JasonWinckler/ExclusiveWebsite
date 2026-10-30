@@ -4,16 +4,73 @@ The redesigned membership stays at https://exclusive.jason-shadow.com/.
 These screenshots use a local build and synthetic member data. They are review
 artifacts, not evidence of a production deployment.
 
+## Supporter, registration and VIP update — prepared source
+
+The current change presents membership as support for Jason's music and voice
+services for private celebrations and corporate events. The catalog contains
+two clear Basic benefits, three Premium benefits and six VIP benefits:
+shared preparation/craft insights and member conversation in every tier;
+15% off all services for Premium/VIP; WhatsApp, meet-ups by arrangement and the
+optional age-controlled private area for VIP. Duplicate gallery/update perks,
+topic votes and priority-reply promises have been retired. Prices and terms of
+existing purchases are not rewritten by the catalog migration.
+
+The exact VIP teaser is **Psst... Discover Shadow's Temptation 😏**. This name
+is a private-area sub-brand only. The website, music newsletter and account
+emails remain Jason Shadow / Order of Shadows. New checkout acceptance and
+catalog cache URLs use `ORDER-2026-10-30-V4`.
+
+Registration now keeps the dialog open for a six-digit email code. The same
+email contains a single-use fallback link to the homepage. Successful
+verification creates a fresh session and shows a localized confirmation popup;
+existing MFA remains required where applicable. The optional VIP section sits
+below the music gallery and retains the existing server-side access controls.
+
+At preparation of this review, production deployment of this update and the
+separate owner-requested data cleanup have **not** been verified. Historical
+deployment records below establish only their named earlier releases. Add the
+exact reviewed revision, Actions result and production post-checks before
+reporting this new release or any deletion as completed.
+
 ## Website
 
 ![Desktop website design](website-preview.png)
 
 ![Mobile website design](website-mobile.png)
 
+## Registration and optional VIP access
+
+The current supporter copy describes music and voice services for private
+celebrations and corporate events. The registration dialog stays open for a
+six-digit email code; a confirmation link remains available in the same email.
+These previews use a synthetic `example.test` account and do not send mail.
+
+![Desktop email-code dialog](email-code-desktop.png)
+
+![Mobile email-code dialog](email-code-mobile.png)
+
+The private VIP section appears below the music gallery with an explicit 18+
+marker. The teaser opens age verification; approved, authorized VIP members see
+the private gallery inline. No private content is loaded before authorization.
+
+![Desktop optional VIP teaser](vip-private-desktop.png)
+
+![Mobile optional VIP teaser](vip-private-mobile.png)
+
+For this supporter/code-verification update, the final frontend build passed
+with main JavaScript at 365,935 / 450,000 bytes and main CSS at
+117,547 / 120,000 bytes. All 98 desktop/mobile Playwright checks passed locally,
+including code confirmation, fallback links, invalid/expired challenges,
+resend cooldown, MFA, tier benefits, protected access and narrow layouts.
+The homepage and email-code previews above were regenerated from that build.
+These checks use synthetic API responses; they do not establish live inbox
+delivery or constitute a production deployment.
+
 ## Member dashboard
 
-The dashboard presents the shared music content and the selected membership’s
-benefits. The separate private VIP area is optional and remains age-controlled.
+These earlier dashboard illustrations show the shared music content and the
+selected membership's benefits. The current VIP placement is shown separately
+above; the private area is optional and remains age-controlled.
 
 ![Desktop member dashboard](membership-dashboard.png)
 
@@ -28,13 +85,16 @@ No real test email or newsletter was sent for this review.
 
 ## Current local verification
 
-- Production frontend build and existing bundle budgets pass.
-- Backend TypeScript checks and all 173 tests in 23 files pass, including
-  migration preservation, content separation, newsletter consent, owner-role
-  repair guards and maintenance compatibility during migration.
-- All 24 rollout guard and diagnostic tests pass.
-- All 70 Playwright checks pass on desktop and mobile with synthetic API fixtures,
-  including the final layout and age-review refresh corrections.
+- The production frontend build and existing bundle budgets pass; exact sizes
+  and all 98 desktop/mobile browser checks are recorded above.
+- The focused benefits/access run passes 25 tests across three files. The new
+  migration tests preserve seeded accounts, content, comments, orders, invoices,
+  entitlements and earlier acceptance snapshots; validate both languages and
+  the 2/3/6 benefit counts; and retain retired catalog rows without reactivation.
+- Full backend TypeScript validation and 202 tests across 25 files passed,
+  including real SQLite verification races, session-write rollback and bounded
+  email-change delivery routing. All 27 rollout guard tests also passed. The
+  earlier 173/24/70 test counts below belong to the previous release.
 - Original logo and owned artist photographs were copied from the music website.
 
 No production deployment, production migration, owner-role repair or real mail
