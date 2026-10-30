@@ -177,7 +177,7 @@ export async function telegramPerkStatus(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
-  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
+  if (env.MUSIC_TELEGRAM_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
   if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
@@ -234,7 +234,7 @@ async function issueInvite(
   telegramUserId: string,
   restored = false,
 ): Promise<void> {
-  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
+  if (env.MUSIC_TELEGRAM_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   const config = requireTelegramConfiguration(env);
   await revokeStoredInvites(env, access.appwrite_user_id, true);
   const now = isoNow();
@@ -302,7 +302,7 @@ export async function createTelegramClaim(
   env: MembershipEnv,
   userId: string,
 ): Promise<Record<string, unknown>> {
-  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
+  if (env.MUSIC_TELEGRAM_REVIEWED !== "true") throw new ApiError(503, "PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED");
   const config = requireTelegramConfiguration(env);
   const access = await eligibleTelegramAccess(env, userId);
   if (!access) throw new ApiError(403, "ACTIVE_PREMIUM_REQUIRED");
@@ -361,6 +361,9 @@ async function sendBotNotice(
 }
 
 async function handleStartMessage(env: MembershipEnv, update: Record<string, unknown>): Promise<void> {
+  // Telegram is outside the music offer. A stale bot link must not create a
+  // connection, consume its claim or send a bot message while enrollment is off.
+  if (env.MUSIC_TELEGRAM_REVIEWED !== "true") return;
   const message = update.message as Record<string, unknown> | undefined;
   const chat = message?.chat as Record<string, unknown> | undefined;
   const from = message?.from as Record<string, unknown> | undefined;
@@ -461,7 +464,7 @@ async function handleChatMemberUpdate(env: MembershipEnv, update: Record<string,
     }
     const now = isoNow();
     const existing = await connectionForUser(env, assignment.appwrite_user_id);
-    const access = env.MUSIC_COMMUNITY_REVIEWED === "true"
+    const access = env.MUSIC_TELEGRAM_REVIEWED === "true"
       ? await eligibleTelegramAccess(env, assignment.appwrite_user_id) : null;
     if (!access || assignment.expires_at <= now || existing?.status === "ADMIN_SUSPENDED") {
       // A pre-cutover invite or expired entitlement must not grant channel access.
@@ -700,7 +703,7 @@ export async function syncTelegramAccess(env: MembershipEnv): Promise<{
       }
       continue;
     }
-    if (access && connection.status === "MEMBERSHIP_INACTIVE") {
+    if (access && connection.status === "MEMBERSHIP_INACTIVE" && env.MUSIC_TELEGRAM_REVIEWED === "true") {
       await issueInvite(env, access, connection.telegram_user_id, true).catch(async () => {
         await env.DB.prepare(`UPDATE telegram_connections SET status = 'MEMBERSHIP_INACTIVE',
           last_error_code = 'TELEGRAM_RESTORE_FAILED', updated_at = ?

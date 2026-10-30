@@ -54,7 +54,7 @@ export async function mockMembershipApi(page, options = {}) {
         account: { status: state.accountStatus ?? 'ACTIVE', emailVerified: state.user?.emailVerification, displayName: state.user?.name, privacyProfileComplete: true, countryCode: 'DE' },
         // Ordinary membership must work without age approval.
         ageVerification: { status: state.ageStatus ?? 'NOT_STARTED', ...(state.ageVerification ?? {}) },
-        benefits: { serviceDiscountPercent: ready && ['EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP'].includes(tier) ? 15 : 0, telegramAvailable: ready && tier === 'EXCLUSIVE_PREMIUM' },
+        benefits: { serviceDiscountPercent: ready && ['EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP'].includes(tier) ? 15 : 0, telegramAvailable: false },
         adultArea: { eligible: vip, ageVerified: approved, deviceRegistered: approved, available: vip && approved && !state.simulation, ageStatus: state.ageStatus ?? 'NOT_STARTED', status: state.simulation ? 'ADMIN_SIMULATION_ADULT_UNAVAILABLE' : !vip ? 'VIP_REQUIRED' : !approved ? 'AGE_VERIFICATION_REQUIRED' : 'READY', ...(state.adultArea ?? {}) },
         entitlement: state.entitlement ?? { active: false, paused: null },
         ...(state.simulation ? { simulation: { role: state.simulation, readOnly: true } } : {}),
@@ -83,8 +83,12 @@ export async function mockMembershipApi(page, options = {}) {
       state.newsletterStatus = request.method() === 'DELETE' ? 'UNSUBSCRIBED' : 'PENDING';
       return json({ status: state.newsletterStatus });
     }
-    if (path === '/api/member/v1/perks/telegram') return json({ available: true, active: true, linked: true, connectionStatus: 'ACTIVE' });
-    if (path === '/api/member/v1/perks/vip-whatsapp') return json({ error: { code: 'VIP_WHATSAPP_NOT_CONFIGURED' } }, 503);
+    if (path === '/api/member/v1/perks/telegram') return json({ error: { code: 'PREMIUM_TELEGRAM_MUSIC_REVIEW_REQUIRED' } }, 503);
+    if (path === '/api/member/v1/perks/vip-whatsapp') {
+      const allowed = state.user?.emailVerification && (state.accountStatus ?? 'ACTIVE') === 'ACTIVE' && state.entitlement?.active && state.entitlement.tier === 'EXCLUSIVE_VIP';
+      // Reserved example number, never contacted. Age approval is not required for music WhatsApp.
+      return allowed ? json({ available: true, phoneNumber: '+44 7700 900123', whatsappUrl: 'https://wa.me/447700900123', entitlementExpiresAt: state.entitlement.expiresAt }) : json({ error: { code: 'ACTIVE_VIP_REQUIRED' } }, 403);
+    }
     if (path === '/api/member/v1/content') {
       if (url.searchParams.get('scope') === 'VIP_ADULT') {
         if (state.denyAdultList || state.entitlement?.tier !== 'EXCLUSIVE_VIP' || state.ageStatus !== 'APPROVED') return json({ error: { code: 'AGE_NOT_APPROVED' } }, 403);

@@ -46,9 +46,17 @@ Tabwechsel beziehungsweise spätestens nach zwei Minuten.
 - personenbezogene API-Antworten und alle Bilder sind nicht cachebar;
 - keine Werbe-, Profiling- oder Social-Media-Pixel.
 
-## Telegram-Zugang
+## Historische Telegram-Zugänge
 
-Der Bot verwendet einen geheimen Telegram-Webhook-Header. Claim-Tokens sind
+Telegram ist kein Musik-Mitgliedschaftsvorteil. Neue Verknüpfungen und
+Einladungen bleiben durch `MUSIC_TELEGRAM_REVIEWED=false` gesperrt. Der separate
+WhatsApp-Schalter `VIP_WHATSAPP_MUSIC_REVIEWED=true` gibt ausschließlich den vom
+Betreiber geprüften VIP-Musikkontakt frei. Der alte gemeinsame Schalter wird
+nicht ausgewertet. Es wird kein Erwachsenen-Telegram-Zugang ergänzt.
+
+Die folgenden technischen Kontrollen bleiben für vorhandene Zuordnungen und
+deren Entzug/Löschung bestehen. Der Bot verwendet einen geheimen
+Telegram-Webhook-Header. Claim-Tokens sind
 256-Bit-Zufallswerte, in D1 nur als SHA-256 gespeichert, höchstens zehn Minuten
 gültig und nach Verwendung gelöscht. Kanal-Einladungen sind verschlüsselt,
 höchstens 15 Minuten gültig, auf genau eine zuvor verknüpfte numerische

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { member, mockMembershipApi, pixel } from './membership-fixtures.js';
 
-async function mockAdminContent(page, items = []) {
+async function mockAdminContent(page, items = [], connections = []) {
   await mockMembershipApi(page, { user: { ...member, name: 'Administrator', labels: ['admin'], mfa: true } });
   const requests = [];
   await page.route('**/api/admin/**', async (route) => {
@@ -12,6 +12,7 @@ async function mockAdminContent(page, items = []) {
     requests.push({ path, method: request.method(), body, headers: request.headers(), reviewFlag: url.searchParams.get('adultContentReviewed') });
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
     if (path.endsWith('/admin-session')) return json({ token: 'A'.repeat(43), expiresAt: new Date(Date.now() + 600000).toISOString() });
+    if (path.endsWith('/telegram/admin/connections')) return json({ connections });
     if (path.endsWith('/content/items')) return request.method() === 'POST' ? json({ id: 'new-neutral-post', contentScope: body.contentScope }, 201) : json({ items });
     if (path.endsWith('/media')) return request.method() === 'GET'
       ? route.fulfill({ status: 200, contentType: 'image/png', body: pixel }) : json({ success: true });
@@ -26,6 +27,28 @@ async function mockAdminContent(page, items = []) {
   await page.getByRole('button', { name: 'Content studio', exact: true }).click();
   return requests;
 }
+
+test('legacy adult Telegram management allows existing-account cleanup without new enrollment', async ({ page }) => {
+  const connections = [{ appwrite_user_id: 'synthetic-legacy-account', display_name: 'Synthetic legacy account', email: 'legacy@example.test', status: 'ACTIVE', active_tier: 'EXCLUSIVE_PREMIUM' }];
+  const requests = await mockAdminContent(page, [], connections);
+  await page.getByRole('button', { name: 'Telegram · legacy adult', exact: true }).click();
+  const panel = page.locator('.telegram-admin-panel');
+  await expect(panel).toContainText('Telegram belongs to the external adult offering and is not a music membership benefit.');
+  await expect(panel.getByRole('button', { name: /resend|restore|reconnect|invite|configure/i })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Pause access', exact: true })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: 'Delete connection', exact: true })).toBeDisabled();
+  await panel.getByLabel('Documented admin reason', { exact: true }).fill('Synthetic legacy cleanup request.');
+  await panel.getByRole('button', { name: 'Pause access', exact: true }).click();
+  await expect(page.locator('.form-notice--success')).toContainText('Telegram access was updated.');
+  await expect(panel.getByRole('button', { name: 'Delete connection', exact: true })).toBeEnabled();
+  page.once('dialog', (dialog) => dialog.accept());
+  await panel.getByRole('button', { name: 'Delete connection', exact: true }).click();
+  await expect.poll(() => requests.filter(({ path, method }) => path.includes('/telegram/') && method === 'POST').length).toBe(2);
+  const changes = requests.filter(({ path, method }) => path.includes('/telegram/') && method === 'POST');
+  expect(changes.map(({ body }) => body.action)).toEqual(['REMOVE', 'UNLINK']);
+  expect(changes.every(({ headers, body }) => headers['x-admin-session'] && body.reason === 'Synthetic legacy cleanup request.')).toBe(true);
+  expect(requests.filter(({ path }) => /webhook|claim|invite/.test(path))).toEqual([]);
+});
 
 for (const scope of ['MUSIC', 'VIP_ADULT']) {
   test(`admin publishes ${scope} with explicit scope and the matching access contract`, async ({ page }) => {

@@ -406,6 +406,6 @@ describe("browser and repository security contract", () => {
     expect(telegram).toContain("sendTelegramAccessConfirmation");
     expect(membership).toContain('requestUrl.pathname === "/v1/telegram/webhook"');
     expect(frontend).not.toContain("premiumTelegram.inviteUrl");
-    expect(frontend).toContain("createPremiumTelegramClaim");
+    expect(frontend).not.toContain("createPremiumTelegramClaim");
   });
 });

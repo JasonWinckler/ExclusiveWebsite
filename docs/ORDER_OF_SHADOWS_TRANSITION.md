@@ -11,11 +11,12 @@ into a German religious-order theme. There is no domain, DNS or subpath change.
 | Membership | Shared music content | Additional benefits |
 | --- | --- | --- |
 | Basic Shadow | All music behind-the-scenes posts and member comments | Direct support for Jason’s music and voice work |
-| Premium Shadow | The same music content as every paid tier | Private Telegram community, topic voting and 15% off all Jason Shadow services |
+| Premium Shadow | The same music content as every paid tier | Topic voting and 15% off all Jason Shadow services |
 | VIP Shadow | The same music content as every paid tier | 15% off all Jason Shadow services, private WhatsApp contact, meet-ups by arrangement and a separate optional age-verified adult area |
 
-VIP does **not** inherit Premium’s Telegram channel. The 15% benefit covers all
-services offered by Jason Shadow. Redemption uses the existing quote/enquiry
+Telegram is **not included in any music membership**. The owner has approved
+VIP WhatsApp contact for the music business. The 15% benefit covers all services
+offered by Jason Shadow. Redemption uses the existing quote/enquiry
 process: the member identifies their active membership, and the service, date
 and discounted price are agreed before booking. No discount code or automated
 service-booking system is introduced.
@@ -51,8 +52,11 @@ Migration `0027_order_of_shadows_music_membership.sql` establishes the initial
 music conversion, cancels legacy newsletter campaigns and quarantines existing
 posts as `LEGACY_ADULT`. Migration
 `0028_membership_benefits_vip_area.sql` implements the corrected tier benefits
-and separate private-area policy. Apply both before deploying code that uses
-their schema. Read the exact migration files for the final SQL contract.
+and separate private-area policy. Migration
+`0029_remove_telegram_music_perks.sql` disables the remaining Telegram music
+catalog benefits without removing historical records. Apply each required
+migration before deploying code that relies on it. Read the exact migration
+files for the final SQL contract.
 
 Legacy media is not bulk-republished or deleted by the conversion. A deliberate
 per-item administrator review, explicit confirmation and reason are required
@@ -75,16 +79,25 @@ historical timestamps. Music newsletter consent uses `newsletter-music-v2` and
 requires a new double opt-in. The migration sends no reconfirmation emails.
 
 The privacy notice uses `PRIVACY-MUSIC-2026-10-30-V2` and new checkout acceptance
-uses `ORDER-2026-10-30-V2`. Keep frontend and backend versions aligned, retaining
-historical acceptance snapshots.
+uses `ORDER-2026-10-30-V3` for the offer without a Telegram music benefit. Keep
+frontend and backend versions aligned, retaining historical acceptance
+snapshots. This change sends no re-consent email and does not rewrite existing
+contracts. The privacy version remains V2 because historical data and its
+lifecycle remain in place and no new collection is introduced.
 
-`MUSIC_COMMUNITY_REVIEWED` remains false until the owner checks the configured
-Premium Telegram channel, bot copy and VIP WhatsApp destination. Old invitation
-capabilities are expired by migration and must be revoked through Telegram sync
-before reopening enrollment. Join webhooks recheck review status, current
-eligibility and invite validity. Revocation/expiry must keep working while the
-review gate is false. Premium-only authorization must also remove Telegram
-access when an account’s actual highest active tier becomes VIP.
+The destination gates are independent. The owner has approved WhatsApp for the
+music business: the reviewed production source configuration sets
+`VIP_WHATSAPP_MUSIC_REVIEWED=true` for the protected active-VIP contact.
+`MUSIC_TELEGRAM_REVIEWED=false` blocks new Telegram linking, reconnection and
+invitations for music memberships because the existing Telegram destination is
+for adult content. The old shared `MUSIC_COMMUNITY_REVIEWED` flag is no longer
+read. Do not enable it as a workaround or add Telegram access through the
+optional onsite VIP area.
+
+Migration 0029 disables Telegram music catalog promises; it does not erase
+historical associations or itself remove current channel members. Retention,
+revocation and deletion controls for those existing records continue to work.
+No new adult Telegram routing is part of this change.
 
 ## Guarded production workflow
 
@@ -119,7 +132,7 @@ After reviewing an exact revision, deployment has two supported entry points:
 The workflow checks out and verifies that exact revision. Before any production
 changes, it runs rollout guard tests, backend typechecking/tests, the frontend
 production build and browser regression tests. It then inspects the existing
-stack and refuses any pending migration other than the reviewed 0027/0028 pair.
+stack and refuses any pending migration other than reviewed 0027, 0028 or 0029.
 
 The deployment first deploys maintenance with newsletter delivery paused and
 waits for an existing scheduled invocation to finish before schema changes. The
@@ -135,10 +148,15 @@ the newsletter pause override still take precedence; secrets remain intact.
 
 Before resuming ordinary opted-in newsletter delivery, the script verifies
 canonical API health and service bindings, renamed products and benefits,
-Premium/VIP discounts, the absence of a VIP Telegram benefit, exact built
-JavaScript/CSS entry hashes and the successful canonical Pages deployment’s
-commit. These public checks send no test email, make no payment and perform no
-authenticated member operation.
+Premium/VIP discounts, the absence of Telegram benefits in every tier, exact
+built JavaScript/CSS entry hashes and the successful canonical Pages deployment’s
+commit. It also checks the membership Worker’s two review flags and the presence
+and secret-binding type of `VIP_WHATSAPP_NUMBER`. Only boolean results are
+logged: the contact number is not read or disclosed, and its hidden value’s
+validity is not proven by checking the binding. Missing or incorrect
+configuration stops the rollout before newsletter delivery resumes. These
+checks send no test email, make no payment and perform no authenticated member
+operation.
 
 If a rollout stops while delivery is paused, delivery stays paused and retention
 continues. Correct the reported failure and verify the release before resuming
@@ -167,20 +185,23 @@ before reporting a live release or repaired owner access.
 1. Review migration SQL and record the D1 recovery point. Quiesce newsletter
    sending during cutover so an already in-flight old message cannot survive
    campaign cancellation.
-2. Apply both schema/catalog migrations before deploying dependent Workers.
+2. Apply the required reviewed schema/catalog migrations, including 0029 for
+   removal of Telegram music perks, before deploying dependent Workers.
 3. Deploy private Workers with existing bindings/secrets. Preserve all identity,
    entitlement, device, private R2, admin MFA and evidence-deletion controls.
 4. Revoke expired external invitations; publish the frontend and localized
    static/legal pages together on the existing domain.
 5. Check registration, login/MFA, profile and consent, orders/payment status,
-   shared paid music access, Premium-only Telegram, Premium/VIP discounts,
-   VIP WhatsApp/meet-ups and the separately age-gated VIP content path.
+   shared paid music access, absence of Telegram music benefits, Premium/VIP
+   discounts, VIP WhatsApp/meet-ups and the separately age-gated VIP content path.
 6. Verify legacy content remains inaccessible unless individually approved for
    the private area. Verify non-VIP, unverified, expired, held and simulated
    accounts cannot access private-area listings, metadata, media or comments.
 7. Check newsletter double-opt-in and an authorized delivery using controlled
    test accounts. Keep private-area content out of the music newsletter.
-8. Enable community disclosure only after its real destinations are reviewed.
+8. Confirm `VIP_WHATSAPP_MUSIC_REVIEWED=true` for the owner-approved music
+   contact and `MUSIC_TELEGRAM_REVIEWED=false`. Verify protected WhatsApp access
+   with an authorized VIP account; do not expose the number in logs or tests.
 
 A local build or PR is reviewable source, not evidence of a production release.
 Do not perform production migrations, payments, sends or publication merely to

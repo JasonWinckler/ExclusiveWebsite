@@ -35,10 +35,12 @@ test.describe('membership public experience', () => {
     await expect(page.locator('.order-brand')).toHaveAttribute('href', 'https://jason-shadow.com/');
     await expect(page.locator('.order-brand img')).toHaveAttribute('src', '/assets/music/logo.png');
     await expect(page.locator('#pricing')).toContainText(/no automatic renewal/i);
+    await expect(page.locator('body')).not.toContainText(/telegram/i);
     await expect(page.locator('a[href*="onlyfans" i], script[src*="paypal" i]')).toHaveCount(0);
     await page.getByRole('button', { name: 'DE', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#pricing')).toContainText(/keine automatische Verlängerung/i);
+    await expect(page.locator('body')).not.toContainText(/telegram/i);
   });
 
   test('German membership heading fits narrow phone viewports', async ({ page }) => {

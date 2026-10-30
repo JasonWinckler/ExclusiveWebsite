@@ -39,12 +39,16 @@ for (const tier of ['EXCLUSIVE_BASIC', 'EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP']) {
       await expect(dialog.locator('.service-discount')).toContainText('every Jason Shadow service');
       await expectDiscountLayout(page);
     }
-    if (tier === 'EXCLUSIVE_PREMIUM') {
-      await expect(dialog.locator('.telegram-access-card')).toBeVisible();
-      expect(state.requests.some(({ path }) => path === '/api/member/v1/perks/telegram')).toBe(true);
+    await expect(dialog.locator('.telegram-access-card')).toHaveCount(0);
+    await expect(dialog).not.toContainText(/telegram/i);
+    expect(state.requests.filter(({ path }) => path.includes('/perks/telegram'))).toEqual([]);
+    if (tier === 'EXCLUSIVE_VIP') {
+      await expect(dialog.getByRole('heading', { name: 'My private WhatsApp number' })).toBeVisible();
+      await expect(dialog.getByRole('link', { name: 'Open WhatsApp', exact: true })).toHaveAttribute('href', 'https://wa.me/447700900123');
+      expect(state.requests.some(({ path }) => path.endsWith('/perks/vip-whatsapp'))).toBe(true);
     } else {
-      await expect(dialog.locator('.telegram-access-card')).toHaveCount(0);
-      expect(state.requests.filter(({ path }) => path === '/api/member/v1/perks/telegram')).toEqual([]);
+      await expect(dialog.getByRole('link', { name: 'Open WhatsApp', exact: true })).toHaveCount(0);
+      expect(state.requests.filter(({ path }) => path.endsWith('/perks/vip-whatsapp'))).toEqual([]);
     }
     expect(state.requests.filter(({ scope }) => scope === 'VIP_ADULT')).toEqual([]);
     if (tier !== 'EXCLUSIVE_BASIC') {
@@ -53,6 +57,8 @@ for (const tier of ['EXCLUSIVE_BASIC', 'EXCLUSIVE_PREMIUM', 'EXCLUSIVE_VIP']) {
       await page.getByRole('tab', { name: 'Zugang & Vorteile', exact: true }).click();
       await expect(page.locator('.service-discount')).toContainText('15 %');
       await expectDiscountLayout(page);
+      await expect(page.getByRole('dialog')).not.toContainText(/telegram/i);
+      expect(state.requests.filter(({ path }) => path.includes('/perks/telegram'))).toEqual([]);
     }
   });
 }

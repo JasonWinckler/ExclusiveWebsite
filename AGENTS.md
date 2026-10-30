@@ -43,6 +43,13 @@ network calls or deployment dependencies.
   addition to normal account, device and jurisdiction authorization.
 - Tier labels are Basic Shadow, Premium Shadow and VIP Shadow. All paid tiers
   share the same music behind-the-scenes content. Premium and VIP include 15%
-  off all Jason Shadow services. Telegram is Premium only; VIP retains
-  WhatsApp and meet-ups. Never infer that VIP inherits Telegram.
+  off all Jason Shadow services. VIP includes owner-approved WhatsApp contact
+  for the music business and meet-ups. Telegram is not included in any music
+  membership; its existing adult-content destination must never be promoted or
+  linked from music benefits. This owner clarification supersedes earlier
+  Premium-only Telegram instructions. No adult Telegram routing is introduced.
+- Keep the destination gates separate: `VIP_WHATSAPP_MUSIC_REVIEWED=true` for
+  the approved production WhatsApp destination and `MUSIC_TELEGRAM_REVIEWED=false`.
+  The historical shared `MUSIC_COMMUNITY_REVIEWED` flag is unused. Preserve
+  legacy Telegram records and cleanup/revocation controls.
 - Maintain German and English copy together and avoid duplicate text.

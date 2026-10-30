@@ -50,17 +50,17 @@ The repository owns the complete customer and administrator experience:
 - administrator simulation of guest, registered, verified and membership
   perspectives without disclosing secret member values;
 - transactional mail through the shared Microsoft 365 mailbox;
-- data-minimised Telegram access for active Premium and VIP members;
+- owner-approved WhatsApp contact for active VIP music members;
 - a public `/linktree/` hub connecting memberships to the official music
   website at `jason-shadow.com`.
 
 This is a single-creator platform. Customers cannot upload public content.
 Members support music and voice work. Basic Shadow, Premium Shadow and VIP
 Shadow share the same music behind-the-scenes collection. Premium Shadow and
-VIP Shadow include 15% off all Jason Shadow services. Telegram belongs only to
-Premium Shadow; VIP Shadow adds WhatsApp, meet-ups and an optional separately
-age-verified private adult area. These paid memberships are not described as tax-deductible charitable
-donations. Newsletter consent remains optional and uses double opt-in.
+VIP Shadow include 15% off all Jason Shadow services. VIP Shadow adds approved
+WhatsApp contact, meet-ups and an optional separately age-verified private adult
+area. Telegram is not included in any music membership. These paid memberships
+are not described as tax-deductible charitable donations. Newsletter consent remains optional and uses double opt-in.
 
 ## Non-negotiable safety boundary
 
@@ -201,9 +201,12 @@ are:
 | VIP | 6 months | EUR 199.99 |
 | VIP | 12 months | EUR 399.99 |
 
-Perks are normalised by tier rather than duplicated for every term. Premium
-and VIP include Telegram access; VIP adds its private benefits. The UI reads
-the catalog rather than hardcoding a second source of truth.
+Perks are normalised by tier rather than duplicated for every term. Every paid
+tier receives the same music BTS collection. Premium and VIP include 15% off all
+Jason Shadow services; VIP adds approved WhatsApp contact, meet-ups and the
+optional onsite age-gated area. Migration 0029 disables Telegram music perks
+without deleting their historical records. The UI reads the catalog rather
+than hardcoding a second source of truth.
 
 The SEPA flow creates a pending order before presenting payment details. It
 uses a unique, assignable purpose, an EPC QR credit transfer and a 48-hour
@@ -257,7 +260,7 @@ access is audited. Only a qualified current admin may view it.
   must remain possible despite an entitlement; retained invoice/financial
   records are separated from interactive access.
 
-## Email, newsletter and Telegram
+## Email, newsletter and external contact
 
 `exclusive-identity-projection` sends branded transactional email as
 `info@exclusive.jason-shadow.com` through Microsoft Graph. It handles account
@@ -269,11 +272,17 @@ Newsletter subscription uses double opt-in. Every campaign email includes a
 direct unsubscribe link. The system stores only the consent and limited
 delivery state it needs.
 
-Premium and VIP members can link one Telegram account. Claim tokens are random,
-stored only as hashes and expire after ten minutes. The bot creates a single-
-use, account-bound channel invitation with a short lifetime. The invitation is
-revoked after joining, and access is removed when membership or account access
-ends. Chats, usernames, profile photos and message content are not stored.
+The owner has approved WhatsApp for the music business. Active VIP members can
+open its contact benefit when `VIP_WHATSAPP_MUSIC_REVIEWED=true`. Telegram is an
+adult-content destination and is not included in music memberships:
+`MUSIC_TELEGRAM_REVIEWED=false` blocks new linking, reconnection and invitations.
+The former shared `MUSIC_COMMUNITY_REVIEWED` flag is unused. This does not add
+adult Telegram access to the optional onsite VIP area.
+
+Historical Telegram state remains available for its existing retention,
+revocation and deletion controls; disabling catalog perks does not erase earlier
+records or itself remove existing members. No chats, usernames, profile photos
+or message content are stored.
 
 ## Repository layout
 
@@ -313,9 +322,10 @@ Important secret names include:
   `GRAPH_CLIENT_SECRET`;
 - SEPA/invoicing: `SEPA_BENEFICIARY_NAME`, `SEPA_IBAN`, `SEPA_BIC` and
   `INVOICE_TAX_IDENTIFIER`;
-- member perks: `VIP_WHATSAPP_NUMBER`, `TELEGRAM_BOT_TOKEN`,
-  `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET` and
-  `TELEGRAM_INVITE_ENCRYPTION_KEY`.
+- VIP music contact: `VIP_WHATSAPP_NUMBER`;
+- retained Telegram operations: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`,
+  `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_INVITE_ENCRYPTION_KEY`. These are not
+  music-membership benefits; do not publish them or enable new music access.
 
 Never print, copy into chat, commit or expose these values in a `VITE_*`
 variable. During key rotation, keep current and previous versions only for the

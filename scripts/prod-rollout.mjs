@@ -14,6 +14,7 @@ const siteOrigin = "https://exclusive.jason-shadow.com";
 const workers = ["identity-projection", "auth-api", "membership-api", "admin-api", "maintenance-jobs"];
 const allowedMigrations = new Set([
   "0027_order_of_shadows_music_membership.sql", "0028_membership_benefits_vip_area.sql",
+  "0029_remove_telegram_music_perks.sql",
 ]);
 const operation = process.env.PRODUCTION_OPERATION || "inspect";
 const expectedCommit = process.env.EXPECTED_COMMIT || "";
@@ -104,6 +105,15 @@ async function readPagesProject() {
   return project;
 }
 
+async function readMembershipSettings() {
+  return readCloudflareMetadata("/workers/scripts/exclusive-membership-api/settings", "Membership release configuration inspection");
+}
+
+async function inspectWhatsAppSecret() {
+  const configured = assertWhatsAppSecretConfigured(await readMembershipSettings());
+  note(`Membership preflight configuration: ${JSON.stringify({ whatsappNumberSecretConfigured: configured })}. Secret value and phone validity were not inspected; approval flags are checked after deployment.`);
+}
+
 function verifyCredentials() {
   requireCondition(Boolean(process.env.CLOUDFLARE_API_TOKEN), "GitHub Actions secret CLOUDFLARE_API_TOKEN is missing.");
   requireCondition(/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID || ""), "GitHub Actions variable CLOUDFLARE_ACCOUNT_ID is missing or invalid.");
@@ -136,7 +146,7 @@ async function inspect() {
     const created = latest?.created_on;
     requireCondition(typeof id === "string" && /^[A-Za-z0-9-]{1,80}$/.test(id) && typeof created === "string" && !Number.isNaN(Date.parse(created)), `No valid production deployment metadata for ${name}.`);
     note(`Worker exclusive-${name}: deployment ${id}; created ${new Date(created).toISOString()}.`);
-  }), readPagesProject()]);
+  }), readPagesProject(), inspectWhatsAppSecret()]);
   for (const result of results) if (result.status === "rejected") failures.push(result.reason.message);
   for (const failure of failures) note(`Inspection failed: ${failure}`);
   requireCondition(failures.length === 0, `${failures.length} production metadata checks failed. No writes were performed; inspect the individual HTTP/numeric-code results above.`);
@@ -186,7 +196,41 @@ export function assertPublicCatalog(catalog) {
   for (const tier of ["EXCLUSIVE_PREMIUM", "EXCLUSIVE_VIP"]) {
     requireCondition(catalog.tierPerks[tier].some((perk) => /15\s*%/.test(`${perk.title} ${perk.description}`)), `Public ${tier} service discount is missing.`);
   }
-  requireCondition(!catalog.tierPerks.EXCLUSIVE_VIP.some((perk) => /telegram/i.test(`${perk.id} ${perk.title} ${perk.description}`)), "Public VIP catalog still advertises the removed Telegram benefit.");
+  requireCondition(Object.values(catalog.tierPerks).every((perks) => Array.isArray(perks) &&
+    !perks.some((perk) => /telegram/i.test(`${perk.id} ${perk.title} ${perk.description}`))),
+  "Public music catalog still advertises the removed Telegram benefit.");
+}
+
+export function assertReviewedMigrations(pending) {
+  requireCondition(Array.isArray(pending) && pending.every((name) => allowedMigrations.has(name)),
+    "Unreviewed or older pending migrations detected; refusing production changes.");
+}
+
+function membershipBinding(settings, name) {
+  requireCondition(Array.isArray(settings?.bindings), "Membership Worker settings do not contain binding metadata.");
+  const matches = settings.bindings.filter((item) => item?.name === name);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function assertWhatsAppSecretConfigured(settings) {
+  // Settings expose a secret's name and type. Do not inspect any value or
+  // request the authenticated perk endpoint to retrieve the private number.
+  const configured = membershipBinding(settings, "VIP_WHATSAPP_NUMBER")?.type === "secret_text";
+  requireCondition(configured, "Membership Worker WhatsApp number secret binding is missing or has an unexpected type.");
+  return configured;
+}
+
+export function assertMembershipReleaseSettings(settings) {
+  const whatsappReview = membershipBinding(settings, "VIP_WHATSAPP_MUSIC_REVIEWED");
+  const telegramReview = membershipBinding(settings, "MUSIC_TELEGRAM_REVIEWED");
+  const status = {
+    whatsappMusicReviewed: whatsappReview?.type === "plain_text" && whatsappReview.text === "true",
+    telegramMusicDisabled: telegramReview?.type === "plain_text" && telegramReview.text === "false",
+    whatsappNumberSecretConfigured: assertWhatsAppSecretConfigured(settings),
+  };
+  requireCondition(status.whatsappMusicReviewed, "Membership Worker WhatsApp music approval flag is not enabled.");
+  requireCondition(status.telegramMusicDisabled, "Membership Worker Telegram music approval flag is not explicitly disabled.");
+  return status;
 }
 
 export function assertBuiltFrontend(builtHtml, liveHtml) {
@@ -233,7 +277,9 @@ async function verifyPublicRelease() {
   requireCondition(page.ok, "Canonical frontend verification failed.");
   assertBuiltFrontend(readFileSync(resolve(root, "dist/index.html"), "utf8"), await page.text());
   assertCanonicalDeployment(await readPagesProject(), expectedCommit);
-  note("Canonical health, service bindings, renamed tiers, service discounts, removed VIP Telegram benefit, exact frontend asset hashes and Pages production commit verified. No email, payment or authenticated member operation was invoked.");
+  const membershipStatus = assertMembershipReleaseSettings(await readMembershipSettings());
+  note(`Membership release configuration: ${JSON.stringify(membershipStatus)}. Secret value and phone validity were not inspected.`);
+  note("Canonical health, service bindings, renamed tiers, service discounts, Telegram absence across all music tiers, exact frontend asset hashes and Pages production commit verified. No email, payment or authenticated member operation was invoked.");
 }
 
 async function main() {
@@ -269,7 +315,7 @@ async function main() {
     note("Read-only inspection completed. No migrations, role changes, deployments, mail or transactions were performed.");
     return;
   }
-  requireCondition(pending.every((name) => allowedMigrations.has(name)), "Unreviewed or older pending migrations detected; refusing production changes.");
+  assertReviewedMigrations(pending);
   deployWorker("maintenance-jobs", true);
   newslettersPaused = true;
   await drainMaintenance();

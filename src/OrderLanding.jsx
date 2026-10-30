@@ -20,7 +20,7 @@ const content = {
     photoCaption: "On stage at KÖPI am Ring, Rheine",
     benefits: [
       { number: "I", title: "Behind the scenes", text: "Discover members-only photos, videos and personal updates from my music and speaker work. Basic Shadow, Premium Shadow and VIP Shadow all include the same behind-the-scenes collection." },
-      { number: "II", title: "Benefits beyond the content", text: "Premium Shadow and VIP Shadow include 15% off all services offered by Jason Shadow. Premium Shadow also includes the private Telegram community." },
+      { number: "II", title: "Benefits beyond the content", text: "Premium Shadow and VIP Shadow include 15% off all services offered by Jason Shadow. Premium Shadow also lets you take part in selected votes on future topics and formats." },
       { number: "III", title: "An even closer connection", text: "VIP Shadow includes personal meet-ups by arrangement and private WhatsApp access. A chance to connect beyond the screen, with the details agreed together." },
     ],
     supportEyebrow: "YOUR SUPPORT MAKES A DIFFERENCE",
@@ -38,7 +38,7 @@ const content = {
     faqTitle: "Before you step inside.",
     faqs: [
       { q: "What is the Exclusive Membership?", a: "It is Jason Shadow’s paid supporter membership for his music and speaker business. Order of Shadows is the name of the community. All three paid memberships include the same behind-the-scenes content; their additional personal benefits differ." },
-      { q: "What is the difference between the memberships?", a: "Basic Shadow includes all music behind-the-scenes posts and member comments. Premium Shadow adds the private Telegram community and 15% off all Jason Shadow services. VIP Shadow includes the same behind-the-scenes content, the 15% service discount, WhatsApp contact and meet-ups by arrangement. Telegram is a Premium Shadow benefit, not a VIP Shadow benefit." },
+      { q: "What is the difference between the memberships?", a: "Basic Shadow includes all music behind-the-scenes posts and member comments. Premium Shadow adds selected topic votes and 15% off all Jason Shadow services. VIP Shadow includes the same behind-the-scenes content, the 15% service discount, WhatsApp contact and meet-ups by arrangement." },
       { q: "How does the 15% service discount work?", a: "Premium Shadow and VIP Shadow receive 15% off all services offered by Jason Shadow. Mention your active membership when requesting a quote. The service, date and discounted total are agreed before booking." },
       { q: "How do payment and renewal work?", a: "Choose a fixed term and pay once by SEPA bank transfer using the payment details provided with your order. Access starts after payment is confirmed. Your membership does not renew automatically." },
       { q: "How do VIP meet-ups work?", a: "Personal meet-ups are included with VIP Shadow membership and arranged together. Dates, location, availability, and the applicable conditions are agreed in advance. Please read the VIP meet-up details before choosing your membership." },
@@ -74,7 +74,7 @@ const content = {
     photoCaption: "Auf der Bühne im KÖPI am Ring, Rheine",
     benefits: [
       { number: "I", title: "Hinter den Kulissen", text: "Entdecke exklusive Fotos, Videos und persönliche Einblicke in meine Arbeit als Sänger und Sprecher. Basic Shadow, Premium Shadow und VIP Shadow erhalten dieselbe Behind-the-Scenes-Sammlung." },
-      { number: "II", title: "Vorteile über die Inhalte hinaus", text: "Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Bei Premium Shadow ist außerdem die private Telegram-Community inklusive." },
+      { number: "II", title: "Vorteile über die Inhalte hinaus", text: "Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Mit Premium Shadow kannst du außerdem an ausgewählten Abstimmungen über künftige Themen und Formate teilnehmen." },
       { number: "III", title: "Noch persönlicher verbunden", text: "Mit VIP Shadow sind persönliche Treffen nach Vereinbarung und mein privater WhatsApp-Kontakt inklusive. Die Details stimmen wir gemeinsam ab." },
     ],
     supportEyebrow: "DEINE UNTERSTÜTZUNG BEWEGT ETWAS",
@@ -92,7 +92,7 @@ const content = {
     faqTitle: "Bevor du eintrittst.",
     faqs: [
       { q: "Was ist die exklusive Mitgliedschaft?", a: "Damit unterstützt du Jason Shadows Musik- und Sprecher-Business. Order of Shadows ist der Name der Community. Alle drei kostenpflichtigen Mitgliedschaften enthalten dieselben Behind-the-Scenes-Inhalte und unterscheiden sich bei den zusätzlichen persönlichen Vorteilen." },
-      { q: "Wie unterscheiden sich die Mitgliedschaften?", a: "Basic Shadow enthält alle Musik-Behind-the-Scenes-Beiträge und Mitglieder-Kommentare. Premium Shadow ergänzt die private Telegram-Community und 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. VIP Shadow enthält dieselben Einblicke, den 15-%-Rabatt, WhatsApp-Kontakt und Treffen nach Vereinbarung. Telegram gehört zu Premium Shadow und ist bei VIP Shadow nicht enthalten." },
+      { q: "Wie unterscheiden sich die Mitgliedschaften?", a: "Basic Shadow enthält alle Musik-Behind-the-Scenes-Beiträge und Mitglieder-Kommentare. Premium Shadow ergänzt ausgewählte Themen-Votings und 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. VIP Shadow enthält dieselben Einblicke, den 15-%-Rabatt, WhatsApp-Kontakt und Treffen nach Vereinbarung." },
       { q: "Wie funktioniert der 15-%-Rabatt auf Dienstleistungen?", a: "Premium Shadow und VIP Shadow erhalten 15 % Rabatt auf alle Dienstleistungen von Jason Shadow. Nenne deine aktive Mitgliedschaft bei deiner Anfrage. Leistung, Termin und rabattierter Gesamtpreis werden vor der Buchung vereinbart." },
       { q: "Wie funktionieren Zahlung und Verlängerung?", a: "Du wählst eine feste Laufzeit und bezahlst einmalig per SEPA-Überweisung mit den Zahlungsdaten aus deiner Bestellung. Dein Zugang startet nach bestätigtem Zahlungseingang. Deine Mitgliedschaft verlängert sich nicht automatisch." },
       { q: "Wie funktionieren die VIP-Treffen?", a: "Persönliche Treffen sind bei VIP Shadow inklusive und werden gemeinsam vereinbart. Termin, Ort, Verfügbarkeit und die geltenden Bedingungen stimmen wir vorab ab. Bitte lies die Hinweise zu VIP-Treffen, bevor du deine Mitgliedschaft auswählst." },

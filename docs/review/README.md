@@ -26,14 +26,14 @@ No real test email or newsletter was sent for this review.
 
 ![Music newsletter design](newsletter-preview.png)
 
-## Verification
+## Verification of the 0027/0028 release
 
 - Production frontend build and existing bundle budgets pass.
-- Backend TypeScript checks and all 152 tests in 20 files pass, including
+- Backend TypeScript checks and all 171 tests in 22 files pass, including
   migration preservation, content separation, newsletter consent, owner-role
   repair guards and maintenance compatibility during migration.
-- All ten rollout guard and diagnostic tests pass.
-- All 68 Playwright checks pass on desktop and mobile with synthetic API fixtures,
+- All 21 rollout guard and diagnostic tests pass.
+- All 70 Playwright checks pass on desktop and mobile with synthetic API fixtures,
   including the final layout and age-review refresh corrections.
 - Original logo and owned artist photographs were copied from the music website.
 
@@ -43,7 +43,7 @@ membership/payment behavior still need controlled production verification.
 The [transition guide](../ORDER_OF_SHADOWS_TRANSITION.md) documents the guarded
 production workflow and release checks.
 
-## Production status — 2026-10-30
+## Production history — 2026-10-30, migrations 0027/0028
 
 The independent owner operation [succeeded in production](https://github.com/JasonWinckler/ExclusiveWebsite/actions/runs/41046845875):
 the existing `business@jason-shadow.com` account has ADMIN access with MFA
@@ -68,8 +68,30 @@ The workflow uses `CLOUDFLARE_API_TOKEN`; the global API key is not used. Worker
 configurations preserve existing operational variables during both scripted and
 automatic Cloudflare deployments; explicit configuration still takes precedence.
 
-Remaining operational checks: external Premium Telegram/VIP WhatsApp destinations
-remain behind `MUSIC_COMMUNITY_REVIEWED=false` until owner review; archived adult
-posts require individual administrator publication; earlier newsletter consent
-requires a new music opt-in. Actual mailbox delivery and provider/cached sender
-names have not been verified by sending a test message.
+At that release, both external destinations remained behind the former shared
+review gate. The owner has since approved WhatsApp for music and clarified that
+Telegram is an adult-content destination, outside every music membership.
+The follow-up source correction is described below; the earlier release record
+does not establish that this correction is live.
+
+## WhatsApp/Telegram correction — awaiting release evidence
+
+Current source removes Telegram benefits from all music tiers and introduces
+migration `0029_remove_telegram_music_perks.sql`. The destinations have separate
+configuration: `VIP_WHATSAPP_MUSIC_REVIEWED=true` for the approved VIP music
+contact and `MUSIC_TELEGRAM_REVIEWED=false` for Telegram. The former shared flag
+is unused. Historical Telegram records and their cleanup/revocation controls
+remain; no adult Telegram routing is added. New checkout terms use
+`ORDER-2026-10-30-V3`, preserving earlier acceptance snapshots. Privacy remains V2.
+
+Backend typechecking and all 171 tests in 22 files pass for this correction,
+as do all 21 focused rollout guard and diagnostic tests and 70 desktop/mobile
+browser checks. Production build and bundle budgets pass.
+Production migration, updated Worker settings and frontend publication for this
+follow-up have not yet been established by a recorded rollout. The screenshots
+above reflect this correction using synthetic accounts and do not verify a
+production release.
+
+Archived adult posts still require individual administrator publication, and
+earlier newsletter consent requires a new music opt-in. Actual mailbox delivery
+and provider/cached sender names have not been verified by sending a test message.
