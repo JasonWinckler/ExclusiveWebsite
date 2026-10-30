@@ -69,8 +69,12 @@ function json(output, label) {
 }
 
 function sqlRows(fileOrCommand, isFile = false) {
+  // Remote --file uses Wrangler's bulk-import path, whose progress output is
+  // not the query JSON contract. Read our fixed, reviewed SELECT file and use
+  // --command so bounded status checks return rows without a bulk import.
+  const statement = isFile ? readFileSync(resolve(backend, fileOrCommand), "utf8") : fileOrCommand;
   const output = wr("Read bounded D1 metadata", ["d1", "execute", database, "--remote", "--config", "wrangler.membership-api.jsonc",
-    isFile ? "--file" : "--command", fileOrCommand, "--json"]);
+    "--command", statement, "--json"]);
   const statements = json(output, "D1");
   requireCondition(Array.isArray(statements) && statements.every((item) => item.success !== false), "D1 metadata read failed.");
   return statements.flatMap((item) => item.results || []);
