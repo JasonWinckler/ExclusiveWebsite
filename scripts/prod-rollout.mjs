@@ -74,7 +74,8 @@ function sqlRows(fileOrCommand, isFile = false) {
   // --command so bounded status checks return rows without a bulk import.
   const statement = isFile ? readFileSync(resolve(backend, fileOrCommand), "utf8") : fileOrCommand;
   const output = wr("Read bounded D1 metadata", ["d1", "execute", database, "--remote", "--config", "wrangler.membership-api.jsonc",
-    "--command", statement, "--json"]);
+    // Preserve a leading SQL comment as part of this value, not a CLI option.
+    `--command=${statement}`, "--json"]);
   const statements = json(output, "D1");
   requireCondition(Array.isArray(statements) && statements.every((item) => item.success !== false), "D1 metadata read failed.");
   return statements.flatMap((item) => item.results || []);
