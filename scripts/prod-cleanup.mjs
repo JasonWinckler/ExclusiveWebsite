@@ -33,7 +33,10 @@ function run(label, args) {
     cwd: backend, env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' },
     encoding: 'utf8', maxBuffer: 12 * 1024 * 1024, timeout: 120000,
   });
-  assert(result.status === 0, `${label} failed. Raw provider output withheld.`);
+  const raw = `${result.stdout || ''}\n${result.stderr || ''}`;
+  const codes = [...new Set([...raw.matchAll(/(?:\[code:\s*|"code"\s*:\s*)(\d{1,9})/g)].map(match => match[1]))];
+  const knownReasons = ['too many terms in compound SELECT', 'too many SQL variables', 'SQLITE_ERROR', 'SQLITE_AUTH', 'SQLITE_BUSY', 'Too many subrequests', 'authorization failed', 'D1_ERROR'].filter(reason => raw.includes(reason));
+  assert(result.status === 0, `${label} failed; numeric codes ${codes.join(',') || 'none'}; known diagnostics ${knownReasons.join(',') || 'none'}. Raw provider output withheld.`);
   try { return JSON.parse(result.stdout); } catch { throw new Error(`${label} returned unexpected metadata. Raw provider output withheld.`); }
 }
 function query(sql) {
@@ -78,7 +81,10 @@ async function main() {
   note(`Schema fingerprint: ${digest(schema)}; application tables: ${expectedTables.length}.`);
   const foreignKeys = expectedTables.flatMap(name => query(`PRAGMA foreign_key_list(${name})`).map(row => ({table:name,...row})));
   note(`Foreign-key fingerprint: ${digest(foreignKeys)}; relations: ${foreignKeys.length}.`);
-  const counts = query(countSql);
+  const counts = [];
+  for (let offset = 0; offset < expectedTables.length; offset += 6) {
+    counts.push(...query(expectedTables.slice(offset, offset + 6).map(name => `SELECT '${name}' AS table_name,count(*) AS row_count FROM ${name}`).join(' UNION ALL ')));
+  }
   assert(counts.length === expectedTables.length && counts.every(row => Number.isSafeInteger(row.row_count) && row.row_count >= 0), 'Invalid table-count metadata.');
   note(`Application table counts: ${JSON.stringify(Object.fromEntries(counts.map(row => [row.table_name,row.row_count])))}.`);
   const status = query(inventorySql)[0];
