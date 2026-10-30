@@ -88,10 +88,14 @@ async function main() {
   note(`Application table counts: ${JSON.stringify(Object.fromEntries(counts.map(row => [row.table_name,row.row_count])))}.`);
   const status = query(inventorySql)[0];
   note(`Keeper and dependency status: ${JSON.stringify(status)}.`);
-  assertKeepers(status);
+  const contentStates = query('SELECT content_status,content_scope,required_tier,count(*) AS row_count FROM content_items GROUP BY content_status,content_scope,required_tier ORDER BY content_status,content_scope,required_tier');
+  note(`Content status counts: ${JSON.stringify(contentStates)}.`);
+  const attachmentStates = query('SELECT status,count(*) AS row_count FROM content_uploads GROUP BY status ORDER BY status');
+  note(`Content attachment status counts: ${JSON.stringify(attachmentStates)}.`);
   const invoiceStates = query('SELECT status,count(*) AS row_count FROM invoices GROUP BY status ORDER BY status');
   const orderStates = query('SELECT status,count(*) AS row_count FROM subscriptions GROUP BY status ORDER BY status');
   note(`Invoice status counts: ${JSON.stringify(invoiceStates)}. Order status counts: ${JSON.stringify(orderStates)}.`);
+  assertKeepers(status);
   const violations = query('PRAGMA foreign_key_check');
   assert(violations.length === 0, 'Existing foreign-key violations found; stop before a reset.');
   note('Read-only inventory completed. No customer fields, private media, credentials, database backups, email, payment or external memberships were accessed or changed.');
