@@ -3709,7 +3709,9 @@ async function route(
   if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
     const locale = requestUrl.searchParams.get("locale") === "en" ? "en" : "de";
     const cacheKey = productCatalogCacheKey(request, locale, origin);
-    const edgeCache = await caches.open("order-of-shadows-products-v3");
+    // Offer changes advance the checkout terms revision. Keep their catalogs
+    // isolated too: older edge entries may still advertise withdrawn benefits.
+    const edgeCache = await caches.open(`order-of-shadows-products-${MEMBERSHIP_TERMS_VERSION}`);
     const cached = await edgeCache.match(cacheKey);
     if (cached) return withRequestId(cached, correlationId);
     await enforceRateLimit(

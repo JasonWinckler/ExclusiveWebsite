@@ -51,6 +51,7 @@ import {
   usRegions,
 } from "./lib/privacy";
 import { friendlyErrorMessage } from "./lib/error-messages";
+import { membershipTermsVersion } from "./lib/membership-policy.js";
 
 const languageKey = "jason-shadow-membership-language";
 const initialLanguage = () => {
@@ -1070,7 +1071,7 @@ export default function App() {
     setNotice("");
     try {
       const order = await createSepaOrder(selectedProduct.sku, billing, language, {
-        termsVersion: "ORDER-2026-10-30-V3",
+        termsVersion: membershipTermsVersion,
         digitalContentConsent: digitalConsentAccepted,
         withdrawalAcknowledgement: digitalConsentAccepted,
       });

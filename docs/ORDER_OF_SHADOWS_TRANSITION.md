@@ -158,6 +158,14 @@ configuration stops the rollout before newsletter delivery resumes. These
 checks send no test email, make no payment and perform no authenticated member
 operation.
 
+Catalog caches follow the checkout terms revision. The Worker uses a distinct
+cache namespace for each offer revision; the browser and deployment verifier
+share the revision-specific German/English URLs from
+`src/lib/membership-policy.js`. This prevents retained cache entries from
+advertising withdrawn benefits after a catalog change. Advance the terms and
+catalog revision together when the offer changes; verify both visitor URLs
+without a deployment-only cache bypass.
+
 If a rollout stops while delivery is paused, delivery stays paused and retention
 continues. Correct the reported failure and verify the release before resuming
 maintenance using the command in the workflow summary. Do not automatically

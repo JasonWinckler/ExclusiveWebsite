@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { productCatalogPath } from "../src/lib/membership-policy.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backend = resolve(root, "cloudflare");
@@ -264,22 +265,32 @@ async function drainMaintenance() {
   note("Scheduled maintenance lock is drained; no existing active invocation remains.");
 }
 
+export async function verifyPublicCatalog(fetchCatalog = fetch) {
+  // Use the browser's shared offer-revision URLs and normal cache behavior.
+  // A release-only query or cache bypass could conceal stale visitor benefits.
+  await Promise.all(["de", "en"].map(async (locale) => {
+    const response = await fetchCatalog(`${siteOrigin}/api/member${productCatalogPath(locale)}`, {
+      method: "GET", headers: { Accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    requireCondition(response.ok, `Public ${locale} catalog failed (HTTP ${response.status}).`);
+    const catalog = await response.json().catch(() => { throw new Error(`Public ${locale} catalog returned invalid JSON.`); });
+    assertPublicCatalog(catalog);
+  }));
+}
+
 async function verifyPublicRelease() {
   const health = await fetch(`${siteOrigin}/api/health`, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
   requireCondition(health.ok, `Canonical API health failed (HTTP ${health.status}).`);
   const healthPayload = await health.json().catch(() => { throw new Error("Public health returned invalid JSON."); });
   requireCondition(healthPayload.status === "ok" && healthPayload.services === true, "Canonical API service bindings are not healthy.");
-  const response = await fetch(`${siteOrigin}/api/member/v1/products?locale=en&release=${expectedCommit}`, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
-  requireCondition(response.ok, `Public catalog failed (HTTP ${response.status}).`);
-  const catalog = await response.json().catch(() => { throw new Error("Public catalog returned invalid JSON."); });
-  assertPublicCatalog(catalog);
+  await verifyPublicCatalog();
   const page = await fetch(siteOrigin, { cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000) });
   requireCondition(page.ok, "Canonical frontend verification failed.");
   assertBuiltFrontend(readFileSync(resolve(root, "dist/index.html"), "utf8"), await page.text());
   assertCanonicalDeployment(await readPagesProject(), expectedCommit);
   const membershipStatus = assertMembershipReleaseSettings(await readMembershipSettings());
   note(`Membership release configuration: ${JSON.stringify(membershipStatus)}. Secret value and phone validity were not inspected.`);
-  note("Canonical health, service bindings, renamed tiers, service discounts, Telegram absence across all music tiers, exact frontend asset hashes and Pages production commit verified. No email, payment or authenticated member operation was invoked.");
+  note("Canonical health, service bindings, renamed tiers, service discounts and Telegram absence across all music tiers in both German and English frontend catalog URLs, exact frontend asset hashes and Pages production commit verified. No email, payment or authenticated member operation was invoked.");
 }
 
 async function main() {

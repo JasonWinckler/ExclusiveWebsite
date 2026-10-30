@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertBuiltFrontend, assertCanonicalDeployment, assertMembershipReleaseSettings, assertPublicCatalog, assertReviewedMigrations, assertWhatsAppSecretConfigured, numericCloudflareErrorCodes, safeWranglerErrorCodes } from "./prod-rollout.mjs";
+import { assertBuiltFrontend, assertCanonicalDeployment, assertMembershipReleaseSettings, assertPublicCatalog, assertReviewedMigrations, assertWhatsAppSecretConfigured, numericCloudflareErrorCodes, safeWranglerErrorCodes, verifyPublicCatalog } from "./prod-rollout.mjs";
+import { membershipTermsVersion, productCatalogPath } from "../src/lib/membership-policy.js";
 
 test("Cloudflare diagnostics expose only numeric codes, including nested errors", () => {
   assert.deepEqual(numericCloudflareErrorCodes([{ code: 10000, message: "private provider text", error_chain: [{ code: 9109, message: "private nested text" }] }, { code: "secret" }]), [10000, 9109]);
@@ -23,6 +24,39 @@ const catalog = () => ({
 });
 
 test("accepts complete new tier names and benefits", () => assert.doesNotThrow(() => assertPublicCatalog(catalog())));
+test("checks both frontend catalog URLs with normal caching and no release-only cachebuster", async () => {
+  const requested = [];
+  await verifyPublicCatalog(async (url, options) => {
+    requested.push(url);
+    assert.equal(options.method, "GET");
+    assert.equal(options.headers.Accept, "application/json");
+    assert.equal(options.cache, undefined);
+    assert.equal(options.redirect, "error");
+    assert.equal(new URL(url).searchParams.get("catalog"), membershipTermsVersion);
+    assert.deepEqual([...new URL(url).searchParams.keys()], ["locale", "catalog"]);
+    const value = catalog();
+    if (new URL(url).searchParams.get("locale") === "de") {
+      for (const product of value.products) product.displayName = product.displayName.replace("30 days", "30 Tage");
+      value.tierPerks.EXCLUSIVE_PREMIUM[0].title = "15 % Rabatt auf alle Dienstleistungen";
+      value.tierPerks.EXCLUSIVE_VIP[0].title = "15 % Rabatt auf alle Dienstleistungen";
+    }
+    return new Response(JSON.stringify(value));
+  });
+  assert.deepEqual(requested, ["de", "en"].map((locale) => `https://exclusive.jason-shadow.com/api/member${productCatalogPath(locale)}`));
+});
+
+for (const locale of ["de", "en"]) {
+  test(`rejects a stale Telegram benefit in the ${locale} frontend catalog response`, async () => {
+    await assert.rejects(verifyPublicCatalog(async (url) => {
+      const value = catalog();
+      if (new URL(url).searchParams.get("locale") === locale) {
+        value.tierPerks.EXCLUSIVE_PREMIUM.push({ id: "legacy-telegram", title: "Private channel", description: "Access" });
+      }
+      return new Response(JSON.stringify(value));
+    }), /Telegram/);
+  });
+}
+
 test("rejects old tier display names even when new labels appear in unrelated data", () => {
   const value = catalog(); value.products[0].displayName = "Exclusive Basic";
   value.tierPerks.EXCLUSIVE_BASIC[0].description = "Basic Shadow";

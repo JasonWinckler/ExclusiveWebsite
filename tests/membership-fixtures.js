@@ -35,7 +35,7 @@ export async function mockMembershipApi(page, options = {}) {
     const url = new URL(request.url());
     const path = url.pathname;
     const body = request.postDataJSON?.();
-    state.requests.push({ path, scope: url.searchParams.get('scope'), method: request.method(), body, headers: request.headers() });
+    state.requests.push({ path, scope: url.searchParams.get('scope'), locale: url.searchParams.get('locale'), catalog: url.searchParams.get('catalog'), method: request.method(), body, headers: request.headers() });
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
     if (path === '/api/auth/v1/account') return state.user ? json(state.user) : json({ error: { code: 'AUTHENTICATION_REQUIRED' } }, 401);
     if (path === '/api/auth/v1/register') {
