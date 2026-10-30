@@ -20,6 +20,20 @@ const expectedCommit = process.env.EXPECTED_COMMIT || "";
 const restoreOwner = process.env.RESTORE_OWNER_ADMIN === "true";
 let newslettersPaused = false;
 
+export function numericCloudflareErrorCodes(errors) {
+  if (!Array.isArray(errors)) return [];
+  return [...new Set(errors.flatMap((error) => [
+    ...(Number.isSafeInteger(error?.code) && error.code >= 0 ? [error.code] : []),
+    ...numericCloudflareErrorCodes(error?.error_chain),
+  ]))];
+}
+
+export function safeWranglerErrorCodes(output) {
+  const named = output.match(/OWNER_ADMIN_[A-Z_]+|\[code:\s*\d+\]/g) || [];
+  const numeric = [...output.matchAll(/"code"\s*:\s*(\d{1,9})(?=[,\s}])/g)].map((match) => `Cloudflare code ${match[1]}`);
+  return [...new Set([...named, ...numeric])];
+}
+
 function note(message) {
   console.log(message);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n\n`);
@@ -40,7 +54,7 @@ function run(label, command, args, { cwd = backend, production = true } = {}) {
     // Print only known error identifiers, never credentials, SQL results, API
     // bodies, signed backup URLs, account addresses or arbitrary provider text.
     const output = `${result.stdout || ""}\n${result.stderr || ""}`;
-    const codes = [...new Set(output.match(/OWNER_ADMIN_[A-Z_]+|\[code:\s*\d+\]/g) || [])];
+    const codes = safeWranglerErrorCodes(output);
     throw new Error(`${label} failed (exit ${result.status ?? "unavailable"})${codes.length ? `; ${codes.join(", ")}` : ""}. Raw output withheld; check configured permissions and private provider diagnostics.`);
   }
   return result.stdout || "";
@@ -62,43 +76,65 @@ function sqlRows(fileOrCommand, isFile = false) {
   return statements.flatMap((item) => item.results || []);
 }
 
+async function readCloudflareMetadata(path, label) {
+  let response;
+  try {
+    response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}${path}`, {
+      headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch { throw new Error(`${label}: network request failed; no response or credential details logged.`); }
+  const payload = await response.json().catch(() => null);
+  const codes = numericCloudflareErrorCodes(payload?.errors);
+  requireCondition(response.ok && payload?.success === true,
+    `${label}: HTTP ${response.status}; numeric Cloudflare error codes ${codes.join(", ") || "unavailable"}. Raw response withheld.`);
+  return payload.result;
+}
+
 async function readPagesProject() {
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${pagesProject}`, {
-    headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-  requireCondition(response.ok, `Existing Pages project metadata unavailable (HTTP ${response.status}).`);
-  const payload = await response.json().catch(() => { throw new Error("Pages metadata returned invalid JSON; response not logged."); });
-  const project = payload.result;
-  requireCondition(payload.success && project?.name === pagesProject && project.production_branch === "main", "Existing Pages project/main-branch configuration does not match the reviewed target.");
+  const project = await readCloudflareMetadata(`/pages/projects/${pagesProject}`, "Pages project inspection");
+  requireCondition(project?.name === pagesProject && project.production_branch === "main", "Existing Pages project/main-branch configuration does not match the reviewed target.");
   requireCondition(Array.isArray(project.domains) && project.domains.includes("exclusive.jason-shadow.com"), "Existing Pages project does not own exclusive.jason-shadow.com; refusing any replacement or DNS changes.");
   note(`Existing Pages project verified: ${pagesProject}; production branch main; exclusive.jason-shadow.com.`);
   return project;
 }
 
-async function inspect() {
+function verifyCredentials() {
   requireCondition(Boolean(process.env.CLOUDFLARE_API_TOKEN), "GitHub Actions secret CLOUDFLARE_API_TOKEN is missing.");
   requireCondition(/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID || ""), "GitHub Actions variable CLOUDFLARE_ACCOUNT_ID is missing or invalid.");
   wr("Cloudflare identity validation", ["whoami"]);
   note("Cloudflare credential validation succeeded; credential and account details were not printed.");
+}
+
+async function inspect() {
+  verifyCredentials();
+  const failures = [];
+  let pending = [];
   // `wrangler d1 migrations list` initializes its tracking table, so use this
   // fixed SELECT instead. Inspection must not create or change database state.
-  const applied = sqlRows("SELECT name FROM d1_migrations ORDER BY id").map((row) => row.name);
-  requireCondition(applied.every((name) => typeof name === "string" && /^\d{4}_[A-Za-z0-9_-]+\.sql$/.test(name)), "Unexpected migration metadata.");
-  const files = readdirSync(resolve(backend, "migrations")).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
-  const pending = files.filter((name) => !applied.includes(name));
-  note(`Applied migration filenames: ${applied.join(", ") || "none"}.`);
-  note(`Pending migration filenames: ${pending.join(", ") || "none"}.`);
-  for (const name of workers) {
-    const deployments = json(wr(`Inspect ${name} deployment metadata`, ["deployments", "list", "--config", `wrangler.${name}.jsonc`, "--json"]), "Worker deployments");
-    requireCondition(Array.isArray(deployments), "Unexpected Worker deployment metadata.");
+  try {
+    const applied = sqlRows("SELECT name FROM d1_migrations ORDER BY id").map((row) => row.name);
+    requireCondition(applied.every((name) => typeof name === "string" && /^\d{4}_[A-Za-z0-9_-]+\.sql$/.test(name)), "Unexpected migration metadata.");
+    const files = readdirSync(resolve(backend, "migrations")).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
+    pending = files.filter((name) => !applied.includes(name));
+    note(`Applied migration filenames: ${applied.join(", ") || "none"}.`);
+    note(`Pending migration filenames: ${pending.join(", ") || "none"}.`);
+  } catch (error) { failures.push(error.message); }
+  // Each service is checked independently; a denied Worker endpoint must not
+  // hide a different Pages permission/configuration result.
+  const results = await Promise.allSettled([...workers.map(async (name) => {
+    const result = await readCloudflareMetadata(`/workers/scripts/exclusive-${name}/deployments`, `Worker exclusive-${name} deployment inspection`);
+    requireCondition(Array.isArray(result?.deployments), `Unexpected deployment metadata for exclusive-${name}.`);
+    const deployments = [...result.deployments].sort((left, right) => String(left.created_on).localeCompare(String(right.created_on)));
     const latest = deployments.at(-1);
     const id = latest?.id;
     const created = latest?.created_on;
     requireCondition(typeof id === "string" && /^[A-Za-z0-9-]{1,80}$/.test(id) && typeof created === "string" && !Number.isNaN(Date.parse(created)), `No valid production deployment metadata for ${name}.`);
     note(`Worker exclusive-${name}: deployment ${id}; created ${new Date(created).toISOString()}.`);
-  }
-  await readPagesProject();
+  }), readPagesProject()]);
+  for (const result of results) if (result.status === "rejected") failures.push(result.reason.message);
+  for (const failure of failures) note(`Inspection failed: ${failure}`);
+  requireCondition(failures.length === 0, `${failures.length} production metadata checks failed. No writes were performed; inspect the individual HTTP/numeric-code results above.`);
   return pending;
 }
 
@@ -129,7 +165,7 @@ function restoreOwnerRole() {
   wr("Apply guarded existing-owner role repair", ["d1", "execute", database, "--remote", "--config", "wrangler.auth-api.jsonc", "--file", "operations/owner-admin-business.sql", "--yes"]);
   const after = ownerStatus();
   requireCondition(after.matching_verified_active_accounts === 1 && after.owner_admin_with_mfa_required === 1 && after.operation_recorded === 1 && after.unrevoked_auth_sessions === 0 && after.unrevoked_admin_sessions === 0,
-    "Owner repair postconditions failed; the application rollout remains complete. No credentials or account records were printed.");
+    `Owner repair postconditions failed; ${operation === "owner-admin" ? "no application deployment was attempted" : "the application rollout remains complete"}. No credentials or account records were printed.`);
   note("Existing-owner admin repair verified: exact account match, admin role, MFA required, prior sessions revoked, one audit event. No passwords or MFA secrets changed.");
 }
 
@@ -194,7 +230,7 @@ async function verifyPublicRelease() {
 }
 
 async function main() {
-  requireCondition(["inspect", "deploy"].includes(operation), "Operation must be inspect or deploy.");
+  requireCondition(["inspect", "deploy", "owner-admin"].includes(operation), "Operation must be inspect, deploy or owner-admin.");
   requireCondition(/^[a-f0-9]{40}$/.test(expectedCommit), "EXPECTED_COMMIT must be a full reviewed commit SHA.");
   const actual = run("Verify checkout", "git", ["rev-parse", "HEAD"], { cwd: root, production: false }).trim();
   requireCondition(actual === expectedCommit, "Checked-out commit does not match EXPECTED_COMMIT.");
@@ -204,10 +240,18 @@ async function main() {
   }
   requireCondition(json(readFileSync(resolve(root, "wrangler.jsonc"), "utf8"), "Pages source configuration").name === pagesProject, "Unexpected Pages deployment target.");
   note(`Operation ${operation}; exact revision ${expectedCommit}.`);
-  if (operation === "deploy") {
-    requireCondition(process.env.GITHUB_ACTIONS === "true", "Production deploy is restricted to the reviewed GitHub Actions workflow.");
+  if (operation !== "inspect") {
+    requireCondition(process.env.GITHUB_ACTIONS === "true", "Production mutations are restricted to the reviewed GitHub Actions workflow.");
     run("Rollout verification guard tests", process.execPath, ["--test", "scripts/prod-checks.test.mjs"], { cwd: root, production: false });
     run("Backend typecheck and tests", "pnpm", ["run", "check"], { production: false });
+  }
+  if (operation === "owner-admin") {
+    verifyCredentials();
+    restoreOwnerRole();
+    note("Independent existing-owner admin operation completed. No migrations, Worker/Pages deployments, newsletter changes, mail or transactions were performed.");
+    return;
+  }
+  if (operation === "deploy") {
     run("Frontend production build", "npm", ["run", "build"], { cwd: root, production: false });
     run("Frontend browser regression tests", "npm", ["test"], { cwd: root, production: false });
     requireCondition(existsSync(resolve(root, "dist/index.html")), "Built frontend is missing.");

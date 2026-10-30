@@ -32,7 +32,7 @@ No real test email or newsletter was sent for this review.
 - Backend TypeScript checks and all 152 tests in 20 files pass, including
   migration preservation, content separation, newsletter consent, owner-role
   repair guards and maintenance compatibility during migration.
-- All eight rollout guard tests pass.
+- All ten rollout guard and diagnostic tests pass.
 - All 68 Playwright checks pass on desktop and mobile with synthetic API fixtures,
   including the final layout and age-review refresh corrections.
 - Original logo and owned artist photographs were copied from the music website.

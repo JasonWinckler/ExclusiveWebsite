@@ -140,8 +140,12 @@ continues. Correct the reported failure and verify the release before resuming
 maintenance using the command in the workflow summary. Do not automatically
 restore the D1 recovery bookmark after new production writes.
 
-The optional owner repair runs only after the application rollout has passed
-its checks. Its [operation guide](../cloudflare/operations/README.md) documents
+During a full deployment, the optional owner repair runs only after the
+application rollout has passed its checks. A separately requested `owner-admin`
+operation, or lightweight `exclusive-owner-admin-<full-40-character-commit-SHA>`
+tag, runs the same guarded account operation independently after backend checks.
+It requires D1 access and performs no migration, deployment or mail operation.
+Its [operation guide](../cloudflare/operations/README.md) documents
 the exact-account assertions, session revocation, audit event and scalar
 post-checks for `business@jason-shadow.com`. A missing, unverified or inconsistent
 account stops the repair without bypassing those assertions; the application

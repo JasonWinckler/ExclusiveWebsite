@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertBuiltFrontend, assertCanonicalDeployment, assertPublicCatalog } from "./prod-rollout.mjs";
+import { assertBuiltFrontend, assertCanonicalDeployment, assertPublicCatalog, numericCloudflareErrorCodes, safeWranglerErrorCodes } from "./prod-rollout.mjs";
+
+test("Cloudflare diagnostics expose only numeric codes, including nested errors", () => {
+  assert.deepEqual(numericCloudflareErrorCodes([{ code: 10000, message: "private provider text", error_chain: [{ code: 9109, message: "private nested text" }] }, { code: "secret" }]), [10000, 9109]);
+});
+test("Wrangler diagnostics discard bodies and retain bounded error identifiers", () => {
+  assert.deepEqual(safeWranglerErrorCodes('{"code":10000,"message":"private provider text"} OWNER_ADMIN_AUTH_PROFILE_MISMATCH'), ["OWNER_ADMIN_AUTH_PROFILE_MISMATCH", "Cloudflare code 10000"]);
+});
 
 const catalog = () => ({
   products: [

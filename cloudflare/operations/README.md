@@ -9,6 +9,12 @@ The source operation has **not been applied to production by this task**. It
 requires an authenticated Cloudflare operator with D1 write access. No live
 account state is inferred from local tests.
 
+The reviewed GitHub workflow also supports an independent `owner-admin`
+operation with an explicit full commit SHA, or a lightweight tag named
+`exclusive-owner-admin-<full-40-character-commit-SHA>`. It runs backend checks
+and these exact account guards without requiring Worker/Pages deployment
+permissions and without applying migrations or sending mail.
+
 From the repository's `cloudflare/` directory, inspect the bounded status:
 
 ```sh
