@@ -81,7 +81,7 @@ describe("browser and repository security contract", () => {
       .toContain("N26_CSV_EXACT_MATCH");
   });
 
-  it("requires consent, only document-specific pages, a one-time challenge, and live video review", () => {
+  it("preserves historical age evidence review while retiring new collection", () => {
     const migration = read("cloudflare/migrations/0001_initial.sql");
     const ageRouteMigration = read("cloudflare/migrations/0014_localized_catalog_and_age_routes.sql");
     const membership = read("cloudflare/src/workers/membership-api.ts");
@@ -98,10 +98,9 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain("requiredAgeEvidence(ageCase.document_type)");
     expect(admin).toContain("AGE_APPROVAL_CHECKLIST_INCOMPLETE");
     expect(admin).toContain("deleteAgeEvidenceImmediately");
-    expect(frontend).toContain("navigator.mediaDevices.getUserMedia");
-    expect(frontend).toContain("new MediaRecorder");
-    expect(frontend).not.toMatch(/name="video"\s+type="file"/);
-    expect(frontend).toContain("prepareIdCopy");
+    expect(membership).toContain('throw new ApiError(410, "AGE_VERIFICATION_RETIRED")');
+    expect(frontend).not.toContain("navigator.mediaDevices.getUserMedia");
+    expect(frontend).not.toContain("new MediaRecorder");
   });
 
   it("localizes the product catalog server-side and supports manual admin membership grants", () => {
@@ -246,18 +245,18 @@ describe("browser and repository security contract", () => {
     expect(frontend).toContain("geschützte Zugang pausiert");
   });
 
-  it("shows truthful mobile verification security and deletion controls", () => {
-    const frontend = read("src/App.jsx");
-    const mobile = read("assets/css/adult-mobile.css");
-    expect(frontend).toContain("Privater EU-Speicher");
-    expect(frontend).toContain("Nachweis-Löschung ≤ 48h");
-    expect(frontend).toContain("Cloudflare-R2-Bucket mit EU-Jurisdiktion");
-    expect(frontend).toContain("<LivePhotoCapture");
-    expect(frontend).toContain("existing files cannot be selected");
-    expect(frontend).not.toContain('type="file" required={required}');
-    expect(mobile).toContain("max-height: 100dvh");
-    expect(mobile).toContain(".verification-primary");
-    expect(mobile).toContain(".camera-frame");
+  it("quarantines legacy media before admitting music members without age evidence", () => {
+    const migration = read("cloudflare/migrations/0027_order_of_shadows_music_membership.sql");
+    const membership = read("cloudflare/src/workers/membership-api.ts");
+    const policy = read("cloudflare/src/shared/policy.ts");
+    const admin = read("cloudflare/src/workers/admin-api.ts");
+    expect(migration).toContain("DEFAULT 'LEGACY_ADULT'");
+    expect(migration).toContain("ELSE 'DISABLED'");
+    expect(policy).toContain('input.contentScope !== "MUSIC"');
+    expect(membership).toContain("c.content_scope = 'MUSIC'");
+    expect(membership).toContain("contentScope: content.content_scope");
+    expect(membership).toContain("contentScope: row.content_scope");
+    expect(admin).toContain('item.content_scope !== "MUSIC"');
   });
 
   it("limits administrator sessions to ten minutes and binds them to the current device", () => {
@@ -283,7 +282,7 @@ describe("browser and repository security contract", () => {
     expect(membership).toContain("requireActiveAdminSession(request, env.DB, identity.userId)");
     expect(membership).toContain('identity.labels.includes("admin")');
     expect(membership).toContain("identity.mfaEnabled");
-    expect(membership).toContain('identity.labels.includes("age_verified")');
+    expect(membership).not.toContain('identity.labels.includes("age_verified")');
     expect(membership).toContain("ADMIN_SIMULATION_READ_ONLY");
     expect(frontendApi).toContain('headers.set("X-Admin-Simulation", simulationRole)');
     expect(frontendApi).toContain('headers.set("X-Admin-Session", adminSession.token)');

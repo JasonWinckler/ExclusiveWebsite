@@ -115,7 +115,7 @@ export async function getActiveDeviceCount(db: D1Database, userId: string): Prom
 
 export async function getContentItem(db: D1Database, slug: string): Promise<ContentItemRow | null> {
   return db.prepare(`
-    SELECT id, slug, content_status, required_tier, jurisdiction_policy
+    SELECT id, slug, content_status, content_scope, required_tier, jurisdiction_policy
     FROM content_items WHERE slug = ?
   `).bind(slug).first<ContentItemRow>();
 }

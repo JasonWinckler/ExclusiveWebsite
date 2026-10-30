@@ -108,7 +108,7 @@ export async function sendMicrosoftGraphEmail(input: MicrosoftGraphEmailInput): 
       !/^[A-Za-z0-9._-]{1,128}$/.test(input.inlineImage.name) ||
       !/^[A-Za-z0-9._-]{1,128}$/.test(input.inlineImage.contentId) ||
       input.inlineImage.contentBytes.length < 4 ||
-      input.inlineImage.contentBytes.length > 1_048_576 ||
+      input.inlineImage.contentBytes.length > 2_796_204 ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(input.inlineImage.contentBytes)
     )
   ) throw new ApiError(503, "GRAPH_EMAIL_INLINE_IMAGE_INVALID");

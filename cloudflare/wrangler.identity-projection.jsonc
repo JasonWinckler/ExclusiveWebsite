@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "assets": {
-    "directory": "../linktree/uploads",
+    "directory": "../assets/music",
     "binding": "EMAIL_ASSETS"
   },
   "observability": {

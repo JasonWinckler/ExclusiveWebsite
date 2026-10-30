@@ -1,4 +1,4 @@
-# Shadow's Temptation — ExclusiveWebsite
+# The Order of Shadows — ExclusiveWebsite
 
 Production repository for the single-creator membership platform at
 [exclusive.jason-shadow.com](https://exclusive.jason-shadow.com/). The system
@@ -23,8 +23,13 @@ documents before changing production behavior.
 | Runtime | Cloudflare Pages, Pages Functions, Workers, D1 and private R2 |
 | Appwrite | No build, hosting, SDK, authentication, data or runtime dependency |
 
-The platform is already in production. Documentation, UI text and operational
-decisions must not describe it as a prototype or future launch.
+The existing Cloudflare platform is already in production. This source converts
+the public offer to **The Order of Shadows**, Jason Shadow’s music and voice
+supporter membership. The host remains `exclusive.jason-shadow.com`; the official
+music logo and links make it part of the Jason Shadow brand. A source change is
+not proof that its migration or Worker/frontend release is live. See
+[the membership transition](docs/ORDER_OF_SHADOWS_TRANSITION.md) for release order
+and content quarantine requirements.
 
 ## Product scope
 
@@ -34,8 +39,8 @@ The repository owns the complete customer and administrator experience:
 - registration, email verification, login, password reset and profile changes;
 - optional member TOTP MFA and mandatory administrator MFA;
 - device/session management with a maximum of three active devices;
-- manual age verification using live ID captures, a live video and a random
-  six-digit paper challenge;
+- music membership access without new ID or video collection;
+- continued private retention/deletion handling for historical review records;
 - free, Basic, Premium and VIP content feeds with posts and member comments;
 - one-time SEPA credit-transfer orders, EPC QR data, invoices and N26 CSV
   reconciliation;
@@ -45,11 +50,13 @@ The repository owns the complete customer and administrator experience:
   perspectives without disclosing secret member values;
 - transactional mail through the shared Microsoft 365 mailbox;
 - data-minimised Telegram access for active Premium and VIP members;
-- a public, non-explicit `/linktree/` surface kept separate from the music
-  brand at `jason-shadow.com`.
+- a public `/linktree/` hub connecting memberships to the official music
+  website at `jason-shadow.com`.
 
-This is a single-creator platform. Customers cannot upload public content;
-their only uploads are private, short-lived age-verification evidence.
+This is a single-creator platform. Customers cannot upload public content.
+Members support music and voice work and receive the listed behind-the-scenes
+benefits. These paid memberships are not described as tax-deductible charitable
+donations. Newsletter consent remains optional and uses double opt-in.
 
 ## Non-negotiable safety boundary
 
@@ -62,8 +69,8 @@ their only uploads are private, short-lived age-verification evidence.
   artifacts, support archives or screenshots.
 - Never run a production migration, restore, deletion, DNS change or bulk admin
   operation merely to validate documentation.
-- Preserve the dark red, ember and gold Shadow's Temptation design and update
-  German and English copy together.
+- Preserve the official Jason Shadow logo and burgundy, ivory and gold
+  membership design. Update German and English copy together.
 - Preserve the legal separation between erasable account data and financial
   records that must be retained for statutory purposes.
 
@@ -204,9 +211,14 @@ Higher active tiers pause eligible lower-tier time; the lower entitlement can
 resume after the higher tier ends. A deliberate manual admin grant replaces
 the previous membership according to the admin workflow.
 
-## Age-verification flow
+## Historical age-verification flow (retired for music memberships)
 
-There is no third-party age-verification provider.
+The following is retained operational history for existing evidence and audit
+records. It is not a registration requirement for The Order of Shadows. New
+music membership customers must not be sent through this flow. Historical
+evidence cleanup must continue; do not resurrect deleted evidence in a rollback.
+
+There was no third-party age-verification provider.
 
 1. An authenticated, email-verified customer starts a short-lived case.
 2. The backend generates a random six-digit challenge.
@@ -485,7 +497,7 @@ or empty export must never be uploaded as a valid backup.
 - `docs/ARCHITECTURE_PLAN.md` — production topology and data flow
 - `docs/DEPLOYMENT.md` — deployment order and rollback
 - `docs/SECURITY.md` — authentication, admin, platform and Telegram controls
-- `docs/AGE_VERIFICATION.md` — customer age-verification design
+- `docs/AGE_VERIFICATION.md` — historical age-review design and retention
 - `docs/AVS_REVIEW_PROCESS.md` — administrator review procedure
 - `docs/ADMIN_GUIDE.md` — admin operations
 - `docs/USER_STATUS_MODEL.md` — account and access states
@@ -504,7 +516,7 @@ or empty export must never be uploaded as a valid backup.
 Use this repository's current `main` branch and begin with:
 
 > Read `README.md`, `AGENTS.md` and the linked document relevant to the task
-> completely before acting. Treat Shadow's Temptation as a live Cloudflare-
+> completely before acting. Treat The Order of Shadows as a live Cloudflare-
 > native production system. Inspect the current git status and deployment
 > configuration, preserve unrelated work, never expose secrets or production
 > data, and do not reintroduce Appwrite. Explain the intended production impact

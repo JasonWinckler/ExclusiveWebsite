@@ -1,3 +1,4 @@
+import "../assets/css/admin.css";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   adminActivatePaymentOrder,
@@ -43,9 +44,9 @@ import { friendlyErrorMessage } from "./lib/error-messages";
 const copy = {
   de: {
     title: "Admin-Bereich",
-    subtitle: "Manuelle Prüfung, Zahlungseingänge und Single-Creator-Uploads",
-    age: "Altersprüfung",
-    content: "Content",
+    subtitle: "Musik, Community, Mitgliedschaften und Zahlungseingänge",
+    age: "Historische Altersprüfungen",
+    content: "Behind the scenes",
     payments: "SEPA-Abgleich",
     refresh: "Aktualisieren",
     logout: "Abmelden",
@@ -60,17 +61,17 @@ const copy = {
     approved: "Die Altersprüfung wurde freigegeben.",
     rejected: "Die Altersprüfung wurde abgelehnt.",
     privacy: "Prüfdateien werden nur über den geschützten Admin-Endpunkt geladen. Jeder Abruf wird protokolliert.",
-    uploadTitle: "Neuen Beitrag erstellen",
+    uploadTitle: "Neuen Musik- oder Behind-the-Scenes-Beitrag erstellen",
     slug: "Slug",
     contentTitle: "Titel",
-    tier: "Galerie / Zugriff",
+    tier: "Mitgliedschaft / Zugriff",
     file: "Beitragsmedium (Bild oder Video)",
     publish: "Beitrag jetzt veröffentlichen",
     published: "Der Beitrag wurde veröffentlicht.",
-    currentContent: "Veröffentlichte Beiträge",
+    currentContent: "Beiträge und Archiv",
     noContent: "Noch keine Beiträge vorhanden.",
     csvTitle: "N26-CSV importieren",
-    csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Exclusive Content - ID #…“ für den Abgleich verarbeitet; die vollständige CSV wird nicht gespeichert.",
+    csvText: "Exportiere die Kontobewegungen bei N26 als CSV. Es werden ausschließlich Betrag, Datum und der exakte Verwendungszweck „Order of Shadows - ID #…“ für den Abgleich verarbeitet. Alte Referenzen mit „Exclusive Content - ID #…“ bleiben gültig; die vollständige CSV wird nicht gespeichert.",
     import: "CSV prüfen und zuordnen",
     importDone: "N26-CSV wurde verarbeitet.",
     ordersTitle: "Zahlungsaufträge",
@@ -86,9 +87,9 @@ const copy = {
   },
   en: {
     title: "Admin portal",
-    subtitle: "Manual review, incoming payments and single-creator uploads",
-    age: "Age review",
-    content: "Content",
+    subtitle: "Music, community, memberships and incoming payments",
+    age: "Legacy age reviews",
+    content: "Behind the scenes",
     payments: "SEPA matching",
     refresh: "Refresh",
     logout: "Log out",
@@ -103,17 +104,17 @@ const copy = {
     approved: "Age verification was approved.",
     rejected: "Age verification was rejected.",
     privacy: "Evidence is loaded only through the protected admin endpoint. Every access is audited.",
-    uploadTitle: "Create a new post",
+    uploadTitle: "Create a music or behind-the-scenes post",
     slug: "Slug",
     contentTitle: "Title",
-    tier: "Gallery / access",
+    tier: "Membership / access",
     file: "Post media (image or video)",
     publish: "Publish post now",
     published: "The post was published.",
-    currentContent: "Published posts",
+    currentContent: "Posts and archive",
     noContent: "No posts yet.",
     csvTitle: "Import N26 CSV",
-    csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Exclusive Content - ID #…” remittance value are processed for matching; the complete CSV is not stored.",
+    csvText: "Export account activity from N26 as CSV. Only the amount, date and exact “Order of Shadows - ID #…” reference are processed for matching. Legacy “Exclusive Content - ID #…” references remain valid; the complete CSV is not stored.",
     import: "Check and match CSV",
     importDone: "The N26 CSV was processed.",
     ordersTitle: "Payment orders",
@@ -131,9 +132,9 @@ const copy = {
 
 const tierLabels = {
   FREE: "Free Preview",
-  EXCLUSIVE_BASIC: "Exclusive Basic",
-  EXCLUSIVE_PREMIUM: "Exclusive Premium",
-  EXCLUSIVE_VIP: "Exclusive VIP",
+  EXCLUSIVE_BASIC: "Order Basic",
+  EXCLUSIVE_PREMIUM: "Order Premium",
+  EXCLUSIVE_VIP: "Order VIP",
 };
 
 const approvalChecklist = {
@@ -388,6 +389,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
     const form = event.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
+    if (editingItem && editingItem.content_scope !== "MUSIC") {
+      setError(friendlyErrorMessage({ code: "LEGACY_CONTENT_QUARANTINED" }, language));
+      return;
+    }
     if (!editingItem && (!(file instanceof File) || !file.size)) return;
     setBusy(true);
     setError("");
@@ -420,6 +425,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
   };
 
   const editContent = (item) => {
+    if (item.content_scope !== "MUSIC") return;
     setEditingItem(item);
     setNotice("");
     setError("");
@@ -767,7 +773,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
   return <div className="admin-shell">
     <header className="admin-header">
-      <div><a className="brand brand--wordmark" href="/">Shadow’s Temptation</a><p>{t.subtitle}</p></div>
+      <div><a className="brand brand--wordmark" href="/">The Order of Shadows</a><p>{t.subtitle}</p></div>
       <div className="admin-header__actions">
         <span>{user.email}</span>
         <div className="language-switcher">{["de", "en"].map((lang) => <button className={`language-button${lang === language ? " is-active" : ""}`} type="button" onClick={() => setLanguage(lang)} key={lang}>{lang.toUpperCase()}</button>)}</div>
@@ -775,7 +781,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </div>
     </header>
     <main className="admin-main">
-      <div className="admin-title"><div><p className="eyebrow">SINGLE CREATOR CONTROL</p><h1>{t.title}</h1><small className="admin-session-timer">{language === "de" ? "Sichere Admin-Sitzung" : "Secure admin session"} · {Math.floor(sessionSeconds / 60)}:{String(sessionSeconds % 60).padStart(2, "0")}</small></div><button className="secondary-action" type="button" onClick={loadAll} disabled={busy}>{t.refresh}</button></div>
+      <div className="admin-title"><div><p className="eyebrow">THE ORDER OF SHADOWS · STUDIO</p><h1>{t.title}</h1><small className="admin-session-timer">{language === "de" ? "Sichere Admin-Sitzung" : "Secure admin session"} · {Math.floor(sessionSeconds / 60)}:{String(sessionSeconds % 60).padStart(2, "0")}</small></div><button className="secondary-action" type="button" onClick={loadAll} disabled={busy}>{t.refresh}</button></div>
       <nav className="admin-tabs" aria-label={t.title}>{[
         ["overview", language === "de" ? "Übersicht" : "Overview"],
         ["users", language === "de" ? "Nutzer" : "Users"],
@@ -791,9 +797,9 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
 
       {tab === "overview" && <section className="admin-overview-grid">
         <article className="admin-metric-card"><span>{language === "de" ? "Aktive Nutzer" : "Active users"}</span><strong>{users.filter((item) => item.account_status === "ACTIVE").length}</strong><small>{users.length} {language === "de" ? "Konten gesamt" : "accounts total"}</small></article>
-        <article className="admin-metric-card"><span>{language === "de" ? "Offene Altersprüfungen" : "Pending age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Historische Altersprüfungen" : "Legacy age reviews"}</span><strong>{cases.length}</strong><button className="text-button" type="button" onClick={() => setTab("age")}>{language === "de" ? "Prüfen →" : "Review →"}</button></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Offene Zahlungen" : "Pending payments"}</span><strong>{orders.filter((item) => ["PENDING","PROCESSING","PAID"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("payments")}>{language === "de" ? "Öffnen →" : "Open →"}</button></article>
-        <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
+        <article className="admin-metric-card"><span>{language === "de" ? "Veröffentlichte Beiträge" : "Published posts"}</span><strong>{items.filter((item) => item.content_status === "ACTIVE" && item.content_scope === "MUSIC").length}</strong><small>{comments.filter((item) => item.status === "ACTIVE").length} {language === "de" ? "aktive Kommentare" : "active comments"}</small></article>
         <article className="admin-metric-card"><span>{language === "de" ? "Datenschutzanfragen" : "Privacy requests"}</span><strong>{privacyRequests.filter((item) => ["PENDING","IN_REVIEW"].includes(item.status)).length}</strong><button className="text-button" type="button" onClick={() => setTab("privacy")}>{language === "de" ? "Bearbeiten →" : "Review →"}</button></article>
         <article className="admin-metric-card"><span>Telegram</span><strong>{telegramConnections.filter((item) => item.status === "ACTIVE").length}</strong><small>{telegramConnections.length} {language === "de" ? "Verknüpfungen" : "connections"}</small><button className="text-button" type="button" onClick={() => setTab("telegram")}>{language === "de" ? "Verwalten →" : "Manage →"}</button></article>
       </section>}
@@ -804,7 +810,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <div className="telegram-admin-list">{telegramConnections.length ? telegramConnections.map((connection) => {
           const reason = telegramReasons[connection.appwrite_user_id] || "";
           return <article className="telegram-admin-card" key={connection.appwrite_user_id}>
-            <div className="telegram-admin-card__head"><div><strong>{connection.display_name || "Exclusive Member"}</strong><span>{connection.email}</span></div><span className="order-status">{String(connection.status).replaceAll("_", " ")}</span></div>
+            <div className="telegram-admin-card__head"><div><strong>{connection.display_name || "Order Member"}</strong><span>{connection.email}</span></div><span className="order-status">{String(connection.status).replaceAll("_", " ")}</span></div>
             <dl className="admin-facts"><div><dt>Membership</dt><dd>{connection.active_tier ? tierLabels[connection.active_tier] : (language === "de" ? "Nicht aktiv" : "Inactive")}</dd></div><div><dt>{language === "de" ? "Verknüpft" : "Linked"}</dt><dd>{formatDate(connection.linked_at, language)}</dd></div><div><dt>{language === "de" ? "Beigetreten" : "Joined"}</dt><dd>{formatDate(connection.joined_at, language)}</dd></div><div><dt>{language === "de" ? "Letzter Abgleich" : "Last sync"}</dt><dd>{formatDate(connection.last_synced_at, language)}</dd></div>{connection.last_error_code && <div><dt>Error</dt><dd>{connection.last_error_code}</dd></div>}</dl>
             <label className="form-field"><span>{language === "de" ? "Nachvollziehbare Admin-Begründung" : "Documented admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setTelegramReasons((current) => ({ ...current, [connection.appwrite_user_id]: event.target.value }))} /></label>
             <div className="decision-actions"><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || !connection.active_tier} onClick={() => manageTelegram(connection, "RESTORE")}>{language === "de" ? "Zugang neu senden" : "Resend access"}</button><button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3 || connection.status === "ADMIN_SUSPENDED"} onClick={() => manageTelegram(connection, "REMOVE")}>{language === "de" ? "Zugang pausieren" : "Pause access"}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageTelegram(connection, "UNLINK")}>{language === "de" ? "Verknüpfung löschen" : "Delete connection"}</button></div>
@@ -817,7 +823,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <div className="admin-overview-grid">
           <article className="admin-metric-card"><span>{language === "de" ? "Besucher · 30 Tage" : "Visitors · 30 days"}</span><strong>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.visitors || 0), 0)}</strong><small>{(monitoring?.visits || []).reduce((sum, day) => sum + Number(day.page_views || 0), 0)} Page Views</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Aktive Konten" : "Active accounts"}</span><strong>{Number(monitoring?.funnel?.users?.active || 0)}</strong><small>{Number(monitoring?.funnel?.users?.total || 0)} {language === "de" ? "gesamt" : "total"}</small></article>
-          <article className="admin-metric-card"><span>{language === "de" ? "Offene Altersprüfungen" : "Pending age reviews"}</span><strong>{Number(monitoring?.funnel?.ageVerification?.pending || 0)}</strong><small>{Number(monitoring?.funnel?.ageVerification?.cleanup_pending || 0)} cleanup pending</small></article>
+          <article className="admin-metric-card"><span>{language === "de" ? "Historische Altersprüfungen" : "Legacy age reviews"}</span><strong>{Number(monitoring?.funnel?.ageVerification?.pending || 0)}</strong><small>{Number(monitoring?.funnel?.ageVerification?.cleanup_pending || 0)} cleanup pending</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Bezahlte Aufträge" : "Paid orders"}</span><strong>{Number(monitoring?.funnel?.orders?.paid || 0)}</strong><small>{Number(monitoring?.funnel?.orders?.pending || 0)} {language === "de" ? "offen" : "pending"}</small></article>
           <article className="admin-metric-card"><span>{language === "de" ? "Aktive Memberships" : "Active memberships"}</span><strong>{Number(monitoring?.funnel?.entitlements?.active || 0)}</strong></article>
           <article className="admin-metric-card"><span>Newsletter</span><strong>{Number(monitoring?.funnel?.newsletter?.subscribed || 0)}</strong><small>{Number(monitoring?.funnel?.newsletter?.pending || 0)} Double-Opt-in pending</small></article>
@@ -826,7 +832,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
         <div className="monitoring-conversions">
           {[
             [language === "de" ? "Registrierung abgeschlossen" : "Registration completed", "registration_completed", "registration_started"],
-            [language === "de" ? "Altersprüfung eingereicht" : "Age review submitted", "age_submitted", "age_started"],
+            [language === "de" ? "Historische Altersprüfung eingereicht" : "Legacy age review submitted", "age_submitted", "age_started"],
             [language === "de" ? "Auftrag erstellt" : "Order created", "order_created", "checkout_started"],
             [language === "de" ? "Newsletter-Opt-in gestartet" : "Newsletter opt-in started", "newsletter_opt_in", "page_view"],
           ].map(([label, resultEvent, sourceEvent]) => {
@@ -850,10 +856,10 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </section>}
 
       {tab === "simulation" && <section className="admin-panel role-simulation-panel">
-        <div className="admin-panel__heading"><div><p className="eyebrow">SECURE PRODUCTION VIEW</p><h2>{language === "de" ? "Vollständige Website aus Nutzersicht" : "Full website from a member perspective"}</h2><p className="admin-note">{language === "de" ? "Öffnet die gesamte produktive Website in der gewählten Rolle – einschließlich aller dafür freigegebenen Galerien und echten Medien. Die Ansicht bleibt schreibgeschützt und ist nur mit Adminrolle, MFA, registriertem Gerät und aktiver 10-Minuten-Sitzung verfügbar." : "Opens the complete production website in the selected role, including every gallery and real media available to that role. The view remains read-only and requires an admin role, MFA, a registered device and an active 10-minute session."}</p></div></div>
-        <label className="form-field simulation-role-select"><span>{language === "de" ? "Rolle / Membership" : "Role / membership"}</span><select value={simulationRole} onChange={(event) => setSimulationRole(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Age pending</option><option value="FREE">Age verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Exclusive Basic</option><option value="EXCLUSIVE_PREMIUM">Exclusive Premium</option><option value="EXCLUSIVE_VIP">Exclusive VIP</option></select></label>
+        <div className="admin-panel__heading"><div><p className="eyebrow">SECURE PRODUCTION VIEW</p><h2>{language === "de" ? "Vollständige Website aus Nutzersicht" : "Full website from a member perspective"}</h2><p className="admin-note">{language === "de" ? "Öffnet die gesamte produktive Website in der gewählten Rolle – einschließlich aller dafür freigegebenen Musikbeiträge und Medien. Die Ansicht bleibt schreibgeschützt und ist nur mit Adminrolle, MFA, registriertem Gerät und aktiver 10-Minuten-Sitzung verfügbar." : "Opens the complete production website in the selected role, including music posts and media available to that role. The view remains read-only and requires an admin role, MFA, a registered device and an active 10-minute session."}</p></div></div>
+        <label className="form-field simulation-role-select"><span>{language === "de" ? "Rolle / Membership" : "Role / membership"}</span><select value={simulationRole} onChange={(event) => setSimulationRole(event.target.value)}><option value="GUEST">Guest</option><option value="REGISTERED">Registered · Email pending</option><option value="FREE">Email verified · Free Preview</option><option value="EXCLUSIVE_BASIC">Order Basic</option><option value="EXCLUSIVE_PREMIUM">Order Premium</option><option value="EXCLUSIVE_VIP">Order VIP</option></select></label>
         <div className="simulation-launch-card">
-          <div><span className="order-status">{simulationRole.replace("EXCLUSIVE_", "Exclusive ")}</span><h3>{language === "de" ? "Produktivansicht starten" : "Start production view"}</h3><p>{language === "de" ? "Die aktuelle Admin-Sitzung bleibt bestehen. Mit „Zurück zum Adminbereich“ beendest du die Simulation, ohne dich abzumelden." : "Your current admin session remains active. Use “Back to admin” to end the simulation without signing out."}</p></div>
+          <div><span className="order-status">{simulationRole.replace("EXCLUSIVE_", "Order ")}</span><h3>{language === "de" ? "Produktivansicht starten" : "Start production view"}</h3><p>{language === "de" ? "Die aktuelle Admin-Sitzung bleibt bestehen. Mit „Zurück zum Adminbereich“ beendest du die Simulation, ohne dich abzumelden." : "Your current admin session remains active. Use “Back to admin” to end the simulation without signing out."}</p></div>
           <button className="primary-action" type="button" onClick={() => startAdminSimulation(simulationRole)}>{language === "de" ? "Gesamte Website simulieren" : "Simulate full website"} →</button>
         </div>
       </section>}
@@ -866,12 +872,12 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           const reason = userReasons[profile.appwrite_user_id] || "";
           return <article className="admin-user-card" key={profile.appwrite_user_id}>
             <div className="admin-user-card__head"><div><strong>{profile.display_name || "Member"}</strong><span>{profile.email}</span></div><span className="order-status">{profile.account_status}</span></div>
-            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>Age</dt><dd>{profile.age_status}</dd></div><div><dt>Membership</dt><dd>{profile.entitlement_tier ? `${tierLabels[profile.entitlement_tier]} · ${formatDate(profile.entitlement_expires_at, language)}` : (language === "de" ? "Keine aktive" : "No active membership")}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
+            <dl className="admin-facts"><div><dt>E-Mail</dt><dd>{profile.email_verified ? (language === "de" ? "Bestätigt" : "Verified") : (language === "de" ? "Offen" : "Pending")}</dd></div><div><dt>{language === "de" ? "Historische Altersprüfung" : "Legacy age review"}</dt><dd>{profile.age_status}</dd></div><div><dt>Membership</dt><dd>{profile.entitlement_tier ? `${tierLabels[profile.entitlement_tier]} · ${formatDate(profile.entitlement_expires_at, language)}` : (language === "de" ? "Keine aktive" : "No active membership")}</dd></div><div><dt>{language === "de" ? "Bestellungen" : "Orders"}</dt><dd>{profile.order_count || 0} · {profile.open_order_count || 0} {language === "de" ? "offen" : "open"}</dd></div><div><dt>{language === "de" ? "Letzte Aktivität" : "Last active"}</dt><dd>{formatDate(profile.last_active_at, language)}</dd></div><div><dt>User ID</dt><dd>{profile.appwrite_user_id}</dd></div></dl>
             <label className="form-field"><span>{language === "de" ? "Admin-Begründung" : "Admin reason"}</span><input minLength="3" maxLength="500" value={reason} onChange={(event) => setUserReasons((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))} placeholder={language === "de" ? "Für Sperrung, Freigabe oder Löschung" : "For restriction, restore or deletion"} /></label>
             <div className="admin-membership-grant">
               <label className="form-field"><span>{language === "de" ? "Membership manuell vergeben" : "Grant membership manually"}</span><select value={membershipSelections[profile.appwrite_user_id] || "exclusive-basic-30d"} onChange={(event) => setMembershipSelections((current) => ({ ...current, [profile.appwrite_user_id]: event.target.value }))}>{membershipProducts.map((product) => <option value={product.sku} key={product.sku}>{product.displayName}</option>)}</select></label>
-              <button className="primary-action" type="button" disabled={busy || reason.trim().length < 3 || profile.account_status !== "ACTIVE" || !profile.email_verified || profile.age_status !== "APPROVED"} onClick={() => grantMembership(profile)}>{language === "de" ? "Membership vergeben" : "Grant membership"}</button>
-              {(profile.account_status !== "ACTIVE" || !profile.email_verified || profile.age_status !== "APPROVED") && <small>{language === "de" ? "Erst nach aktiver E-Mail- und Altersverifikation möglich." : "Available after active email and age verification."}</small>}
+              <button className="primary-action" type="button" disabled={busy || reason.trim().length < 3 || profile.account_status !== "ACTIVE" || !profile.email_verified} onClick={() => grantMembership(profile)}>{language === "de" ? "Membership vergeben" : "Grant membership"}</button>
+              {(profile.account_status !== "ACTIVE" || !profile.email_verified) && <small>{language === "de" ? "Nur für aktive Konten mit bestätigter E-Mail-Adresse möglich." : "Available for active accounts with a verified email address."}</small>}
             </div>
             <div className="admin-user-actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => manageUser(profile, "RESET")}>{language === "de" ? "Passwort zurücksetzen" : "Reset password"}</button>{!profile.email_verified && <button className="secondary-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "VERIFY_EMAIL")}>{language === "de" ? "E-Mail manuell bestätigen" : "Verify email manually"}</button>}<button className={restricted ? "primary-action" : "secondary-action"} type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, restricted ? "UNRESTRICT" : "RESTRICT")}>{restricted ? (language === "de" ? "Konto entsperren" : "Unblock account") : (language === "de" ? "Konto sperren" : "Block account")}</button><button className="danger-action" type="button" disabled={busy || reason.trim().length < 3} onClick={() => manageUser(profile, "DELETE")}>{language === "de" ? "Konto löschen" : "Delete account"}</button></div>
             <button className="secondary-action admin-device-toggle" type="button" disabled={busy} onClick={() => openUserDevices(profile)}>
@@ -898,6 +904,7 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
       </section>}
 
       {tab === "age" && <section className="admin-grid">
+        <p className="admin-note admin-panel--wide">{language === "de" ? "Nur zur Bearbeitung bestehender Prüfungen und fristgerechten Löschung alter Nachweise. Die Musik-Mitgliedschaft benötigt keine Ausweisprüfung." : "For existing review cases and timely deletion of legacy evidence only. Music membership does not require an identity-document review."}</p>
         <article className="admin-panel"><h2>{t.pending}</h2>{cases.length ? <div className="admin-list">{cases.map((item) => <button type="button" className={selectedCase?.case?.id === item.id ? "is-active" : ""} onClick={() => selectCase(item.id)} key={item.id}><strong>{item.display_name || item.appwrite_user_id}</strong><span>{item.evidence_count} Dateien · {formatDate(item.submitted_at, language)}</span></button>)}</div> : <p>{t.noCases}</p>}</article>
         <article className="admin-panel admin-review">{selectedCase ? <>
           <p className="eyebrow">{selectedCase.case.manual_review_status}</p>
@@ -920,20 +927,20 @@ export default function AdminPortal({ user, language, setLanguage, onLogout }) {
           <p className="eyebrow">{language === "de" ? "CREATOR STUDIO" : "CREATOR STUDIO"}</p>
           <h2>{editingItem ? (language === "de" ? "Beitrag bearbeiten" : "Edit post") : t.uploadTitle}</h2>
           <p className="admin-note">{editingItem
-            ? (language === "de" ? "Passe Text, Zugriffslevel oder Kommentare an. Eine neue Mediendatei ersetzt das bisherige Medium." : "Update copy, access or comments. Choosing new media replaces the existing file.")
-            : (language === "de" ? "Erstelle einen vollständigen Beitrag aus Titel, persönlichem Text, Medium und Zugriffslevel. Erfolgreiche Uploads werden sofort veröffentlicht." : "Create a complete post with a title, personal text, media and access level. Successful uploads publish immediately.")}</p>
+            ? (language === "de" ? "Bearbeite deinen Musik- oder Behind-the-Scenes-Beitrag. Eine neue Mediendatei ersetzt das bisherige Medium." : "Edit your music or behind-the-scenes post. Choosing new media replaces the existing file.")
+            : (language === "de" ? "Veröffentliche ausschließlich Musik-, Sprecher- und Behind-the-Scenes-Inhalte. Erfolgreiche Uploads werden sofort für die gewählte Stufe veröffentlicht." : "Publish only music, voice-work and behind-the-scenes content. Successful uploads publish immediately for the selected membership level.")}</p>
           <form className="admin-form post-composer__form" onSubmit={uploadContent} key={editingItem?.id || "new-post"}>
-            <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" defaultValue={editingItem?.title || ""} placeholder={language === "de" ? "Gib dem Moment einen Titel…" : "Give the moment a title…"} required /></label>
-            <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" defaultValue={editingItem?.body_text || ""} placeholder={language === "de" ? "Erzähle die Geschichte hinter dem Beitrag, sprich deine Mitglieder direkt an oder kündige etwas Besonderes an…" : "Tell the story behind this post, speak directly to your members, or tease something special…"} /></label>
-            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="midnight-confession" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue={editingItem?.required_tier || "FREE"}>{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
+            <label className="form-field"><span>{t.contentTitle}</span><input name="title" maxLength="160" defaultValue={editingItem?.title || ""} placeholder={language === "de" ? "Zum Beispiel: Ein Abend im Studio…" : "For example: An evening in the studio…"} required /></label>
+            <label className="form-field"><span>{language === "de" ? "Beitragstext" : "Post text"}</span><textarea name="bodyText" rows="8" maxLength="10000" defaultValue={editingItem?.body_text || ""} placeholder={language === "de" ? "Teile eine Probe, eine Song-Idee oder einen Einblick in deine Sprecherarbeit…" : "Share a rehearsal, a song idea or a glimpse of your voice work…"} /></label>
+            <div className="post-composer__row"><label className="form-field"><span>{t.slug}</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength="128" defaultValue={editingItem?.slug || ""} placeholder="studio-diary-01" required={!editingItem} disabled={Boolean(editingItem)} /></label><label className="form-field"><span>{t.tier}</span><select name="tier" defaultValue={editingItem?.required_tier || "FREE"}>{Object.entries(tierLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
             <label className="media-drop-field"><span>{editingItem ? (language === "de" ? "Medium optional ersetzen" : "Optionally replace media") : t.file}</span><strong>{language === "de" ? "Datei auswählen" : "Choose media"}</strong><small>JPEG · PNG · WebP · MP4 · WebM</small><input name="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required={!editingItem} /></label>
-            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Exclusive Member dürfen diesen Beitrag kommentieren." : "Exclusive Members may comment on this post."}</span></label>
+            <label className="checkout-confirmation"><input name="allowComments" type="checkbox" defaultChecked={editingItem ? Boolean(editingItem.allow_comments) : true} /><span>{language === "de" ? "Mitglieder mit aktiver bezahlter Mitgliedschaft dürfen diesen Beitrag kommentieren." : "Members with an active paid membership may comment on this post."}</span></label>
             <div className="composer-publish-row"><small>{editingItem ? (language === "de" ? "Änderungen sind nach dem Speichern sofort aktiv." : "Changes are active immediately after saving.") : (language === "de" ? "Der Beitrag ist nach erfolgreichem Upload sofort im gewählten Bereich sichtbar." : "The post becomes visible in the selected area immediately after upload.")}</small><div className="decision-actions">{editingItem && <button className="secondary-action" type="button" disabled={busy} onClick={() => setEditingItem(null)}>{language === "de" ? "Abbrechen" : "Cancel"}</button>}<button className="primary-action" disabled={busy}>{editingItem ? (language === "de" ? "Änderungen speichern" : "Save changes") : t.publish}</button></div></div>
           </form>
         </article>
         <article className="admin-panel">
           <h2>{t.currentContent}</h2>
-          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy} onClick={() => queueNewDrop(item)}>{language === "de" ? "Als New Drop senden" : "Send as New Drop"}</button><button className="secondary-action" type="button" disabled={busy} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
+          {items.length ? <div className="content-admin-list">{items.map((item) => <div className="content-admin-card" key={item.id}><div><strong>{item.title}</strong><span>{tierLabels[item.required_tier]} · {item.content_status}{item.content_scope !== "MUSIC" && <> · {language === "de" ? "ARCHIV · NICHT FÜR MITGLIEDER" : "ARCHIVE · NOT AVAILABLE TO MEMBERS"}</>}</span>{item.body_text && <p>{item.body_text}</p>}</div><div><span>{item.content_type ? formatBytes(item.size_bytes) : "–"}</span><small>{Number(item.comment_count || 0)} {language === "de" ? "Kommentare" : "comments"}</small><div className="content-admin-card__actions"><button className="secondary-action" type="button" disabled={busy || item.content_scope !== "MUSIC" || item.content_status !== "ACTIVE"} onClick={() => queueNewDrop(item)}>{language === "de" ? "Als New Drop senden" : "Send as New Drop"}</button><button className="secondary-action" type="button" disabled={busy || item.content_scope !== "MUSIC"} onClick={() => editContent(item)}>{language === "de" ? "Bearbeiten" : "Edit"}</button><button className="danger-action" type="button" disabled={busy} onClick={() => deleteContent(item)}>{language === "de" ? "Löschen" : "Delete"}</button></div></div></div>)}</div> : <p>{t.noContent}</p>}
         </article>
         <article className="admin-panel admin-panel--wide comment-moderation">
           <div className="admin-panel__heading"><div><p className="eyebrow">{language === "de" ? "COMMUNITY" : "COMMUNITY"}</p><h2>{language === "de" ? "Kommentarmoderation" : "Comment moderation"}</h2></div><span>{comments.length}</span></div>

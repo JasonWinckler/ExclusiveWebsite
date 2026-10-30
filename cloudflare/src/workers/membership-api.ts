@@ -1,3 +1,4 @@
+import { newsletterEmailHtml } from "../shared/newsletter-email";
 import { authenticateUser } from "../shared/auth";
 import { requireActiveAdminSession } from "../shared/admin-session";
 import {
@@ -57,7 +58,8 @@ import type {
 } from "../shared/types";
 
 const AGE_INSTRUCTIONS_VERSION = "manual-age-v6";
-const PRIVACY_NOTICE_VERSION = "PRIVACY-2026-07-28";
+const PRIVACY_NOTICE_VERSION = "PRIVACY-MUSIC-2026-10-30";
+const MEMBERSHIP_TERMS_VERSION = "ORDER-2026-10-30-V1";
 type AgeDocumentType = "NATIONAL_ID" | "PASSPORT" | "DRIVING_LICENCE";
 type AgeVerificationRoute = "MANUAL_DOCUMENT_VIDEO";
 const ISO_COUNTRIES = new Set(`
@@ -125,9 +127,6 @@ async function requireAdminSimulation(
     throw new ApiError(403, "ADMINISTRATOR_REQUIRED");
   }
   if (!identity.mfaEnabled) throw new ApiError(403, "ADMIN_MFA_REQUIRED");
-  if (!identity.labels.includes("age_verified")) {
-    throw new ApiError(403, "AGE_NOT_APPROVED");
-  }
   await requireActiveAdminSession(request, env.DB, identity.userId);
   return rawRole as AdminSimulationRole;
 }
@@ -175,7 +174,7 @@ function simulatedAccessContext<T extends {
 
 function requireSimulationContentAccess(role: AdminSimulationRole | null): void {
   if (role === "GUEST") throw new ApiError(403, "AUTHENTICATION_REQUIRED");
-  if (role === "REGISTERED") throw new ApiError(403, "AGE_NOT_APPROVED");
+  if (role === "REGISTERED") throw new ApiError(403, "EMAIL_NOT_VERIFIED");
 }
 
 function simulationStatusResponse(
@@ -188,7 +187,7 @@ function simulationStatusResponse(
   return {
     account: {
       status: registered ? "ACTIVE" : "SIGNED_OUT",
-      emailVerified: registered,
+      emailVerified: registered && role !== "REGISTERED",
       displayName: "Simulation Member",
       usernameChangeCount: 0,
       usernameLastChangedAt: null,
@@ -1089,8 +1088,8 @@ function authEmailHtml(input: {
     : (isGerman ? "Sicher zurück in deinen Account" : "Securely return to your account");
   const intro = verification
     ? (isGerman
-      ? "Bestätige, dass diese E-Mail-Adresse zu deinem Shadow's Temptation Account gehört."
-      : "Confirm that this email address belongs to your Shadow's Temptation account.")
+      ? "Bestätige, dass diese E-Mail-Adresse zu deinem The Order of Shadows Account gehört."
+      : "Confirm that this email address belongs to your The Order of Shadows account.")
     : (isGerman
       ? "Mit diesem einmaligen Link legst du ein neues Passwort fest und erhältst wieder Zugriff."
       : "Use this single-use link to choose a new password and restore your access.");
@@ -1123,22 +1122,22 @@ function authEmailHtml(input: {
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <style>@media only screen and (max-width:620px){.mail-shell{width:100%!important}.mail-pad{padding:24px 20px!important}.mail-title{font-size:30px!important}.mail-button{display:block!important;text-align:center!important}}</style>
-  </head><body style="margin:0;padding:0;background:#100205;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
+  </head><body style="margin:0;padding:0;background:#240007;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#100205">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#31000b;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td class="mail-pad" style="padding:34px 38px 20px">
-          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">Shadow's Temptation · Private Membership</div>
+          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">The Order of Shadows · Private Membership</div>
           <h1 class="mail-title" style="margin:12px 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:38px;line-height:1.08;color:#fff6e8;font-weight:normal">${escapeHtml(title)}</h1>
           <p style="margin:0;color:#d8c4bd;font-size:17px;line-height:1.65">${escapeHtml(intro)}</p>
         </td></tr>
         <tr><td class="mail-pad" style="padding:18px 38px 34px">
           <p style="margin:0 0 20px;color:#f8eee7;font-size:16px;line-height:1.65">${isGerman ? "Hallo" : "Hello"} ${escapeHtml(input.displayName || (isGerman ? "Member" : "member"))},</p>
           <p style="margin:0 0 26px;color:#d8c4bd;font-size:15px;line-height:1.7">${escapeHtml(nextStep)}</p>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px"><tr><td style="border-radius:999px;background:#c83a22">
-            <a class="mail-button" href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:.2px">${escapeHtml(action)} →</a>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px"><tr><td style="border-radius:999px;background:#efd18a">
+            <a class="mail-button" href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#efd18a;color:#240007;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:.2px">${escapeHtml(action)} →</a>
           </td></tr></table>
           <div style="padding:17px 18px;border:1px solid #4a1822;border-radius:14px;background:#120306;color:#bca7a0;font-size:13px;line-height:1.65">
             <strong style="color:#e6c77c">${isGerman ? "Sicherheitsinformation" : "Security notice"}</strong><br>${escapeHtml(security)}
@@ -1146,7 +1145,7 @@ function authEmailHtml(input: {
           <p style="margin:22px 0 0;color:#9f8e89;font-size:12px;line-height:1.6">${isGerman ? "Button nicht sichtbar? Öffne den folgenden sicheren Link:" : "Button not visible? Open this secure link:"}<br><a href="${escapeHtml(input.actionUrl)}" style="color:#e6c77c;word-break:break-all">${escapeHtml(input.actionUrl)}</a></p>
         </td></tr>
         <tr><td style="padding:22px 38px;background:#0d0204;color:#968681;font-size:12px;line-height:1.7">
-          <strong style="color:#d7bbb2">Shadow's Temptation</strong> · Desire lives in the shadows.<br>
+          <strong style="color:#d7bbb2">The Order of Shadows</strong> · Music. Voice. A closer connection.<br>
           Jason Shadow · Inhaber Jason Winckler · Rheine, Deutschland<br>
           <a href="https://exclusive.jason-shadow.com/" style="color:#e6c77c;text-decoration:none">Website</a> ·
           <a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c;text-decoration:none">${isGerman ? "Rechtliches & Datenschutz" : "Legal & Privacy"}</a> ·
@@ -1230,8 +1229,8 @@ async function issueAuthEmailToken(
   const action = input.purpose === "VERIFY_EMAIL" ? "verify-email" : "recover";
   const actionUrl = `https://exclusive.jason-shadow.com/?action=${action}&token=${encodeURIComponent(token)}`;
   const subject = input.purpose === "VERIFY_EMAIL"
-    ? (input.locale === "de" ? "E-Mail-Adresse bestätigen · Shadow's Temptation" : "Confirm your email address · Shadow's Temptation")
-    : (input.locale === "de" ? "Passwort sicher zurücksetzen · Shadow's Temptation" : "Secure password reset · Shadow's Temptation");
+    ? (input.locale === "de" ? "E-Mail-Adresse bestätigen · The Order of Shadows" : "Confirm your email address · The Order of Shadows")
+    : (input.locale === "de" ? "Passwort sicher zurücksetzen · The Order of Shadows" : "Secure password reset · The Order of Shadows");
   try {
     await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
       userId: input.userId,
@@ -1480,8 +1479,8 @@ function invoiceEmailHtml(input: {
   const due = dateFormatter.format(new Date(input.dueAt));
   const title = isGerman ? "Dein Zugang ist reserviert" : "Your access is reserved";
   const intro = isGerman
-    ? "Danke für deine Bestellung. Schließe jetzt die SEPA-Überweisung ab und sichere dir deinen Platz bei Shadow's Temptation."
-    : "Thank you for your order. Complete your SEPA transfer now and secure your place at Shadow's Temptation.";
+    ? "Danke für deine Bestellung. Schließe jetzt die SEPA-Überweisung ab und sichere dir deinen Platz bei The Order of Shadows."
+    : "Thank you for your order. Complete your SEPA transfer now and secure your place at The Order of Shadows.";
   const labels = isGerman
     ? { invoice: "Rechnungsnummer", issued: "Rechnungsdatum", product: "Mitgliedschaft", servicePeriod: "Leistungszeitraum", total: "Gesamtbetrag", due: "Zahlbar bis", billTo: "Rechnung an", seller: "Leistungserbringer", beneficiary: "Empfänger", reference: "Verwendungszweck", note: "Wichtig" }
     : { invoice: "Invoice number", issued: "Invoice date", product: "Membership", servicePeriod: "Service period", total: "Total", due: "Pay by", billTo: "Bill to", seller: "Supplier", beneficiary: "Beneficiary", reference: "Remittance information", note: "Important" };
@@ -1493,16 +1492,16 @@ function invoiceEmailHtml(input: {
     : `${input.productName} is reserved for 48 hours. Payment details and invoice ${input.invoiceNumber}.`;
   return `<!doctype html><html lang="${isGerman ? "de" : "en"}"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${escapeHtml(input.invoiceNumber)} · Shadow's Temptation</title>
+  <title>${escapeHtml(input.invoiceNumber)} · The Order of Shadows</title>
   <style>@media only screen and (max-width:620px){.mail-shell{width:100%!important}.mail-pad{padding:24px 20px!important}.mail-title{font-size:30px!important}.mail-button{display:block!important;text-align:center!important}.stack-cell{display:block!important;width:100%!important;padding:8px 0!important;text-align:left!important}}</style>
-  </head><body style="margin:0;padding:0;background:#100205;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
+  </head><body style="margin:0;padding:0;background:#240007;color:#f8eee7;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#100205">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" class="mail-shell" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#31000b;border:1px solid #6d2432;border-radius:24px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td class="mail-pad" style="padding:32px 38px 20px">
-          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">Shadow's Temptation · Exclusive Membership</div>
+          <div style="color:#e6c77c;font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:bold">The Order of Shadows · Exclusive Membership</div>
           <h1 class="mail-title" style="margin:12px 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:38px;line-height:1.08;color:#fff6e8;font-weight:normal">${escapeHtml(title)}</h1>
           <p style="margin:0;color:#d8c4bd;font-size:16px;line-height:1.65">${escapeHtml(intro)}</p>
         </td></tr>
@@ -1539,8 +1538,8 @@ function invoiceEmailHtml(input: {
             <p style="margin:14px 0 0;color:#bdaaa4;font-size:13px"><strong>${labels.due}:</strong> ${escapeHtml(due)}</p>
           </div>
           <p style="margin:18px 0 24px;padding:15px 17px;background:#39101a;border-left:3px solid #e6c77c;border-radius:8px;color:#eadbd5;font-size:13px;line-height:1.6"><strong>${labels.note}:</strong> ${isGerman ? "Bitte übernimm den Verwendungszweck exakt. Nur so kann die Zahlung automatisch deiner Bestellung zugeordnet werden. Ohne bestätigten Zahlungseingang wird der Auftrag nach 48 Stunden automatisch storniert." : "Use the remittance information exactly as shown so the payment can be matched automatically. Without confirmed payment, the order is cancelled automatically after 48 hours."}</p>
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 26px"><tr><td style="border-radius:999px;background:#c83a22">
-            <a class="mail-button" href="https://exclusive.jason-shadow.com/?action=orders" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold">${isGerman ? "Zahlungsdetails im Dashboard öffnen" : "Open payment details in dashboard"} →</a>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 26px"><tr><td style="border-radius:999px;background:#efd18a">
+            <a class="mail-button" href="https://exclusive.jason-shadow.com/?action=orders" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#efd18a;color:#240007;text-decoration:none;font-size:16px;font-weight:bold">${isGerman ? "Zahlungsdetails im Dashboard öffnen" : "Open payment details in dashboard"} →</a>
           </td></tr></table>
           ${input.taxNote ? `<p style="margin:0 0 14px;padding:13px 15px;border:1px solid #4a1822;border-radius:10px;background:#16050a;color:#cbb9b2;font-size:12px;line-height:1.6"><strong>${isGerman ? "Steuerlicher Hinweis" : "Tax notice"}:</strong> ${escapeHtml(input.taxNote)}</p>` : ""}
           <p style="margin:0;color:#9f8e89;font-size:12px;line-height:1.7">${isGerman ? "Du hast den Beginn der digitalen Bereitstellung nach bestätigtem Zahlungseingang verlangt und den Verlust des Widerrufsrechts mit Beginn der Bereitstellung bestätigt." : "You requested digital supply to begin after confirmed payment and acknowledged the loss of the withdrawal right when supply begins."}<br>
@@ -1551,7 +1550,7 @@ function invoiceEmailHtml(input: {
           </p>
         </td></tr>
         <tr><td style="padding:22px 38px;background:#0d0204;color:#968681;font-size:12px;line-height:1.7">
-          <strong style="color:#d7bbb2">Shadow's Temptation</strong> · Desire lives in the shadows.<br>
+          <strong style="color:#d7bbb2">The Order of Shadows</strong> · Music. Voice. A closer connection.<br>
           ${escapeHtml(input.sellerName)} · ${escapeHtml(input.sellerAddress)}<br>
           <a href="https://exclusive.jason-shadow.com/" style="color:#e6c77c;text-decoration:none">Website</a> ·
           <a href="${legalBase}" style="color:#e6c77c;text-decoration:none">${isGerman ? "Rechtliches" : "Legal"}</a> ·
@@ -1581,7 +1580,7 @@ function sepaInstructions(env: MembershipEnv): SepaInstructions {
 export function createSepaTransferPurpose(randomPart: string): string {
   const identifier = randomPart.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 12);
   if (identifier.length < 8) throw new ApiError(500, "REFERENCE_GENERATION_FAILED");
-  return `Exclusive Content - ID #${identifier}`;
+  return `Order of Shadows - ID #${identifier}`;
 }
 
 export function epcQrPayload(
@@ -1747,6 +1746,9 @@ async function createSepaOrder(
     });
   }
 
+  if (body.termsVersion !== MEMBERSHIP_TERMS_VERSION) {
+    throw new ApiError(400, "CHECKOUT_LEGAL_ACCEPTANCE_REQUIRED");
+  }
   const [profile, product] = await Promise.all([
     getUserProfile(env.DB, userId),
     env.DB.prepare(`
@@ -1766,7 +1768,8 @@ async function createSepaOrder(
     }>(),
   ]);
   if (!profile || profile.account_status !== "ACTIVE") throw new ApiError(403, "ACCOUNT_NOT_ACTIVE");
-  if (profile.age_status !== "APPROVED") throw new ApiError(403, "AGE_NOT_APPROVED");
+  if (profile.email_verified !== 1) throw new ApiError(403, "EMAIL_NOT_VERIFIED");
+  if (profile.administrative_hold || profile.deletion_job_hold) throw new ApiError(403, "ACCOUNT_HELD");
   if (!product || product.amount_minor <= 0 || product.currency !== "EUR") {
     throw new ApiError(404, "PRODUCT_NOT_AVAILABLE");
   }
@@ -2108,7 +2111,7 @@ async function vipWhatsappPerk(
 ): Promise<Record<string, unknown>> {
   const now = isoNow();
   const access = await env.DB.prepare(`
-    SELECT p.account_status, p.age_status, e.expires_at
+    SELECT p.account_status, p.email_verified, p.administrative_hold, p.deletion_job_hold, e.expires_at
     FROM user_profiles p
     LEFT JOIN entitlements e
       ON e.appwrite_user_id = p.appwrite_user_id
@@ -2122,13 +2125,16 @@ async function vipWhatsappPerk(
     LIMIT 1
   `).bind(now, now, userId).first<{
     account_status: string;
-    age_status: string;
+    email_verified: number;
+    administrative_hold: number;
+    deletion_job_hold: number;
     expires_at: string | null;
   }>();
-  if (!access || access.account_status !== "ACTIVE" || access.age_status !== "APPROVED") {
+  if (!access || access.account_status !== "ACTIVE" || access.email_verified !== 1 || access.administrative_hold || access.deletion_job_hold) {
     throw new ApiError(403, "VIP_WHATSAPP_PERK_NOT_AVAILABLE");
   }
   if (!access.expires_at) throw new ApiError(403, "ACTIVE_VIP_REQUIRED");
+  if (env.MUSIC_COMMUNITY_REVIEWED !== "true") throw new ApiError(503, "VIP_WHATSAPP_MUSIC_REVIEW_REQUIRED");
   if (!env.VIP_WHATSAPP_NUMBER) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
   const digits = env.VIP_WHATSAPP_NUMBER.replace(/\D/g, "");
   if (!/^[1-9]\d{7,14}$/.test(digits)) throw new ApiError(503, "VIP_WHATSAPP_NOT_CONFIGURED");
@@ -2500,7 +2506,7 @@ async function listContent(
           WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
       FROM content_items c
       JOIN content_uploads u ON u.content_item_id = c.id AND u.status = 'ACTIVE'
-      WHERE c.content_status = 'ACTIVE'
+      WHERE c.content_status = 'ACTIVE' AND c.content_scope = 'MUSIC'
       ORDER BY c.published_at DESC, c.created_at DESC
       LIMIT 200
     `).all<{
@@ -2525,6 +2531,7 @@ async function listContent(
     entitlement,
     requiredTier: "FREE",
     contentStatus: "ACTIVE",
+    contentScope: "MUSIC",
     activeDeviceCount,
     deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
     currentDeviceActive: device?.status === "ACTIVE",
@@ -2541,6 +2548,7 @@ async function listContent(
         entitlement,
         requiredTier: item.required_tier,
         contentStatus: "ACTIVE",
+        contentScope: "MUSIC",
         activeDeviceCount,
         deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
         currentDeviceActive: true,
@@ -2613,7 +2621,7 @@ async function commentContext(
       p.account_status, p.age_status, p.jurisdiction_code, p.last_active_at,
       p.last_appwrite_access_at, p.administrative_hold, p.legal_retention_until,
       p.deletion_job_hold, p.version,
-      c.id AS content_id, c.content_status, c.required_tier,
+      c.id AS content_id, c.content_status, c.content_scope, c.required_tier,
       c.jurisdiction_policy, c.allow_comments,
       e.id AS entitlement_id, e.tier AS entitlement_tier,
       e.status AS entitlement_status, e.starts_at AS entitlement_starts_at,
@@ -2642,6 +2650,7 @@ async function commentContext(
     version: number;
     content_id: string;
     content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
+    content_scope: "MUSIC" | "LEGACY_ADULT";
     required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
     jurisdiction_policy: string | null;
     allow_comments: number;
@@ -2695,6 +2704,7 @@ async function commentContext(
     entitlement,
     requiredTier: row.required_tier,
     contentStatus: row.content_status,
+    contentScope: row.content_scope,
     activeDeviceCount: Number(row.active_count ?? 0),
     deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
     currentDeviceActive: row.device_status === "ACTIVE",
@@ -2841,6 +2851,7 @@ async function authorizeContent(
     entitlement,
     requiredTier: content.required_tier,
     contentStatus: content.content_status,
+    contentScope: content.content_scope,
     activeDeviceCount,
     deviceLimit: parsePositiveInt(env.DEVICE_LIMIT, 3, 10),
     currentDeviceActive: device?.status === "ACTIVE",
@@ -2949,18 +2960,6 @@ async function recordAnalyticsEvent(
   return { accepted: true };
 }
 
-function newsletterEmailHtml(input: {
-  locale: "de" | "en";
-  title: string;
-  intro: string;
-  actionLabel: string;
-  actionUrl: string;
-  unsubscribeUrl?: string;
-}): string {
-  const de = input.locale === "de";
-  return `<!doctype html><html lang="${input.locale}"><body style="margin:0;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><table role="presentation" width="100%"><tr><td align="center" style="padding:28px 12px"><table role="presentation" width="640" style="max-width:640px;background:#21070d;border:1px solid #6d2432;border-radius:24px;overflow:hidden"><tr><td><img src="cid:shadow-brand-banner" width="640" alt="Shadow's Temptation" style="display:block;width:100%;height:auto"></td></tr><tr><td style="padding:34px"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:38px;font-weight:normal;color:#fff6e8">${escapeHtml(input.title)}</h1><p style="font-size:16px;line-height:1.7;color:#d8c4bd">${escapeHtml(input.intro)}</p><p style="text-align:center;margin:30px 0"><a href="${escapeHtml(input.actionUrl)}" style="display:inline-block;padding:16px 28px;border-radius:999px;background:#c83a22;color:#fff;text-decoration:none;font-weight:bold">${escapeHtml(input.actionLabel)} →</a></p></td></tr><tr><td style="padding:20px 34px;background:#0d0204;color:#968681;font-size:12px">Shadow's Temptation · Desire lives in the shadows.<br><a href="https://exclusive.jason-shadow.com/legal/" style="color:#e6c77c">Legal &amp; Privacy</a> · <a href="mailto:info@exclusive.jason-shadow.com" style="color:#e6c77c">Support</a>${input.unsubscribeUrl ? `<br><a href="${escapeHtml(input.unsubscribeUrl)}" style="display:inline-block;margin-top:10px;color:#968681">${de ? "Newsletter abbestellen" : "Unsubscribe from newsletter"}</a>` : ""}</td></tr></table></td></tr></table></body></html>`;
-}
-
 async function issueNewsletterToken(
   env: MembershipEnv,
   input: { userId: string; purpose: "CONFIRM" | "UNSUBSCRIBE"; ttlHours: number },
@@ -2998,7 +2997,7 @@ async function subscribeNewsletter(
     env.DB.prepare(`INSERT INTO newsletter_subscriptions (
       appwrite_user_id, status, locale, source, consent_text_version,
       consented_at, confirmed_at, unsubscribed_at, created_at, updated_at
-    ) VALUES (?, 'PENDING', ?, 'DASHBOARD', 'newsletter-v1', ?, NULL, NULL, ?, ?)
+    ) VALUES (?, 'PENDING', ?, 'DASHBOARD', 'newsletter-music-v2', ?, NULL, NULL, ?, ?)
     ON CONFLICT(appwrite_user_id) DO UPDATE SET
       status = 'PENDING', locale = excluded.locale, source = excluded.source,
       consent_text_version = excluded.consent_text_version,
@@ -3014,14 +3013,14 @@ async function subscribeNewsletter(
   const de = locale === "de";
   await sendTransactionalEmail(env.IDENTITY_PROJECTION, env.LABEL_SYNC_SERVICE_SECRET, {
     userId: identity.userId,
-    messageId: `newsletter-confirm-${crypto.randomUUID()}`,
-    subject: de ? "Dein Zugang zu New Drops" : "Your access to New Drops",
+    messageId: `nc-${crypto.randomUUID().replaceAll("-", "")}`,
+    subject: de ? "Newsletter bestätigen · The Order of Shadows" : "Confirm your newsletter · The Order of Shadows",
     html: newsletterEmailHtml({
       locale,
-      title: de ? "New Drops – nur wenn du willst" : "New Drops – only if you want them",
+      title: de ? "Musik & Einblicke – nur wenn du willst" : "Music & behind the scenes – only if you want them",
       intro: de
-        ? "Bestätige einmalig, dass du neue Veröffentlichungen, ausgewählte Einblicke und Membership-Impulse per E-Mail erhalten möchtest."
-        : "Confirm once to receive new releases, selected previews and membership inspiration by email.",
+        ? "Bestätige einmalig, dass du neue Veröffentlichungen, ausgewählte Einblicke und Neuigkeiten zu Musik und Stimme per E-Mail erhalten möchtest."
+        : "Confirm once to receive new releases, selected previews and music and voice updates by email.",
       actionLabel: de ? "Newsletter bestätigen" : "Confirm newsletter",
       actionUrl: newsletterActionUrl(token, "CONFIRM"),
     }),
@@ -3040,7 +3039,7 @@ async function unsubscribeNewsletterForUser(
     appwrite_user_id, status, locale, source, consent_text_version,
     unsubscribed_at, created_at, updated_at
   ) SELECT appwrite_user_id, 'UNSUBSCRIBED', preferred_locale, 'DASHBOARD',
-    'newsletter-v1', ?, ?, ? FROM user_profiles WHERE appwrite_user_id = ?
+    'newsletter-music-v2', ?, ?, ? FROM user_profiles WHERE appwrite_user_id = ?
   ON CONFLICT(appwrite_user_id) DO UPDATE SET status = 'UNSUBSCRIBED',
     unsubscribed_at = excluded.unsubscribed_at, updated_at = excluded.updated_at`)
     .bind(now, now, now, userId).run();
@@ -3055,7 +3054,7 @@ function newsletterActionPage(locale: "de" | "en", success: boolean): Response {
   const copy = success
     ? (de ? "Deine Newsletter-Einstellung wurde sicher übernommen." : "Your newsletter preference has been saved securely.")
     : (de ? "Fordere im Privacy Center bei Bedarf einen neuen Link an." : "Request a new link from the Privacy Center if needed.");
-  return new Response(`<!doctype html><html lang="${locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title} · Shadow's Temptation</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#100205;color:#f8eee7;font-family:Arial,sans-serif"><main style="width:min(90%,620px);box-sizing:border-box;padding:42px;border:1px solid #6d2432;border-radius:28px;background:#21070d;text-align:center"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">SHADOW'S TEMPTATION</p><h1 style="font-family:Georgia,serif;font-size:42px;font-weight:normal">${title}</h1><p style="color:#d8c4bd;line-height:1.7">${copy}</p><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;margin-top:18px;padding:15px 24px;border-radius:999px;background:#c83a22;color:white;text-decoration:none;font-weight:bold">${de ? "Zum Konto" : "Open account"} →</a></main></body></html>`, {
+  return new Response(`<!doctype html><html lang="${locale}"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title} · The Order of Shadows</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#240007;color:#f8eee7;font-family:Arial,sans-serif"><main style="width:min(90%,620px);box-sizing:border-box;padding:42px;border:1px solid #6d2432;border-radius:28px;background:#31000b;text-align:center"><p style="color:#e6c77c;letter-spacing:3px;font-size:11px;font-weight:bold">THE ORDER OF SHADOWS</p><h1 style="font-family:Georgia,serif;font-size:42px;font-weight:normal">${title}</h1><p style="color:#d8c4bd;line-height:1.7">${copy}</p><a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;margin-top:18px;padding:15px 24px;border-radius:999px;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold">${de ? "Zum Konto" : "Open account"} →</a></main></body></html>`, {
     status: success ? 200 : 400,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
@@ -3070,7 +3069,8 @@ async function applyNewsletterAction(request: Request, env: MembershipEnv): Prom
   const row = await env.DB.prepare(`SELECT t.id, t.appwrite_user_id, s.locale
     FROM newsletter_action_tokens t
     LEFT JOIN newsletter_subscriptions s ON s.appwrite_user_id = t.appwrite_user_id
-    WHERE t.token_sha256 = ? AND t.purpose = ? AND t.used_at IS NULL AND t.expires_at > ?`)
+    WHERE t.token_sha256 = ? AND t.purpose = ? AND t.used_at IS NULL AND t.expires_at > ?
+      AND (t.purpose = 'UNSUBSCRIBE' OR (s.status = 'PENDING' AND s.consent_text_version = 'newsletter-music-v2'))`)
     .bind(await sha256Hex(token), purpose, now)
     .first<{ id: string; appwrite_user_id: string; locale: "de" | "en" | null }>();
   const locale = row?.locale === "en" ? "en" : "de";
@@ -3081,9 +3081,10 @@ async function applyNewsletterAction(request: Request, env: MembershipEnv): Prom
     env.DB.prepare(`UPDATE newsletter_subscriptions SET status = ?,
       confirmed_at = CASE WHEN ? = 'CONFIRM' THEN ? ELSE confirmed_at END,
       unsubscribed_at = CASE WHEN ? = 'UNSUBSCRIBE' THEN ? ELSE NULL END,
-      updated_at = ? WHERE appwrite_user_id = ?`)
+      updated_at = ? WHERE appwrite_user_id = ?
+        AND (? = 'UNSUBSCRIBE' OR (status = 'PENDING' AND consent_text_version = 'newsletter-music-v2'))`)
       .bind(purpose === "CONFIRM" ? "SUBSCRIBED" : "UNSUBSCRIBED",
-        purpose, now, purpose, now, now, row.appwrite_user_id),
+        purpose, now, purpose, now, now, row.appwrite_user_id, purpose),
   ]);
   return newsletterActionPage(locale, true);
 }
@@ -3480,7 +3481,7 @@ async function exportPrivacyData(
   headers.set("Content-Type", "application/json; charset=utf-8");
   headers.set(
     "Content-Disposition",
-    `attachment; filename="shadows-temptation-data-${new Date().toISOString().slice(0, 10)}.json"`,
+    `attachment; filename="order-of-shadows-data-${new Date().toISOString().slice(0, 10)}.json"`,
   );
   headers.set("Cache-Control", "private, no-store");
   headers.set("X-Request-Id", correlationId);
@@ -3683,7 +3684,7 @@ async function route(
   if (request.method === "GET" && requestUrl.pathname === "/v1/products") {
     const locale = requestUrl.searchParams.get("locale") === "en" ? "en" : "de";
     const cacheKey = productCatalogCacheKey(request, locale, origin);
-    const edgeCache = await caches.open("exclusive-products-v1");
+    const edgeCache = await caches.open("order-of-shadows-products-v2");
     const cached = await edgeCache.match(cacheKey);
     if (cached) return withRequestId(cached, correlationId);
     await enforceRateLimit(
@@ -3749,6 +3750,9 @@ async function route(
   const identity = await authenticateUser(request, env, {
     requireVerifiedEmail: requiresVerified,
   });
+  if (requestUrl.pathname.startsWith("/v1/age-verification/")) {
+    throw new ApiError(410, "AGE_VERIFICATION_RETIRED");
+  }
   const simulationRole = await requireAdminSimulation(request, env, identity);
   let result: Record<string, unknown>;
   const evidencePath = /^\/v1\/age-verification\/cases\/([0-9a-f-]{36})\/evidence\/([^/]+)$/i

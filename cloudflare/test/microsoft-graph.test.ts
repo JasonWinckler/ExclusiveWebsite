@@ -67,6 +67,27 @@ describe("Microsoft Graph transactional email", () => {
     expect(payload.saveToSentItems).toBe(true);
   });
 
+  it("accepts the official music logo within the shared 2 MiB raw-image limit", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ token_type: "Bearer", expires_in: 3600, access_token: "a".repeat(64) }))
+      .mockResolvedValueOnce(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const contentBytes = Buffer.alloc(1_571_109).toString("base64");
+    await sendMicrosoftGraphEmail({ ...baseInput, inlineImage: { ...baseInput.inlineImage, contentBytes } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = JSON.parse(String(fetchMock.mock.calls[1]![1].body));
+    expect(payload.message.attachments[0].contentBytes).toBe(contentBytes);
+  });
+
+  it("rejects an oversized inline image before contacting Graph", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(sendMicrosoftGraphEmail({ ...baseInput,
+      inlineImage: { ...baseInput.inlineImage, contentBytes: "a".repeat(2_796_208) },
+    })).rejects.toMatchObject({ code: "GRAPH_EMAIL_INLINE_IMAGE_INVALID" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("fails closed when Graph credentials are absent", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

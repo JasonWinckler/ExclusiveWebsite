@@ -1,5 +1,11 @@
 # Provider- und Verarbeitungsentscheidungen
 
+> Historical context: the adult-content and new age-review portions of this document
+> are superseded by [The Order of Shadows transition](ORDER_OF_SHADOWS_TRANSITION.md).
+> Retain applicable privacy, evidence deletion and security controls. Do not use
+> this document to re-enable retired customer verification or publish legacy media.
+
+
 ## Cloudflare
 
 Cloudflare Pages, Workers, D1 und private R2-Buckets bilden die produktive

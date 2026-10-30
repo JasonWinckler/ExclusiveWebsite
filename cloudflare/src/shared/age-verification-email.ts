@@ -90,12 +90,12 @@ export function ageVerificationDeletionEmail(
     html: `<!doctype html>
 <html lang="${input.locale}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(copy.subject)}</title></head>
-<body style="margin:0;background:#120006;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
+<body style="margin:0;background:#240007;color:#fff4df;font-family:Arial,Helvetica,sans-serif">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(copy.preheader)}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#120006">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#240007">
     <tr><td align="center" style="padding:28px 12px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#25000d;border:1px solid #75452d;border-radius:22px;overflow:hidden">
-        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="Shadow's Temptation" style="display:block;width:100%;height:auto;border:0"></td></tr>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#31000b;border:1px solid #75452d;border-radius:22px;overflow:hidden">
+        <tr><td><img src="cid:shadow-brand-banner" width="680" alt="The Order of Shadows" style="display:block;width:100%;height:auto;border:0"></td></tr>
         <tr><td style="padding:34px 38px 14px">
           <p style="margin:0 0 12px;color:#f0b46d;font-size:12px;font-weight:700;letter-spacing:3px">${copy.kicker}</p>
           <h1 style="margin:0 0 18px;color:#fff4df;font-family:Georgia,serif;font-size:38px;line-height:1.08">${copy.title}</h1>
@@ -111,14 +111,14 @@ export function ageVerificationDeletionEmail(
         </td></tr>
         <tr><td style="padding:0 38px 22px;color:#d8c2b9;font-size:14px;line-height:1.65">${copy.retained}</td></tr>
         <tr><td align="center" style="padding:4px 38px 28px">
-          <a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:linear-gradient(135deg,#f26b2f,#9d122a);color:#fff8eb;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
+          <a href="https://exclusive.jason-shadow.com/?action=account" style="display:inline-block;background:#efd18a;color:#240007;text-decoration:none;font-weight:bold;padding:16px 26px;border-radius:999px">${copy.cta}</a>
         </td></tr>
         <tr><td style="padding:0 38px 34px;color:#bdaaa4;font-size:14px;line-height:1.6">
           <p style="margin:0 0 14px">${copy.help}</p>
           <p style="margin:0"><a href="https://exclusive.jason-shadow.com/legal/" style="color:#f0b46d">${copy.legal}</a> · <a href="https://exclusive.jason-shadow.com/legal/eu/#privacy" style="color:#f0b46d">${copy.privacy}</a></p>
         </td></tr>
       </table>
-      <p style="margin:18px 0 0;color:#806c68;font-size:12px">Shadow's Temptation · info@exclusive.jason-shadow.com</p>
+      <p style="margin:18px 0 0;color:#806c68;font-size:12px">The Order of Shadows · info@exclusive.jason-shadow.com</p>
     </td></tr>
   </table>
 </body>

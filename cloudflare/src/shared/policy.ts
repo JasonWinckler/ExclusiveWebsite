@@ -18,6 +18,7 @@ export function authorizeProtectedContent(input: {
   entitlement: EntitlementRow | null;
   requiredTier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
   contentStatus: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
+  contentScope?: "MUSIC" | "LEGACY_ADULT";
   activeDeviceCount: number;
   deviceLimit: number;
   currentDeviceActive: boolean;
@@ -28,7 +29,8 @@ export function authorizeProtectedContent(input: {
   if (!input.profile) return deny("PROFILE_NOT_FOUND");
   if (input.profile.account_status !== "ACTIVE") return deny("ACCOUNT_NOT_ACTIVE");
   if (input.profile.email_verified !== 1) return deny("EMAIL_NOT_VERIFIED");
-  if (input.profile.age_status !== "APPROVED") return deny("AGE_NOT_APPROVED");
+  // Scope is explicit: an omitted or legacy classification never unlocks old media.
+  if (input.contentScope !== "MUSIC") return deny("LEGACY_CONTENT_QUARANTINED");
   if (input.profile.administrative_hold === 1 || input.profile.deletion_job_hold === 1) {
     return deny("ACCOUNT_HELD");
   }

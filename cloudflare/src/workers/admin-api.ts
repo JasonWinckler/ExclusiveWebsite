@@ -790,8 +790,11 @@ function parseEuroMinor(value: string): number | null {
 
 export function extractSepaTransferPurpose(row: string[]): string | null {
   for (const value of row) {
-    const match = /Exclusive Content\s*-\s*ID\s*#([A-Z0-9]{8,12})/i.exec(value);
-    if (match) return `Exclusive Content - ID #${match[1]!.toUpperCase()}`;
+    const match = /(Order of Shadows|Exclusive Content)\s*-\s*ID\s*#([A-Z0-9]{8,12})/i.exec(value);
+    if (match) {
+      const prefix = match[1]!.toLowerCase() === "order of shadows" ? "Order of Shadows" : "Exclusive Content";
+      return `${prefix} - ID #${match[2]!.toUpperCase()}`;
+    }
   }
   return null;
 }
@@ -1082,7 +1085,7 @@ async function grantManualMembership(
   if (
     profile.account_status !== "ACTIVE" ||
     profile.email_verified !== 1 ||
-    profile.age_status !== "APPROVED"
+    profile.administrative_hold === 1 || profile.deletion_job_hold === 1
   ) throw new ApiError(409, "MANUAL_MEMBERSHIP_USER_NOT_ELIGIBLE");
   if (!product) throw new ApiError(404, "PRODUCT_NOT_AVAILABLE");
 
@@ -1331,7 +1334,7 @@ async function manuallyActivatePaymentOrder(
     SELECT s.id, s.appwrite_user_id, s.product_id, s.transfer_reference,
       s.amount_minor, s.currency, s.status, s.version,
       p.tier, p.duration_unit, p.duration_value,
-      u.account_status, u.age_status
+      u.account_status, u.email_verified, u.administrative_hold, u.deletion_job_hold
     FROM subscriptions s
     JOIN products p ON p.id = s.product_id
     JOIN user_profiles u ON u.appwrite_user_id = s.appwrite_user_id
@@ -1349,13 +1352,15 @@ async function manuallyActivatePaymentOrder(
     duration_unit: "DAYS" | "MONTHS";
     duration_value: number;
     account_status: string;
-    age_status: string;
+    email_verified: number;
+    administrative_hold: number;
+    deletion_job_hold: number;
   }>();
   if (!subscription) throw new ApiError(404, "PAYMENT_ORDER_NOT_FOUND");
   if (!canManuallyActivatePaymentStatus(subscription.status)) {
     throw new ApiError(409, "PAYMENT_ORDER_NOT_MANUALLY_ACTIVATABLE");
   }
-  if (subscription.account_status !== "ACTIVE" || subscription.age_status !== "APPROVED") {
+  if (subscription.account_status !== "ACTIVE" || subscription.email_verified !== 1 || subscription.administrative_hold || subscription.deletion_job_hold) {
     throw new ApiError(409, "PAYMENT_ORDER_USER_NOT_ELIGIBLE");
   }
 
@@ -1840,7 +1845,7 @@ async function importN26Csv(
 async function listContentItems(env: AdminEnv): Promise<Record<string, unknown>> {
   const items = await env.DB.prepare(`
     SELECT c.id, c.slug, c.title, c.body_text, c.allow_comments,
-      c.content_status, c.required_tier, c.published_at, c.created_at, c.updated_at,
+      c.content_status, c.content_scope, c.required_tier, c.published_at, c.created_at, c.updated_at,
       u.id AS upload_id, u.content_type, u.size_bytes, u.created_at AS uploaded_at,
       (SELECT COUNT(*) FROM content_comments comments
         WHERE comments.content_item_id = c.id AND comments.status = 'ACTIVE') AS comment_count
@@ -1960,7 +1965,7 @@ async function createContentItem(
   const postBody = body.bodyText.trim();
   const idempotencyKey = requireIdempotencyKey(request);
   const replay = await env.DB.prepare(`
-    SELECT id, slug, title, body_text, allow_comments, content_status, required_tier
+    SELECT id, slug, title, body_text, allow_comments, content_status, content_scope, required_tier
     FROM content_items WHERE creation_idempotency_key = ?
   `).bind(idempotencyKey).first();
   if (replay) return replay as Record<string, unknown>;
@@ -1969,9 +1974,9 @@ async function createContentItem(
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO content_items (
-        id, slug, title, body_text, allow_comments, content_status, required_tier,
+        id, slug, title, body_text, allow_comments, content_status, content_scope, required_tier,
         creation_idempotency_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 'DISABLED', 'MUSIC', ?, ?, ?, ?)
     `).bind(
       contentId,
       body.slug,
@@ -2035,7 +2040,7 @@ async function updateContentItem(
     throw new ApiError(400, "INVALID_COMMENT_SETTING");
   }
   const existing = await env.DB.prepare(`
-    SELECT id, slug, title, body_text, allow_comments, content_status, required_tier
+    SELECT id, slug, title, body_text, allow_comments, content_status, content_scope, required_tier
     FROM content_items WHERE id = ?
   `).bind(contentId).first<{
     id: string;
@@ -2044,11 +2049,13 @@ async function updateContentItem(
     body_text: string;
     allow_comments: number;
     content_status: string;
+    content_scope: string;
     required_tier: string;
   }>();
   if (!existing || existing.content_status === "RETIRED") {
     throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
   }
+  if (existing.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
   requireIdempotencyKey(request);
   const title = body.title.trim();
   const postBody = body.bodyText.trim();
@@ -2195,7 +2202,7 @@ async function uploadContentMedia(
     };
   }
   const item = await env.DB.prepare(`
-    SELECT c.id, c.slug, c.content_status, c.required_tier,
+    SELECT c.id, c.slug, c.content_status, c.content_scope, c.required_tier,
       u.id AS active_upload_id, u.r2_object_key AS active_object_key,
       u.content_type AS active_content_type, u.size_bytes AS active_size_bytes
     FROM content_items c
@@ -2205,6 +2212,7 @@ async function uploadContentMedia(
     id: string;
     slug: string;
     content_status: string;
+    content_scope: string;
     required_tier: "FREE" | "EXCLUSIVE_BASIC" | "EXCLUSIVE_PREMIUM" | "EXCLUSIVE_VIP";
     active_upload_id: string | null;
     active_object_key: string | null;
@@ -2212,6 +2220,7 @@ async function uploadContentMedia(
     active_size_bytes: number | null;
   }>();
   if (!item) throw new ApiError(404, "CONTENT_ITEM_NOT_FOUND");
+  if (item.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
   if (
     item.content_status !== "REVIEW" &&
     item.content_status !== "DISABLED" &&
@@ -3119,13 +3128,14 @@ async function queueNewDropCampaign(
   exactKeys(body, ["contentItemId"]);
   const contentItemId = typeof body.contentItemId === "string" ? body.contentItemId : "";
   if (!/^[0-9a-f-]{36}$/i.test(contentItemId)) throw new ApiError(400, "INVALID_CONTENT_ID");
-  const item = await env.DB.prepare(`SELECT id, title, body_text, content_status
+  const item = await env.DB.prepare(`SELECT id, title, body_text, content_status, content_scope
     FROM content_items WHERE id = ?`).bind(contentItemId)
-    .first<{ id: string; title: string; body_text: string | null; content_status: string }>();
+    .first<{ id: string; title: string; body_text: string | null; content_status: string; content_scope: string }>();
   if (!item || item.content_status !== "ACTIVE") throw new ApiError(409, "ACTIVE_CONTENT_REQUIRED");
+  if (item.content_scope !== "MUSIC") throw new ApiError(409, "LEGACY_CONTENT_QUARANTINED");
   const now = isoNow();
   const campaignId = crypto.randomUUID();
-  const preview = (item.body_text?.trim() || "A new private moment is waiting for you.").slice(0, 500);
+  const preview = (item.body_text?.trim() || "A new behind-the-scenes update from Jason Shadow is waiting for you.").slice(0, 500);
   const results = await env.DB.batch([
     env.DB.prepare(`INSERT INTO newsletter_campaigns (
       id, campaign_type, content_item_id, subject_de, subject_en,
@@ -3138,7 +3148,8 @@ async function queueNewDropCampaign(
       id, campaign_id, appwrite_user_id, locale, status, next_attempt_at,
       created_at, updated_at
     ) SELECT lower(hex(randomblob(16))), ?, appwrite_user_id, locale, 'PENDING', ?, ?, ?
-      FROM newsletter_subscriptions WHERE status = 'SUBSCRIBED'`)
+      FROM newsletter_subscriptions WHERE status = 'SUBSCRIBED'
+        AND consent_text_version = 'newsletter-music-v2'`)
       .bind(campaignId, now, now, now),
     auditStatement(env.DB, {
       administratorUserId,

@@ -7,7 +7,7 @@ const routes = [
   { path: "/de/", files: ["de", "assets/css/seo-landing.css"] },
   { path: "/en/", files: ["en", "assets/css/seo-landing.css"] },
   { path: "/linktree/", files: ["linktree"] },
-  { path: "/legal/", files: ["legal/index.html", "assets/css/adult.css"] },
+  { path: "/legal/", files: ["legal/index.html", "assets/css/adult.css", "assets/css/order-static.css"] },
   { path: "/legal/eu/", files: ["legal/eu"] },
   { path: "/legal/us/", files: ["legal/us"] },
 ];

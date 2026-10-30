@@ -142,10 +142,10 @@ export default function PrivacyPanel({
     <section className="privacy-card privacy-card--newsletter">
       <div className="privacy-card__heading">
         <span>03</span>
-        <div><h4>{de ? "New Drops Newsletter" : "New Drops newsletter"}</h4>
+        <div><h4>{de ? "Order of Shadows Newsletter" : "Order of Shadows newsletter"}</h4>
           <p>{de
-            ? "Erhalte neue Veröffentlichungen, ausgewählte Einblicke und Membership-Impulse. Freiwillig, mit einmaliger E-Mail-Bestätigung und jederzeit abbestellbar."
-            : "Receive new releases, selected previews and membership inspiration. Voluntary, confirmed once by email and cancellable at any time."}</p></div>
+            ? "Erhalte Neuigkeiten zu Musik und Sprecherprojekten sowie Einblicke hinter die Kulissen. Freiwillig, mit einmaliger E-Mail-Bestätigung und jederzeit abbestellbar."
+            : "Receive music and voice-project news, plus stories behind the scenes. Voluntary, confirmed once by email and cancellable at any time."}</p></div>
       </div>
       <div className="privacy-card__actions">
         {privacy?.newsletter?.status === "SUBSCRIBED"
@@ -155,7 +155,7 @@ export default function PrivacyPanel({
           : <button type="button" className="primary-action" disabled={busy || !profile.complete} onClick={onSubscribeNewsletter}>
             {privacy?.newsletter?.status === "PENDING"
               ? (de ? "Bestätigung erneut senden" : "Resend confirmation")
-              : (de ? "New Drops erhalten" : "Get New Drops")}
+              : (de ? "Musik-Newsletter abonnieren" : "Subscribe to the music newsletter")}
           </button>}
         <span>{privacy?.newsletter?.status === "SUBSCRIBED"
           ? (de ? "Aktiv und bestätigt" : "Active and confirmed")

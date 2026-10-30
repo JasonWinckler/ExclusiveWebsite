@@ -13,7 +13,7 @@ import type { IdentityProjectionEnv } from "../shared/types";
 const AGE_LABELS = new Set(["age_pending", "age_verified", "age_rejected"]);
 const ACCESS_LABELS = new Set(["active_basic", "active_premium", "active_vip"]);
 const EMAIL_BRAND_CONTENT_ID = "shadow-brand-banner";
-const EMAIL_BRAND_MAX_BYTES = 524_288;
+const EMAIL_BRAND_MAX_BYTES = 2_097_152;
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -32,7 +32,7 @@ async function emailBrandImage(env: IdentityProjectionEnv): Promise<{
   let response: Response;
   try {
     response = await env.EMAIL_ASSETS.fetch(
-      new Request("https://email-assets.internal/banner.png"),
+      new Request("https://email-assets.internal/logo.png"),
     );
   } catch {
     throw new ApiError(503, "EMAIL_BRAND_ASSET_UNAVAILABLE");
@@ -46,7 +46,7 @@ async function emailBrandImage(env: IdentityProjectionEnv): Promise<{
   }
   return {
     contentType: "image/png",
-    name: "shadows-temptation-banner.png",
+    name: "jason-shadow-membership-logo.png",
     contentId: EMAIL_BRAND_CONTENT_ID,
     contentBytes: bytesToBase64(bytes),
   };

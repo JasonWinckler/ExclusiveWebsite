@@ -99,6 +99,7 @@ export interface MembershipEnv extends BaseEnv {
   TELEGRAM_INVITE_ENCRYPTION_KEY?: string;
   TELEGRAM_INVITE_KEY_VERSION?: string;
   VIP_WHATSAPP_NUMBER?: string;
+  MUSIC_COMMUNITY_REVIEWED?: string;
 }
 
 export interface AdminEnv extends BaseEnv {
@@ -205,6 +206,7 @@ export interface ContentItemRow {
   id: string;
   slug: string;
   content_status: "DISABLED" | "REVIEW" | "ACTIVE" | "RETIRED";
+  content_scope: "MUSIC" | "LEGACY_ADULT";
   required_tier: "FREE" | EntitlementTier;
   jurisdiction_policy: string | null;
 }
